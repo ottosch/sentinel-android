@@ -47,6 +47,7 @@ import com.samourai.sentinel.ui.webview.ExplorerRepository
 import com.samourai.sentinel.util.CollectionsNotLoadedException
 import com.samourai.sentinel.util.ExportImportUtil
 import com.samourai.sentinel.util.UtxoMetaUtil
+import org.json.JSONObject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
@@ -729,7 +730,14 @@ class MainSettingsFragment : PreferenceFragmentCompat() {
                                 intent.type = "text/plain"
                                 val current = Calendar.getInstance().time
                                 val formatter = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
-                                intent.putExtra(Intent.EXTRA_TITLE, "sentinel_backup_${formatter.format(current)}.txt")
+                                // #404: the envelope just built carries the
+                                // network when the keychain is unanimous; put
+                                // that word in the file name. Mixed or empty
+                                // wallets keep today's name - the envelope is
+                                // the single verdict, never a second one.
+                                val declaredNetwork = JSONObject(payloadEncrypted).optString("network", "")
+                                val networkWord = if (declaredNetwork.isEmpty()) "" else "_$declaredNetwork"
+                                intent.putExtra(Intent.EXTRA_TITLE, "sentinel_backup${networkWord}_${formatter.format(current)}.txt")
                                 startDocumentPickerForResult(intent, REQ_CODE_WRITE_BACKUP)
                             }
                         }

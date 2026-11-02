@@ -15,6 +15,8 @@ import org.robolectric.annotation.Config
 /**
  * Backup prefs omit unlock material and session tokens, and import
  * does not write those keys back.
+ * Device-local one-shot flags ride the same omit set: the OS
+ * notification grant is per-device, so a restore asks afresh.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -38,6 +40,7 @@ class PrefsBackupFilterTest {
         prefs.authorization = "access-token"
         prefs.refreshToken = "refresh-token"
         prefs.streetMode = true
+        prefs.notificationPromptDone = true
 
         val exported = prefs.export()
         assertEquals("JPY", exported.getString("selectedCurrency"))
@@ -47,6 +50,7 @@ class PrefsBackupFilterTest {
         assertFalse(exported.has("pinKeyMaterial"))
         assertFalse(exported.has("authorization"))
         assertFalse(exported.has("refreshToken"))
+        assertFalse(exported.has("notificationPromptDone"))
         assertFalse(exported.toString().contains("legacy-verifier"))
         assertFalse(exported.toString().contains("access-token"))
         assertFalse(exported.toString().contains("refresh-token"))
@@ -69,6 +73,7 @@ class PrefsBackupFilterTest {
             .put("authorization", "from-backup-access")
             .put("refreshToken", "from-backup-refresh")
             .put("streetMode", true)
+            .put("notificationPromptDone", true)
         prefs.import(incoming)
 
         assertEquals("GBP", prefs.selectedCurrency)
@@ -78,5 +83,6 @@ class PrefsBackupFilterTest {
         assertEquals("keep-access", prefs.authorization)
         assertEquals("keep-refresh", prefs.refreshToken)
         assertEquals(true, prefs.pinEnabled)
+        assertEquals(false, prefs.notificationPromptDone)
     }
 }

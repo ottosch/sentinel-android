@@ -49,6 +49,8 @@ import java.io.BufferedReader
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.InputStreamReader
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 class ImportBackUpActivity : SentinelActivity() {
 
@@ -76,6 +78,11 @@ class ImportBackUpActivity : SentinelActivity() {
 
     /** #355/#358: waiting room for the import Argon2id runs. */
     private val kdfOverlay by lazy { KdfProgressOverlay(this) }
+
+    /** #404: the preview line's date format - local locale, local timezone. */
+    private val backupPreviewDateFormat by lazy {
+        SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
+    }
 
     // #80: real failures in the import launches must reach the
     // invokeOnCompletion reporting path, not the process. Masking
@@ -819,7 +826,6 @@ class ImportBackUpActivity : SentinelActivity() {
             try {
                 val json = JSONObject(string)
                 withContext(Dispatchers.Main) {
-                    binding.importPayloadTextView.text = "${binding.importPayloadTextView.text}${json.toString(2)}"
                     // #81 residue: drop any previously-validated payload
                     // before classifying the new one - a failed or
                     // different-type re-pick must not leave the old
@@ -847,6 +853,17 @@ class ImportBackUpActivity : SentinelActivity() {
                         // the hidden baseline, not arm it.
                         showImportButton(true)
                         showFloatingSnackBar(binding.importStartBtn, text = "Invalid payload")
+                    }
+                    // #404 (decision 7): the calm preview line replaces the
+                    // raw JSON dump. Rendered only for CLASSIFIED envelopes:
+                    // a parseable-but-unrecognized object must not read as
+                    // "Valid backup file" - the else branch's snackbar is
+                    // its only verdict. Both entry points (file pick, paste)
+                    // clear the view before validating, so an invalid
+                    // re-pick leaves the line blank, never stale.
+                    if (payloadObject != null) {
+                        binding.importPayloadTextView.text =
+                            backupPreviewLine(json, backupPreviewDateFormat)
                     }
                 }
             } catch (e: Exception) {

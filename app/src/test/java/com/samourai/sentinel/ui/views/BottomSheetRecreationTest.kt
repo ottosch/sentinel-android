@@ -189,6 +189,82 @@ class BottomSheetRecreationTest {
     }
 
     @Test
+    fun `first-run restore sheet round-trips save-restore with its contract intact`() {
+        // #404: the restore-vs-new first-run sheet rides the same #210
+        // contract as the network leg above - same CREATED-level
+        // restore checks, same mailbox half. The pinned literals
+        // match HomeActivity's newInstance call verbatim.
+        val first = Robolectric.buildActivity(FragmentActivity::class.java).create()
+
+        ConfirmBottomSheet.newInstance(
+            label = "Set up Sentinel",
+            message = "Restore from a backup, or start fresh on this device?",
+            positiveText = "Restore from backup",
+            negativeText = "Set up new",
+            isCancelable = false,
+            requestKey = HomeActivity.REQUEST_KEY_FIRST_RUN_RESTORE
+        ).show(first.get().supportFragmentManager, HomeActivity.TAG_FIRST_RUN_RESTORE_SHEET)
+        first.get().supportFragmentManager.executePendingTransactions()
+
+        val shown = first.get().supportFragmentManager
+            .findFragmentByTag(HomeActivity.TAG_FIRST_RUN_RESTORE_SHEET) as? ConfirmBottomSheet
+        assertNotNull("sheet must be added before save", shown)
+        assertFalse(
+            "non-cancelable contract must hold before save",
+            shown?.isCancelable == true
+        )
+
+        val outState = Bundle()
+        first.saveInstanceState(outState)
+        first.destroy()
+
+        val second = Robolectric.buildActivity(FragmentActivity::class.java).create(outState)
+        val restoredFragment = second.get().supportFragmentManager
+            .findFragmentByTag(HomeActivity.TAG_FIRST_RUN_RESTORE_SHEET)
+        assertNotNull("sheet must be restored from saved state", restoredFragment)
+        val restored = restoredFragment as? ConfirmBottomSheet
+        assertTrue("restored sheet must be a ConfirmBottomSheet", restored != null)
+
+        val args = restored!!.requireArguments()
+        assertEquals("Set up Sentinel", args.getString(ConfirmBottomSheet.ARG_LABEL))
+        assertEquals(
+            "Restore from a backup, or start fresh on this device?",
+            args.getString(ConfirmBottomSheet.ARG_MESSAGE)
+        )
+        assertEquals("Restore from backup", args.getString(ConfirmBottomSheet.ARG_POSITIVE_TEXT))
+        assertEquals("Set up new", args.getString(ConfirmBottomSheet.ARG_NEGATIVE_TEXT))
+        assertEquals(
+            HomeActivity.REQUEST_KEY_FIRST_RUN_RESTORE,
+            args.getString(ConfirmBottomSheet.ARG_REQUEST_KEY)
+        )
+        assertFalse(
+            "non-cancelable contract must survive restore",
+            restored.isCancelable
+        )
+
+        // Mailbox half: the durable listener HomeActivity registers
+        // in onCreate receives the answer through the stable request key.
+        var confirmed: Boolean? = null
+        second.get().supportFragmentManager.setFragmentResultListener(
+            HomeActivity.REQUEST_KEY_FIRST_RUN_RESTORE,
+            second.get()
+        ) { _, bundle ->
+            confirmed = bundle.getBoolean(ConfirmBottomSheet.RESULT_CONFIRMED)
+        }
+
+        second.get().supportFragmentManager.beginTransaction().remove(restored!!).commitNow()
+        second.start()
+
+        second.get().supportFragmentManager.setFragmentResult(
+            HomeActivity.REQUEST_KEY_FIRST_RUN_RESTORE,
+            Bundle().apply { putBoolean(ConfirmBottomSheet.RESULT_CONFIRMED, true) }
+        )
+        assertEquals("durable listener on the rebuilt host must receive the answer", true, confirmed)
+
+        second.destroy()
+    }
+
+    @Test
     fun `lock screen pad round-trips its channel and does not store the pin`() {
         val first = Robolectric.buildActivity(FragmentActivity::class.java).create()
         LockScreenDialog.newInstance(
