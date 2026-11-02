@@ -27,6 +27,9 @@ const val PIN_HASH = "pinHash"
  * omitted with them so a restore does not claim a PIN it cannot open.
  * The one-shot label-origin flag stays on the device so a restored
  * prefs file cannot skip that migration.
+ * The one-shot notification-ask flag is device-local too: the OS
+ * permission grant is per-device, so a restored install gets its
+ * own single ask, never the donor device's answer.
  */
 val PREFS_OMITTED_FROM_BACKUP = setOf(
     "pinHash",
@@ -35,6 +38,7 @@ val PREFS_OMITTED_FROM_BACKUP = setOf(
     "authorization",
     "refreshToken",
     "autoOriginHandEditsMigrated",
+    "notificationPromptDone",
 )
 const val XPUB = "xpub"
 const val SCRAMBLE_PIN = "scramblePin"
@@ -118,6 +122,12 @@ class PrefsUtil(context: Context) : Preferences(context, "${context.packageName}
     // are marked manual so a later sync does not overwrite them.
     // Omitted from backup: see PREFS_OMITTED_FROM_BACKUP.
     var autoOriginHandEditsMigrated by booleanPref(defaultValue = false, commitWrite = true)
+
+    // #404: one-shot notification permission ask. The OS grant
+    // is per-device, so the flag never rides a backup - a
+    // restored device gets its own single ask. Omitted from
+    // backup: see PREFS_OMITTED_FROM_BACKUP.
+    var notificationPromptDone by booleanPref(defaultValue = false)
 
     // "Rescan Xpub" per-key cooldown bookkeeping: a JSON object of
     // {keyFingerprint: epochMillis of the last rescan the Dojo acted on}.

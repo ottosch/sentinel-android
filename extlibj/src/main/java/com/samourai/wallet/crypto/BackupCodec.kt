@@ -23,11 +23,19 @@ object BackupCodec {
     private const val KDF_ARGON2ID = "argon2id"
     private val random = SecureRandom()
 
+    /**
+     * #404: optional network declaration for the envelope, written beside
+     * format/version/time. Only a unanimous keychain produces a value; a
+     * mixed or empty one passes null and nothing is written - absent
+     * means absent, readers must not guess. No format bump: older readers
+     * ignore the extra key, and no decrypt arm changes.
+     */
     fun encrypt(
         plaintext: String,
         password: String,
         appVersionCode: Int,
-        nowMillis: Long = System.currentTimeMillis()
+        nowMillis: Long = System.currentTimeMillis(),
+        declaredNetwork: String? = null
     ): String {
         if (password.isEmpty()) {
             throw BackupDecryptException("Password is empty")
@@ -45,10 +53,16 @@ object BackupCodec {
         )
         try {
             val blob = AesGcm.encrypt(key, plaintext.toByteArray(Charsets.UTF_8))
-            return JSONObject()
+            val envelope = JSONObject()
                 .put("format", FORMAT_AES_GCM)
                 .put("version", appVersionCode)
                 .put("time", nowMillis)
+            // #404: write-site guard - only the two contract values ever
+            // land in the envelope, whatever a future caller passes.
+            if (declaredNetwork == "mainnet" || declaredNetwork == "testnet") {
+                envelope.put("network", declaredNetwork)
+            }
+            return envelope
                 .put("kdf", KDF_ARGON2ID)
                 .put("salt", Base64.toBase64String(salt))
                 .put("memoryKiB", Argon2Kdf.BACKUP_MEMORY_KIB)

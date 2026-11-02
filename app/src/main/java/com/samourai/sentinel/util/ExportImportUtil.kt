@@ -2,6 +2,8 @@ package com.samourai.sentinel.util
 
 import com.google.gson.reflect.TypeToken
 import com.samourai.sentinel.BuildConfig
+import com.samourai.sentinel.core.DerivedNetwork
+import com.samourai.sentinel.core.NetworkClassifier
 import com.samourai.sentinel.core.SentinelState
 import com.samourai.sentinel.data.AddressTypes
 import com.samourai.sentinel.data.PubKeyCollection
@@ -77,7 +79,26 @@ class ExportImportUtil {
     }
 
     fun encryptBackup(payload: String, password: String): String {
-        return BackupCodec.encrypt(payload, password, BuildConfig.VERSION_CODE)
+        // #404 (decision 6): the envelope's optional network declaration
+        // is the keychain's aggregate verdict - the same #42 rule the
+        // live derivation uses: a unanimous xpub family declares, mixed
+        // or empty abstains and nothing is written (BackupCodec guards
+        // the write site again). Snapshot read on the calling context:
+        // the same collectionsSnapshot() IO read makePayload() performs.
+        val votes = collectionRepository.collectionsSnapshot()
+            .flatMap { it.pubs }
+            .map { NetworkClassifier.fromXpub(it.pubKey) }
+        val declaredNetwork = when (NetworkClassifier.aggregate(votes)) {
+            DerivedNetwork.MAINNET -> "mainnet"
+            DerivedNetwork.TESTNET -> "testnet"
+            else -> null
+        }
+        return BackupCodec.encrypt(
+            payload,
+            password,
+            BuildConfig.VERSION_CODE,
+            declaredNetwork = declaredNetwork
+        )
     }
 
     fun decryptAndParseSamouraiPayload(backUp: String, password: String): PubKeyCollection? {

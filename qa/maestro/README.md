@@ -66,7 +66,9 @@ Edit flows in `gen/flows_*.py`, then `python3 gen/build.py`. Don't hand-edit `fl
    (`chmod 600` it, keep it outside the repo). To restore: force-stop the app, push the tgz, delete those four
    folders, untar in `/data/data/<appId>`, `chown -R` them to the app's uid, `restorecon -R`.
 8. `python3 scripts/gen_throwaway.py` and `python3 scripts/make_dummy_backup.py` regenerate `data/`
-   (random throwaway keys; the dummy backup is an empty payload under a random, discarded password).
+   (random throwaway keys; the dummy backups are empty payloads under random, discarded passwords;
+   DUMMY_BACKUP_NET adds the #404 "network":"mainnet" envelope field and DUMMY_SAMOURAI_SHAPE is
+   an inert foreign-shape carrier; none of them can ever restore anything).
 
 ## Running
 
@@ -105,7 +107,8 @@ without KVM (≈3 s per tap, ≈18 s per PIN entry).
 
 Env vars the flows see: `APP_ID`, `HELPER`, `MAESTRO_SENTINEL_PIN`, and everything in `data/*.env`
 (`VPUB_A..D`, `VPUB_A_ADDR0`, `TPUB`, `UPUB`, `XPUB/YPUB/ZPUB_MAIN`, `TB1_ADDR`, `MAIN_ADDR`, `TB1_BADSUM`,
-`VPUB_TRUNC`, `VPUB_BADSUM`, `GARBAGE`, `DUMMY_BACKUP`, `DUMMY_BACKUP_TRUNC`).
+`VPUB_TRUNC`, `VPUB_BADSUM`, `GARBAGE`, `DUMMY_BACKUP`, `DUMMY_BACKUP_TRUNC`,
+`DUMMY_BACKUP_NET`, `DUMMY_SAMOURAI_SHAPE`).
 
 ### Secret handling
 * Each PIN tap has a `label:` so the console and JUnit show "Tap PIN key", not the digit.

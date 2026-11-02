@@ -36,6 +36,7 @@ import com.samourai.sentinel.ui.collectionDetails.CollectionDetailsActivity
 import com.samourai.sentinel.ui.dojo.DojoConfigureBottomSheet
 import com.samourai.sentinel.ui.dojo.PubKeyRescanner
 import com.samourai.sentinel.ui.fragments.AddNewPubKeyBottomSheet
+import com.samourai.sentinel.ui.settings.ImportBackUpActivity
 import com.samourai.sentinel.ui.settings.NetworkActivity
 import com.samourai.sentinel.ui.settings.SettingsActivity
 import com.samourai.sentinel.ui.tools.ToolsActivity
@@ -102,6 +103,19 @@ class HomeActivity : SentinelActivity() {
         ) { _, bundle ->
             onFirstRunNetworkChoice(bundle.getBoolean(ConfirmBottomSheet.RESULT_CONFIRMED))
         }
+        // #404: durable listener for the first-run restore-vs-new
+        // choice, same shape as the network leg above. The result is
+        // cleared on delivery so a later recreation re-registering
+        // this listener cannot replay an old answer - the restore arm
+        // launches ImportBackUpActivity, which must never re-fire from
+        // a stale mailbox.
+        supportFragmentManager.setFragmentResultListener(
+            REQUEST_KEY_FIRST_RUN_RESTORE,
+            this
+        ) { _, bundle ->
+            supportFragmentManager.clearFragmentResult(REQUEST_KEY_FIRST_RUN_RESTORE)
+            onFirstRunRestoreChoice(bundle.getBoolean(ConfirmBottomSheet.RESULT_CONFIRMED))
+        }
         // #220: same shape as the network choice. A restored Dojo sheet
         // posts here; this registration runs on every create.
         supportFragmentManager.setFragmentResultListener(
@@ -126,19 +140,11 @@ class HomeActivity : SentinelActivity() {
             SentinelTorManager.start()
         }
 
-        val needsNotificationPermissionPrompt =
-            !AndroidUtil.isPermissionGranted(Manifest.permission.POST_NOTIFICATIONS, applicationContext)
-            && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
-            && prefsUtil.firstRun == true
-
-        if (needsNotificationPermissionPrompt) {
-            // setUp() (network choice / camera permission / dojo setup) only runs
-            // once this dialog is dismissed - showing both at once was stacking
-            // popups on top of each other during initial setup.
-            this.askNotificationPermission { setUp() }
-        } else {
-            setUp()
-        }
+        // #404: the notification ask moved out of first-run setup - it
+        // now fires once, per device, when setup completes
+        // (onDojoSetupFinished) or on the first resume after a
+        // finished setup (restores), gated on notificationPromptDone.
+        setUp()
 
         setUpCollectionList()
 
@@ -535,27 +541,42 @@ class HomeActivity : SentinelActivity() {
         super.onResume()
         applyBalanceDisplayMode()
         collectionsAdapter.notifyDataSetChanged()
+        // #404: per-device, one-shot notification ask for setups that
+        // did not just complete on this screen (restores above all).
+        // maybeAskNotificationPermission gates itself: no-op when
+        // already granted, already asked, or setup still mid-flight.
+        maybeAskNotificationPermission()
     }
 
     private fun setUp() {
         if (prefsUtil.firstRun == true && AppUtil.getInstance(applicationContext).isSideLoaded) {
-            // #210: the network choice sheet is built from arguments via the
-            // factory and answers through a STABLE request key, so the flow
-            // survives recreation end to end. Dedupe: a recreation re-runs
-            // setUp() while the restored sheet is already in the
-            // FragmentManager under this tag - showing a second copy would
-            // stack two identical sheets.
-            if (supportFragmentManager.findFragmentByTag(TAG_FIRST_RUN_NETWORK_SHEET) == null) {
+            // #404: the first-run choice is now restore-vs-new; the
+            // network choice follows on the "Set up new" arm. Same
+            // #210 contract: stable tag, stable request key, args in
+            // arguments, answers through the durable listener in
+            // onCreate. Tag dedupe: a recreation re-runs setUp() while
+            // the restored sheet is already showing.
+            if (supportFragmentManager.findFragmentByTag(TAG_FIRST_RUN_RESTORE_SHEET) == null) {
                 ConfirmBottomSheet.newInstance(
-                    label = "Choose network",
-                    positiveText = "Mainnet",
-                    negativeText = "Testnet",
+                    label = "Set up Sentinel",
+                    message = "Restore from a backup, or start fresh on this device?",
+                    positiveText = "Restore from backup",
+                    negativeText = "Set up new",
                     isCancelable = false,
-                    requestKey = REQUEST_KEY_FIRST_RUN_NETWORK
-                ).show(supportFragmentManager, TAG_FIRST_RUN_NETWORK_SHEET)
+                    requestKey = REQUEST_KEY_FIRST_RUN_RESTORE
+                ).show(supportFragmentManager, TAG_FIRST_RUN_RESTORE_SHEET)
             }
         } else {
-            showServerConfig()
+            // #404: firstRun is consumed by the restore-vs-new choice
+            // above, so this arm means setup already progressed. If a
+            // restored network sheet is still showing (process death
+            // between "Set up new" and the Mainnet/Testnet tap), hold
+            // off - its durable listener re-runs the flow when it is
+            // answered, and stacking the Dojo wizard under a pending
+            // choice is the stacking bug #210 fixed for the sheets.
+            if (supportFragmentManager.findFragmentByTag(TAG_FIRST_RUN_NETWORK_SHEET) == null) {
+                showServerConfig()
+            }
         }
     }
 
@@ -563,13 +584,50 @@ class HomeActivity : SentinelActivity() {
      * #210: state-derived outcome of the first-run network choice -
      * deliberately free of captured context, so the durable listener can
      * call it from whichever activity instance happens to be alive.
+     * #404: firstRun is consumed by the restore-vs-new choice now;
+     * this handler no longer touches it.
      */
     private fun onFirstRunNetworkChoice(mainnet: Boolean) {
-        prefsUtil.firstRun = false
         if (!mainnet) {
             prefsUtil.testnet = true
         }
         showServerConfig()
+    }
+
+    /**
+     * #404: state-derived outcome of the first-run restore-vs-new
+     * choice, same shape as the network leg above. "Restore from
+     * backup" hands off to ImportBackUpActivity; "Set up new" chains
+     * into the network choice. firstRun is consumed HERE - the
+     * restore sheet owns it - so backing out of the import screen
+     * lands on plain Home and the next launch goes straight to
+     * normal setup; accepted consequence, noted in the PR body.
+     */
+    private fun onFirstRunRestoreChoice(restore: Boolean) {
+        prefsUtil.firstRun = false
+        if (restore) {
+            startActivity(Intent(applicationContext, ImportBackUpActivity::class.java))
+        } else {
+            showFirstRunNetworkSheet()
+        }
+    }
+
+    /**
+     * #210's network-choice sheet, extracted: the "Set up new" arm of
+     * the restore choice and any future caller lead here. Tag dedupe
+     * - a recreation re-runs the caller while the restored sheet is
+     * already showing.
+     */
+    private fun showFirstRunNetworkSheet() {
+        if (supportFragmentManager.findFragmentByTag(TAG_FIRST_RUN_NETWORK_SHEET) == null) {
+            ConfirmBottomSheet.newInstance(
+                label = "Choose network",
+                positiveText = "Mainnet",
+                negativeText = "Testnet",
+                isCancelable = false,
+                requestKey = REQUEST_KEY_FIRST_RUN_NETWORK
+            ).show(supportFragmentManager, TAG_FIRST_RUN_NETWORK_SHEET)
+        }
     }
 
     private fun showServerConfig() {
@@ -601,21 +659,63 @@ class HomeActivity : SentinelActivity() {
         if (!prefsUtil.isAPIEndpointEnabled()) {
             Toast.makeText(applicationContext, "No Dojo connected", Toast.LENGTH_SHORT).show()
         } else {
-            // This sheet is only ever reached from the first-time setup
-            // flow (setUp() / showServerConfig()), so a successful
-            // connection here is always the user's first Dojo. Public
-            // keys added before it was connected were never imported
-            // anywhere, so offer to register them now.
-            // collectionsSnapshot(): the repository list is not public.
-            val collections = model.repository.collectionsSnapshot()
-            if (collections.any { it.pubs.isNotEmpty() }) {
-                PubKeyRescanner.confirmAndRescan(
-                    this@HomeActivity,
-                    collections.flatMap { it.pubs },
-                    collections.map { it.id }
-                )
-            }
+            // #404: setup just completed on this screen - the calm
+            // moment for the one-shot notification ask on this arm.
+            // The helper queues the rescan offer until the rationale
+            // dialog (if any) is dismissed, so the two never stack.
+            maybeAskNotificationPermission { offerRescanPublicKeys() }
         }
+    }
+
+    /**
+     * The rescan offer #220 attached to first-Dojo success: public
+     * keys added before the Dojo existed were never imported
+     * anywhere, so offer to register them now. This sheet is only
+     * ever reached from the first-time setup flow, so a successful
+     * connection here is always the user's first Dojo.
+     * collectionsSnapshot(): the repository list is not public.
+     */
+    private fun offerRescanPublicKeys() {
+        val collections = model.repository.collectionsSnapshot()
+        if (collections.any { it.pubs.isNotEmpty() }) {
+            PubKeyRescanner.confirmAndRescan(
+                this@HomeActivity,
+                collections.flatMap { it.pubs },
+                collections.map { it.id }
+            )
+        }
+    }
+
+    /**
+     * #404: the one-shot, per-device notification permission ask.
+     * Either setup arm lands here: onDojoSetupFinished on a fresh
+     * setup, the first onResume after a restore. Gate: setup finished
+     * (isAPIEndpointEnabled - mid-setup Home sits resumed under the
+     * Dojo sheet with firstRun already false, so firstRun alone would
+     * stack this ask on top of the wizard), API 33+, not granted, not
+     * yet asked. Denial counts as asked; a grant made from system
+     * settings is adopted silently on the next resume. A no-Dojo
+     * restore never satisfies the gate and is never asked - it stays
+     * grantable from system settings; documented in the PR body.
+     */
+    private fun maybeAskNotificationPermission(onComplete: () -> Unit = {}) {
+        val granted = AndroidUtil.isPermissionGranted(
+            Manifest.permission.POST_NOTIFICATIONS, applicationContext
+        )
+        val sdkEligible = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+        if (granted && prefsUtil.notificationPromptDone != true) {
+            prefsUtil.notificationPromptDone = true
+        }
+        if (!prefsUtil.isAPIEndpointEnabled() || !sdkEligible
+            || granted || prefsUtil.notificationPromptDone == true
+        ) {
+            onComplete()
+            return
+        }
+        // Marked BEFORE the ask, so process death mid-dialog cannot
+        // re-ask on the next resume.
+        prefsUtil.notificationPromptDone = true
+        this.askNotificationPermission(onComplete)
     }
 
     private fun updateBalance(it: Long) {
@@ -763,6 +863,12 @@ class HomeActivity : SentinelActivity() {
         // registered in onCreate.
         const val TAG_FIRST_RUN_NETWORK_SHEET = "first_run_network_choice_sheet"
         const val REQUEST_KEY_FIRST_RUN_NETWORK = "first_run_network_choice_result"
+        // #404: stable identity for the first-run restore-vs-new sheet
+        // and its result - same contract as the #210 pair above: the
+        // TAG enables recreation dedupe in setUp(), the REQUEST_KEY
+        // enables the durable listener registered in onCreate.
+        const val TAG_FIRST_RUN_RESTORE_SHEET = "first_run_restore_choice_sheet"
+        const val REQUEST_KEY_FIRST_RUN_RESTORE = "first_run_restore_choice_result"
         const val TAG_DOJO_SETUP = "home_dojo_setup_sheet"
         const val REQUEST_KEY_DOJO_SETUP = "home_dojo_setup_result"
     }
