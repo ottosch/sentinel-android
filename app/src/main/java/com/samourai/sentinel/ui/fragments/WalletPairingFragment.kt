@@ -1,6 +1,5 @@
 package com.samourai.sentinel.ui.fragments
 
-import android.graphics.Typeface
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -31,6 +30,7 @@ import com.samourai.sentinel.databinding.LayoutLoadingBottomBinding
 import com.samourai.sentinel.ui.home.HomeViewModel
 import com.samourai.sentinel.ui.utils.PairingWordsAsset
 import com.samourai.sentinel.ui.utils.enablePasteAction
+import com.samourai.sentinel.ui.utils.enableRevealToggle
 import com.samourai.sentinel.ui.views.GenericBottomSheet
 import com.samourai.sentinel.util.ExportImportUtil
 import com.samourai.sentinel.util.PairingWords
@@ -233,7 +233,8 @@ class PasswordFragment : Fragment() {
         // No length cap (#282): the old 34-char LengthFilter dropped input
         // silently; the word check below is the guard instead.
         input.filters = arrayOf()
-        input.typeface = Typeface.MONOSPACE
+        // Eye icon: hidden/shown also switches PASSWORD/VISIBLE_PASSWORD.
+        layout?.enableRevealToggle(input)
         layout?.enablePasteAction(input)
 
         input.addTextChangedListener(object : TextWatcher {

@@ -32,6 +32,7 @@ import com.samourai.sentinel.ui.home.HomeActivity
 import com.samourai.sentinel.ui.utils.AndroidUtil
 import com.samourai.sentinel.ui.utils.PrefsUtil
 import com.samourai.sentinel.ui.utils.enablePasteAction
+import com.samourai.sentinel.ui.utils.enableRevealToggle
 import com.samourai.sentinel.ui.utils.startDocumentPickerForResult
 import com.samourai.sentinel.ui.utils.showFloatingSnackBar
 import com.samourai.sentinel.ui.views.KdfProgressOverlay
@@ -121,12 +122,13 @@ class ImportBackUpActivity : SentinelActivity() {
             dismissImportPinDialog()
         }
 
-        // #282: the password field can be revealed and pasted into (XML:
-        // password_toggle, paste start icon, no suggestions, no autofill),
+        // #282: the password field can be revealed (eye icon, which also
+        // switches PASSWORD/VISIBLE_PASSWORD) and pasted into (no
+        // suggestions, no autofill),
         // and a wrong password is reported on the field itself, cleared as
         // soon as the user edits it. This field also takes Sentinel backup
         // passwords the user chose, so it is never reshaped as they type.
-        binding.importPasswordInput.typeface = android.graphics.Typeface.MONOSPACE
+        binding.importPasswordInputLayout.enableRevealToggle(binding.importPasswordInput)
         binding.importPasswordInputLayout.enablePasteAction(binding.importPasswordInput)
         binding.importPasswordInput.addTextChangedListener(afterTextChanged = {
             binding.importPasswordInputLayout.error = null
