@@ -35,7 +35,28 @@ class FeeRepository : FeeUtil() {
         const val FEE_NORMAL = 1
         const val FEE_PRIORITY = 2
         const val FEE_CUSTOM = 3
+
+        /**
+         * #77: the time of a live fetch, stored inside the cached fee
+         * payload so the age survives a restart. parse() reads only the
+         * tier keys, so the extra key is invisible to it otherwise.
+         */
+        const val KEY_FETCHED_AT = "sentinelFetchedAt"
     }
+
+    /** #77: true once tiers were accepted, live or from the cache. */
+    @Volatile
+    var estimatesLoaded: Boolean = false
+        private set
+
+    /** #77: when the server last answered with tiers, if known. */
+    @Volatile
+    var fetchedAtMs: Long? = null
+        private set
+
+    /** #77 option 4: how current the estimates are. */
+    fun freshness(nowMs: Long = System.currentTimeMillis()): FeeFreshness =
+        FeeFreshness.of(estimatesLoaded, fetchedAtMs, nowMs)
 
     init {
         init()
@@ -55,6 +76,8 @@ class FeeRepository : FeeUtil() {
             val response = apiService.getFees()
             if (response.isSuccessful) {
                 val json = JSONObject(response.body?.string())
+                // #77: stamp the live answer; saveState persists it with the tiers.
+                json.put(KEY_FETCHED_AT, System.currentTimeMillis())
                 parse(json)
             }
         } catch (e: ApiService.ApiNotConfigured) {
@@ -69,6 +92,15 @@ class FeeRepository : FeeUtil() {
     }
 
     public fun parse(jsonObject: JSONObject) {
+        // #77: a payload older than the estimates already held - above all
+        // the cache that init() reads asynchronously, landing after a live
+        // fetch - must not replace them.
+        val incomingFetchedAt = jsonObject.optLong(KEY_FETCHED_AT, 0L).takeIf { it > 0L }
+        val heldFetchedAt = fetchedAtMs
+        if (heldFetchedAt != null && (incomingFetchedAt == null || incomingFetchedAt < heldFetchedAt)) {
+            Timber.i("parse: ignored fee payload older than the estimates held")
+            return
+        }
         val feeParsed: ArrayList<SuggestedFee> = arrayListOf();
         var fee2: Long? = null
         var fee6: Long? = null
@@ -114,6 +146,10 @@ class FeeRepository : FeeUtil() {
         }
         this.fees.postValue(feeParsed)
         setFees(feeParsed)
+        if (feeParsed.isNotEmpty()) {
+            estimatesLoaded = true
+            fetchedAtMs = incomingFetchedAt
+        }
         saveState(jsonObject)
     }
 

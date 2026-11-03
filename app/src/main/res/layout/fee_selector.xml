@@ -17,9 +17,45 @@
         android:text="Transaction priority"
         android:textColor="@color/white"
         android:textStyle="bold"
-        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintEnd_toStartOf="@+id/customFeeToggle"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- #77: switch between the slider and a typed sat/vB rate. Hidden by
+         default: this layout is shared with the Sweep preview, and only the
+         Send screen wires it (SendFragment.setUpCustomFee). -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/customFeeToggle"
+        style="@style/Widget.MaterialComponents.Button.TextButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="8dp"
+        android:minHeight="0dp"
+        android:text="@string/fee_custom"
+        android:textAllCaps="false"
+        android:textColor="?attr/colorAccent"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@+id/textView6"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="@+id/textView6"
+        tools:visibility="visible" />
+
+    <!-- #77 option 4: says when the estimates behind the slider are old
+         or only defaults. Hidden while they are fresh. -->
+    <TextView
+        android:id="@+id/feeFreshnessNote"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:layout_marginEnd="16dp"
+        android:textColor="@color/md_amber_500"
+        android:textSize="12sp"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="@+id/textView6"
+        app:layout_constraintTop_toBottomOf="@+id/textView6"
+        tools:text="Fee estimates are 3 h old. Check the mempool, or set a custom fee."
+        tools:visibility="visible" />
 
     <com.google.android.material.slider.Slider
         android:id="@+id/feeSlider"
@@ -30,10 +66,41 @@
         android:splitTrack="false"
         app:layout_constraintEnd_toStartOf="@+id/linearLayout2"
         app:layout_constraintStart_toStartOf="@+id/textView6"
-        app:layout_constraintTop_toBottomOf="@+id/textView6"
+        app:layout_constraintTop_toBottomOf="@+id/feeFreshnessNote"
         app:thumbColor="@color/accent"
         app:thumbRadius="8dp"
         app:trackColor="#0D5170" />
+
+    <!-- #77: a typed fee rate, shown while Custom is selected. -->
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/customFeeLayout"
+        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="4dp"
+        android:layout_marginEnd="16dp"
+        android:hint="@string/fee_custom_hint"
+        android:visibility="gone"
+        app:boxStrokeColor="@color/grey_accent"
+        app:hintTextColor="@color/grey_accent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/feeSlider"
+        app:suffixText="sat/vB"
+        tools:visibility="visible">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/customFeeInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:imeOptions="actionDone"
+            android:importantForAutofill="no"
+            android:inputType="numberDecimal"
+            android:maxLength="8"
+            android:singleLine="true" />
+
+    </com.google.android.material.textfield.TextInputLayout>
 
     <LinearLayout
         android:id="@+id/linearLayout2"
@@ -113,7 +180,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHorizontal_bias="1.0"
         app:layout_constraintStart_toEndOf="@+id/total_miner_fee_group"
-        app:layout_constraintTop_toBottomOf="@+id/feeSlider"
+        app:layout_constraintTop_toBottomOf="@+id/customFeeLayout"
         app:layout_constraintVertical_bias="1.0">
 
         <TextView
