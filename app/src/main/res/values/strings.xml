@@ -473,7 +473,7 @@
     <string name="pairing_password_paste" translatable="false">Paste</string>
     <string name="password_show" translatable="false">Show password</string>
     <string name="password_hide" translatable="false">Hide password</string>
-    <string name="pairing_password_not_a_word" translatable="false">\'%1$s\' isn\'t a pairing word</string>
+    <string name="pairing_password_not_a_word" translatable="false">Not a pairing word: \'%1$s\'</string>
     <string name="pairing_password_too_many" translatable="false">A pairing password has three words</string>
     <string name="pairing_password_wrong" translatable="false">Wrong password. Check the three words and try again</string>
     <string name="backup_password_wrong" translatable="false">Incorrect password, please try again</string>
