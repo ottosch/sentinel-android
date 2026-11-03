@@ -792,6 +792,19 @@ class HomeActivity : SentinelActivity() {
         }
     }
 
+    /**
+     * #299: routes the camera rationale's NO through the same branch
+     * onRequestPermissionsResult runs for the system dialog, instead
+     * of the base class's unconditional AddNewPubKeyBottomSheet. On
+     * the first-run path (showServerConfig sets connectingDojo) the
+     * user declined the camera on the way to Dojo setup - the sheet
+     * still pairs via Paste with no camera. The FAB path sets
+     * connectingDojo = false and keeps the pubkey sheet.
+     */
+    override fun onCameraRationaleDeclined() {
+        if (connectingDojo) showDojoSetUpBottomSheet() else showPubKeyBottomSheet()
+    }
+
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.home_menu, menu)
         return super.onCreateOptionsMenu(menu)
