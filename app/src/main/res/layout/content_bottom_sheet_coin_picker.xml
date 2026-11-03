@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- #190: manual coin control. Hosted in layout_bottom_sheet's contentContainer. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="16dp"
+    android:paddingEnd="16dp"
+    android:paddingBottom="8dp">
+
+    <TextView
+        android:id="@+id/coinPickerSummary"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textAppearance="@style/TextAppearance.AppCompat.Caption"
+        android:textColor="@color/white"
+        tools:text="2 coins selected · 0.01500000 BTC" />
+
+    <TextView
+        android:id="@+id/coinPickerCoSpendWarning"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="@string/coin_picker_cospend_warning"
+        android:textColor="@color/md_amber_500"
+        android:textSize="12sp"
+        android:visibility="gone"
+        tools:visibility="visible" />
+
+    <TextView
+        android:id="@+id/coinPickerEmpty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:layout_marginBottom="16dp"
+        android:gravity="center"
+        android:text="@string/send_error_no_funds"
+        android:visibility="gone" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/coinPickerList"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:nestedScrollingEnabled="true"
+        tools:itemCount="3"
+        tools:listitem="@layout/item_coin_picker" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/coinPickerConfirmBtn"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+        android:layout_width="match_parent"
+        android:layout_height="58dp"
+        android:layout_marginTop="12dp"
+        android:textAllCaps="false"
+        android:textColor="@color/white"
+        app:backgroundTint="@color/grey_accent"
+        tools:text="Use 2 selected coins" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/coinPickerAutoBtn"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+        android:layout_width="match_parent"
+        android:layout_height="58dp"
+        android:layout_marginTop="8dp"
+        android:text="@string/coin_picker_use_auto"
+        android:textAllCaps="false"
+        android:textColor="@color/white"
+        app:cornerRadius="8dp"
+        app:strokeColor="@color/disabled_grey"
+        xmlns:app="http://schemas.android.com/apk/res-auto" />
+
+</LinearLayout>

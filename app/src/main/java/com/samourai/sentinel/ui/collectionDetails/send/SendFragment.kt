@@ -92,6 +92,9 @@ class SendFragment : Fragment() {
     private var indexPubSelector = -1
     val viewModel: SendViewModel by viewModels()
     private var availableBalance: Long = 0L
+    // #190: the account's spendable figure; availableBalance is this, or the
+    // pinned coins' total while a manual selection is in force.
+    private var accountSpendable: Long = 0L
 
     // #350: the shared scan-gate state, the #247/#248 shape - payload and
     // clock stamp of the last admitted decode (valid or not). The sheet's
@@ -238,6 +241,8 @@ class SendFragment : Fragment() {
 
         // #294: say why the button is disabled, on the field responsible.
         viewModel.spendBlocker.observe(viewLifecycleOwner) { showSpendBlocker(it) }
+
+        setUpCoinControl()
 
         fragmentSpendBinding.fragmentBroadcastTx.psbtCopyBtn.setOnClickListener {
             val psbt = viewModel.psbtLive.value
@@ -485,10 +490,62 @@ class SendFragment : Fragment() {
                 getString(R.string.send_error_insufficient_funds)
             SendViewModel.SpendBlocker.CANNOT_COMPOSE ->
                 getString(R.string.send_error_cannot_compose)
+            SendViewModel.SpendBlocker.SELECTION_INSUFFICIENT ->
+                getString(R.string.send_error_selection_insufficient)
+            SendViewModel.SpendBlocker.SELECTION_BLOCKED ->
+                getString(R.string.send_error_selection_blocked)
+            SendViewModel.SpendBlocker.SELECTION_MISSING ->
+                getString(R.string.send_error_selection_missing)
             else -> null
         }
         fragmentSpendBinding.toEditText.error = addressError
         fragmentSpendBinding.btcEditTextLayout.error = amountError
+    }
+
+    /**
+     * #190: the coin control affordance. "Automatic" stays the default; the
+     * picker pins an exact input set into the ViewModel, and this row shows
+     * which mode the next compose will use. While coins are pinned, the
+     * available figure (and the tap-to-spend-all on it) is their total, so
+     * "spend all" spends exactly the pinned coins.
+     */
+    private fun setUpCoinControl() {
+        val compose = fragmentSpendBinding.fragmentComposeTx
+        val openPicker = View.OnClickListener {
+            if (childFragmentManager.findFragmentByTag(CoinPickerBottomSheet.TAG) == null) {
+                CoinPickerBottomSheet().show(childFragmentManager, CoinPickerBottomSheet.TAG)
+            }
+        }
+        compose.coinControlBtn.setOnClickListener(openPicker)
+        compose.coinControlRow.setOnClickListener(openPicker)
+
+        viewModel.pinnedTotal.observe(viewLifecycleOwner) { renderCoinControl() }
+        viewModel.pinnedOutpoints.observe(viewLifecycleOwner) { renderCoinControl() }
+    }
+
+    private fun renderCoinControl() {
+        if (_fragmentSpendBinding == null) return
+        val pinned = viewModel.pinnedOutpoints.value ?: emptySet()
+        val pinnedTotal = viewModel.pinnedTotal.value
+        fragmentSpendBinding.fragmentComposeTx.coinControlMode.text =
+            if (pinned.isEmpty()) {
+                getString(R.string.coin_picker_mode_auto)
+            } else {
+                getString(
+                    R.string.coin_picker_mode_pinned,
+                    pinned.size,
+                    MonetaryUtil.getInstance().getBTCDecimalFormat(pinnedTotal ?: 0L)
+                )
+            }
+        showAvailable()
+    }
+
+    private fun showAvailable() {
+        val pinnedTotal = viewModel.pinnedTotal.value
+        val pinned = !viewModel.pinnedOutpoints.value.isNullOrEmpty()
+        availableBalance = if (pinned && pinnedTotal != null) pinnedTotal else accountSpendable
+        fragmentSpendBinding.fragmentComposeTx.totalBTC.text =
+            decimalFormatBTC.format(availableBalance.div(1e8)).toString() + " BTC"
     }
 
     private fun containerTransform(enter: View, leaving: View) {
@@ -769,15 +826,12 @@ class SendFragment : Fragment() {
                 getPubKeyModelByLabel("Deposit BIP44")
             )
             val figures = figuresFor(depositPubs)
-            availableBalance = figures.spendable
-            fragmentSpendBinding.fragmentComposeTx.totalBTC.text =
-                decimalFormatBTC.format(availableBalance.div(1e8)).toString() + " BTC"
+            accountSpendable = figures.spendable
         } else {
             val figures = figuresFor(pub)
-            availableBalance = figures.spendable
-            fragmentSpendBinding.fragmentComposeTx.totalBTC.text =
-                decimalFormatBTC.format(availableBalance.div(1e8)).toString() + " BTC"
+            accountSpendable = figures.spendable
         }
+        showAvailable()
     }
 
     private fun setUpFee() {

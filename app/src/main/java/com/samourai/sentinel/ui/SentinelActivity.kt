@@ -106,6 +106,25 @@ open class SentinelActivity : AppCompatActivity(), SwipeBackActivityBase {
         }
     }
 
+    /**
+     * #290: the idle clock used to count 15 minutes from the last
+     * *unlock*, so an actively-used session hit the wall mid-flow and
+     * lost whatever screen it was on. Every user interaction now
+     * refreshes the timestamp; the wall still applies in full after
+     * real inactivity, and every onResume still enforces it.
+     *
+     * MainActivity is a plain AppCompatActivity - not a
+     * SentinelActivity - so this can never fire on the lock pad
+     * itself. updatePin() touches only the timestamp: never
+     * sessionAdmitted, never the payload key.
+     */
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        if (prefsUtil.isPinConfigured()) {
+            accessFactory.updatePin()
+        }
+    }
+
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         if (item.itemId == android.R.id.home) {
             finish()
@@ -118,8 +137,7 @@ open class SentinelActivity : AppCompatActivity(), SwipeBackActivityBase {
             .setTitle(resources.getString(R.string.permission_alert_dialog_title_camera))
             .setMessage(resources.getString(R.string.permission_dialog_message_camera))
             .setNegativeButton(resources.getString(R.string.no)) { _, _ ->
-                val bottomSheetFragment = AddNewPubKeyBottomSheet()
-                bottomSheetFragment.show(supportFragmentManager, bottomSheetFragment.tag)
+                onCameraRationaleDeclined()
             }
             .setPositiveButton(resources.getString(R.string.yes)) { _, _ ->
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -129,6 +147,22 @@ open class SentinelActivity : AppCompatActivity(), SwipeBackActivityBase {
                 }
             }
             .show()
+    }
+
+    /**
+     * #299: the rationale's NO used to show AddNewPubKeyBottomSheet
+     * unconditionally, so a first-run user who declined the camera on
+     * the way to Dojo setup was dumped on the xpub scanner and never
+     * offered the Dojo sheet - even though pairing via Paste needs no
+     * camera. The default below is the old behaviour verbatim, kept
+     * for callers whose ask really is a pubkey add
+     * (CollectionEditActivity's FAB); HomeActivity overrides it to
+     * route through the same connectingDojo branch its
+     * onRequestPermissionsResult already runs.
+     */
+    protected open fun onCameraRationaleDeclined() {
+        val bottomSheetFragment = AddNewPubKeyBottomSheet()
+        bottomSheetFragment.show(supportFragmentManager, bottomSheetFragment.tag)
     }
 
     /**
