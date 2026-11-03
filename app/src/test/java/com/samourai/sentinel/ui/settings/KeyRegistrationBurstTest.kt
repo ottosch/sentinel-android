@@ -103,4 +103,70 @@ class KeyRegistrationBurstTest {
         assertEquals("Enabled", KeyRegistrationBurst.statusText("Enabled"))
         assertTrue(KeyRegistrationBurst.markStarted())
     }
+
+    // #409: the observer seam. The frozen-counter mechanism was that view
+    // writes rode the launching activity instance; these pin the holder's
+    // publish/subscribe contract instead.
+
+    @Test
+    fun subscribers_receive_every_progress_tick_and_the_completion_tally() {
+        KeyRegistrationBurst.markStarted()
+        val seen = mutableListOf<BurstEvent>()
+        val listener: (BurstEvent) -> Unit = { seen.add(it) }
+        KeyRegistrationBurst.subscribe(listener)
+        KeyRegistrationBurst.begin(3)
+        KeyRegistrationBurst.onItemStarted(1)
+        KeyRegistrationBurst.onItemStarted(2)
+        KeyRegistrationBurst.complete(2, 1, 3)
+        KeyRegistrationBurst.unsubscribe(listener)
+        assertEquals(
+            listOf(
+                BurstEvent.Progress(0, 3),
+                BurstEvent.Progress(1, 3),
+                BurstEvent.Progress(2, 3),
+                BurstEvent.Finished(2, 1, 3)
+            ),
+            seen
+        )
+    }
+
+    @Test
+    fun a_mid_burst_subscriber_receives_the_current_count_immediately() {
+        // The re-entry case at the heart of #409: a screen that appears
+        // mid-burst must not wait for the NEXT tick to show a real count.
+        KeyRegistrationBurst.markStarted()
+        KeyRegistrationBurst.begin(19)
+        KeyRegistrationBurst.onItemStarted(14)
+        val seen = mutableListOf<BurstEvent>()
+        val listener: (BurstEvent) -> Unit = { seen.add(it) }
+        KeyRegistrationBurst.subscribe(listener)
+        KeyRegistrationBurst.unsubscribe(listener)
+        assertEquals(listOf(BurstEvent.Progress(14, 19)), seen)
+    }
+
+    @Test
+    fun an_unsubscribed_listener_receives_nothing() {
+        KeyRegistrationBurst.markStarted()
+        val seen = mutableListOf<BurstEvent>()
+        val listener: (BurstEvent) -> Unit = { seen.add(it) }
+        KeyRegistrationBurst.subscribe(listener)
+        KeyRegistrationBurst.unsubscribe(listener)
+        KeyRegistrationBurst.begin(2)
+        KeyRegistrationBurst.onItemStarted(1)
+        KeyRegistrationBurst.complete(2, 0, 2)
+        assertTrue(seen.isEmpty())
+    }
+
+    @Test
+    fun the_empty_wallet_silent_reset_publishes_nothing() {
+        // #98's silence leg must survive the seam: no event, no snackbar
+        // for an empty wallet's skipped burst.
+        KeyRegistrationBurst.markStarted()
+        val seen = mutableListOf<BurstEvent>()
+        val listener: (BurstEvent) -> Unit = { seen.add(it) }
+        KeyRegistrationBurst.subscribe(listener)
+        KeyRegistrationBurst.markFinished()
+        KeyRegistrationBurst.unsubscribe(listener)
+        assertTrue(seen.isEmpty())
+    }
 }
