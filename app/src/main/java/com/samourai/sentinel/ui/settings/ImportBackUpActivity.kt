@@ -20,6 +20,7 @@ import com.samourai.sentinel.core.SentinelState
 import com.samourai.sentinel.core.access.AccessFactory
 import com.samourai.sentinel.core.access.PinVault
 import com.samourai.sentinel.data.PubKeyCollection
+import com.samourai.sentinel.data.PubKeyModel
 import com.samourai.sentinel.data.db.appWalletPayloads
 import com.samourai.sentinel.data.repository.CollectionRepository
 import com.samourai.sentinel.databinding.ActivityImportBackUpBinding
@@ -165,36 +166,39 @@ class ImportBackUpActivity : SentinelActivity() {
     }
 
     /**
-     * Registers every xpub with the configured server (#48).
+     * Registers xpubs with the configured server (#48).
+     *
+     * [pubs] null (the SENTINEL arm) registers every xpub in every
+     * collection; the SENTINEL_LEGACY arm (#279) passes just the keys its
+     * import brought in, so a merge does not re-register - and so re-scan -
+     * the keys already on the device.
      *
      * Per-item containment: one failing registration must NOT cancel the
      * rest (this was the 2-of-3 partial import). Awaited by the caller so
      * the completion handler reports the real outcome. Returns
      * (imported, failed).
      */
-    private suspend fun importAllXpubs(): Pair<Int, Int> {
+    private suspend fun importAllXpubs(pubs: List<PubKeyModel>? = null): Pair<Int, Int> {
         var imported = 0
         var failed = 0
-        val pubKeyCollectionsCopy = ArrayList(repository.collectionsSnapshot())
-        pubKeyCollectionsCopy.forEach { collection ->
-            collection.pubs.forEach { pub ->
-                try {
-                    apiService.importXpub(pub.pubKey, "bip${pub.getPurpose()}")
-                    imported++
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: ApiService.ApiNotConfigured) {
-                    // #125: NOT a crash site - this launch carries importExceptionHandler
-                    // (:67), which already absorbed the class. The defect was reporting
-                    // fidelity: without this arm the throw skipped the per-item ladder and
-                    // aborted the loop, losing the (ok of ok+bad) partial tally at
-                    // :343-347, so an import that registered nothing could report clean.
-                    failed++
-                    Timber.e(e, "Failed to register xpub (bip${pub.getPurpose()})")
-                } catch (e: Exception) {
-                    failed++
-                    Timber.e(e, "Failed to register xpub (bip${pub.getPurpose()})")
-                }
+        val toRegister = pubs ?: ArrayList(repository.collectionsSnapshot()).flatMap { it.pubs }
+        toRegister.forEach { pub ->
+            try {
+                apiService.importXpub(pub.pubKey, "bip${pub.getPurpose()}")
+                imported++
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiService.ApiNotConfigured) {
+                // #125: NOT a crash site - this launch carries importExceptionHandler
+                // (:67), which already absorbed the class. The defect was reporting
+                // fidelity: without this arm the throw skipped the per-item ladder and
+                // aborted the loop, losing the (ok of ok+bad) partial tally at
+                // :343-347, so an import that registered nothing could report clean.
+                failed++
+                Timber.e(e, "Failed to register xpub (bip${pub.getPurpose()})")
+            } catch (e: Exception) {
+                failed++
+                Timber.e(e, "Failed to register xpub (bip${pub.getPurpose()})")
             }
         }
         return imported to failed
@@ -572,6 +576,8 @@ class ImportBackUpActivity : SentinelActivity() {
                 var networkDojoSets = false
                 var networkDojoObjection: String? = null
                 var networkDojoSetNote: String? = null
+                // #279: the registration tally for a backup with no Dojo.
+                var xpubImport: Pair<Int, Int>? = null
                 viewModel.viewModelScope.launch(Dispatchers.IO + importExceptionHandler) {
                     try {
                         val payload = ExportImportUtil().decryptSentinelLegacy(
@@ -623,14 +629,29 @@ class ImportBackUpActivity : SentinelActivity() {
                                 // longer dropped on the floor here - the
                                 // same leg, the same helper and the same
                                 // #273 decision table as the SENTINEL arm.
-                                if (networkPlan.importDojo && dojo != null) {
-                                    if (importDojoWithRetry(dojo)) {
-                                        if (networkPlan.dojoSetsNetwork) {
-                                            prefsUtil.testnet = networkPlan.postImportTestnet
+                                // #279: a backup's Dojo plays the role of the
+                                // SENTINEL arm's ticked "Import Dojo" box.
+                                if (dojo != null) {
+                                    if (networkPlan.importDojo) {
+                                        if (importDojoWithRetry(dojo)) {
+                                            if (networkPlan.dojoSetsNetwork) {
+                                                prefsUtil.testnet = networkPlan.postImportTestnet
+                                            }
+                                        } else {
+                                            dojoPairingFailed = true
                                         }
-                                    } else {
-                                        dojoPairingFailed = true
                                     }
+                                    // A refused Dojo (cross-network) leaves its
+                                    // objection on the completion note and
+                                    // registers nothing - as in the SENTINEL arm.
+                                } else {
+                                    // #279: no Dojo in the backup - register the
+                                    // imported keys with the server this device
+                                    // already uses, the SENTINEL arm's
+                                    // dojo-unticked path (#48), instead of
+                                    // leaving balances waiting on a manual retry
+                                    // from the Network screen.
+                                    xpubImport = importAllXpubs(pubKeys)
                                 }
                             }
                         } else {
@@ -664,7 +685,12 @@ class ImportBackUpActivity : SentinelActivity() {
                                     else
                                         networkFlipNote.orEmpty() +
                                                 networkDojoObjection.orEmpty()
-                                val note =
+                                // #279: same registration tally as the
+                                // SENTINEL arm.
+                                val xpubNote = xpubImport?.let { (ok, bad) ->
+                                    xpubRegistrationNote(ok, bad)
+                                } ?: ""
+                                val note = xpubNote +
                                     (if (dojoPairingFailed)
                                         " Dojo pairing failed - retry from Network screen."
                                     else "") + networkNote
@@ -790,9 +816,7 @@ class ImportBackUpActivity : SentinelActivity() {
                     binding.importStartBtn.text = "Imported \u2713"
                     requireRestart = true
                     val xpubNote = xpubImport?.let { (ok, bad) ->
-                        if (bad > 0)
-                            " ($ok of ${ok + bad} keys registered - retry from Network screen)"
-                        else ""
+                        xpubRegistrationNote(ok, bad)
                     } ?: ""
                     // #272: network notes, runtime-composed -
                     // a successful will-set leg supersedes the
