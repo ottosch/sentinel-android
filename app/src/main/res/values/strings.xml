@@ -290,6 +290,11 @@
     <string name="fee_custom_invalid" translatable="false">Enter a fee rate in sat/vB</string>
     <string name="fee_custom_range" translatable="false">Between %1$s and %2$s sat/vB</string>
     <string name="fee_custom_above_high" translatable="false">Well above the current High estimate (%1$d sat/vB)</string>
+    <string name="fee_custom_whole_only" translatable="false">Sweep uses whole sat/vB - enter a whole number</string>
+    <string name="fee_custom_exceeds_sweep" translatable="false">This fee would take the whole amount being swept</string>
+    <string name="fee_freshness_stale" translatable="false">Fee estimates are %1$s old. Check the mempool, or set a custom fee.</string>
+    <string name="fee_freshness_unknown" translatable="false">Fee estimates may be out of date. Check the mempool, or set a custom fee.</string>
+    <string name="fee_freshness_defaults" translatable="false">No fee estimates from your Dojo yet - these are defaults. Set a custom fee if the mempool is busy.</string>
     <string name="change_is_dust">The change from this transaction is a dust amount. Try again and either modify the spend amount or spend the entire balance.</string>
 
 

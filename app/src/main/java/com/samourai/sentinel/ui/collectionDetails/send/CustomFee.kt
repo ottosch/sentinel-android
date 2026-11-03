@@ -31,6 +31,8 @@ object CustomFee {
         object Invalid : Check()
         object TooLow : Check()
         object TooHigh : Check()
+        /** A fraction where only whole sat/vB can be used (Sweep). */
+        object NotWhole : Check()
 
         /**
          * Usable. [aboveHighEstimate] flags a rate well above the current
@@ -42,15 +44,18 @@ object CustomFee {
     /**
      * Judges [text] as a sat/vB rate. A comma is accepted as the decimal
      * separator. [highEstimateSatPerVb] is the High tier the slider uses;
-     * 0 or less means unknown, and no hint is given.
+     * 0 or less means unknown, and no hint is given. [wholeOnly] is for
+     * Sweep, whose fee math takes whole sat/vB: a fraction would otherwise
+     * be truncated without a word.
      */
-    fun check(text: String, highEstimateSatPerVb: Long): Check {
+    fun check(text: String, highEstimateSatPerVb: Long, wholeOnly: Boolean = false): Check {
         val trimmed = text.trim().replace(',', '.')
         if (trimmed.isEmpty()) return Check.Empty
         val rate = trimmed.toDoubleOrNull() ?: return Check.Invalid
         if (rate.isNaN() || rate.isInfinite()) return Check.Invalid
         if (rate < MIN_SAT_PER_VB) return Check.TooLow
         if (rate > MAX_SAT_PER_VB) return Check.TooHigh
+        if (wholeOnly && rate != Math.floor(rate)) return Check.NotWhole
         val aboveHigh = highEstimateSatPerVb > 0 && rate > highEstimateSatPerVb * ABOVE_HIGH_FACTOR
         return Check.Ok(rate, aboveHigh)
     }

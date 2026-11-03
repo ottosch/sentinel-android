@@ -84,9 +84,8 @@ class SendFragment : Fragment() {
     private var feeHigh: Long = 0L
     var mCollection: PubKeyCollection? = null
     private val decimalFormat = DecimalFormat("##.00")
-    // #77: a typed rate shows as typed - "20", "12.5" - not "20.00".
-    private val customFeeFormat = DecimalFormat("0.##")
-    private var customFeeActive = false
+    // #77: the typed fee rate (and freshness note) on the fee selector.
+    private var customFeeControl: CustomFeeControl? = null
     private var qrCodeString: String? = null
     private val decimalFormatBTC = DecimalFormat("#")
     private var _fragmentSpendBinding: FragmentSpendBinding? = null
@@ -912,7 +911,7 @@ class SendFragment : Fragment() {
         val nbBlocks = 6
         fragmentSpendBinding.fragmentComposeTx.feeSelector.feeSlider.addOnChangeListener { slider, sliderVal, fromUser ->
             // #77: a typed rate owns the fee while Custom is on.
-            if (customFeeActive) return@addOnChangeListener
+            if (customFeeControl?.active == true) return@addOnChangeListener
             val value = (sliderVal + multiplier) / multiplier
             showEstimatedBlocks(CustomFee.estimatedBlocks(value, feeLow, feeMed, feeHigh))
             setFeeLabels()
@@ -924,57 +923,40 @@ class SendFragment : Fragment() {
 
     private fun showEstimatedBlocks(blocks: Int) {
         fragmentSpendBinding.fragmentComposeTx.feeSelector.estBlockTime.text =
-            if (blocks > 50) "50+ blocks" else "$blocks blocks"
+            CustomFeeControl.blocksText(blocks)
     }
 
     /**
-     * #77: a typed fee rate. The slider stops at 1.5 x the High estimate,
-     * which can be far below what a congested mempool needs - above all
-     * when the estimates are stale defaults (no Dojo, #76). "Custom" swaps
-     * the slider for a sat/vB field with a sanity range (CustomFee); "Use
-     * slider" puts the slider's rate back. While the field holds no usable
-     * rate, composing is blocked rather than left on the previous rate.
+     * #77: a typed fee rate and the estimate-freshness note (CustomFeeControl,
+     * shared with Sweep). The slider stops at 1.5 x the High estimate, which
+     * can be far below what a congested mempool needs - above all when the
+     * estimates are stale or defaults (no Dojo, #76). While the field holds
+     * no usable rate, composing is blocked rather than left on the previous
+     * rate.
      */
     private fun setUpCustomFee() {
         val feeSelector = fragmentSpendBinding.fragmentComposeTx.feeSelector
-        feeSelector.customFeeToggle.visibility = View.VISIBLE
-        feeSelector.customFeeToggle.setOnClickListener {
-            setCustomFeeActive(!customFeeActive)
+        customFeeControl = CustomFeeControl(
+            feeSelector = feeSelector,
+            wholeOnly = false,
+            tiers = { Triple(feeLow, feeMed, feeHigh) },
+            sliderRate = { sliderRate() },
+            onRate = { perKb -> viewModel.setFee(perKb) },
+            onUnusable = { viewModel.setFeeInvalid() },
+            onBackToSlider = {
+                val value = sliderRate()
+                feeSelector.selectedFeeRate.text = "${decimalFormat.format(value)} sat/vB"
+                setFeeLabels()
+                showEstimatedBlocks(CustomFee.estimatedBlocks(value, feeLow, feeMed, feeHigh))
+                viewModel.setFee(value * 1000)
+            },
+        ).also {
+            it.attach()
+            it.showFreshness(feeRepository.freshness())
         }
-        feeSelector.customFeeInput.addTextChangedListener {
-            if (customFeeActive) applyCustomFee()
-        }
-        feeSelector.customFeeInput.setOnEditorActionListener { view, _, _ ->
-            view.hideKeyboard()
-            false
-        }
-    }
-
-    private fun setCustomFeeActive(active: Boolean) {
-        val feeSelector = fragmentSpendBinding.fragmentComposeTx.feeSelector
-        customFeeActive = active
-        feeSelector.customFeeLayout.visibility = if (active) VISIBLE else GONE
-        feeSelector.feeSlider.isEnabled = !active
-        feeSelector.feeSlider.alpha = if (active) 0.4f else 1f
-        feeSelector.customFeeToggle.text =
-            getString(if (active) R.string.fee_use_slider else R.string.fee_custom)
-        if (active) {
-            val input = feeSelector.customFeeInput
-            if (input.text.isNullOrBlank()) {
-                // Start from the slider's rate, so turning Custom on changes nothing yet.
-                input.setText(customFeeFormat.format(sliderRate().toDouble()))
-            }
-            input.setSelection(input.text?.length ?: 0)
-            input.requestFocus()
-            applyCustomFee()
-        } else {
-            feeSelector.customFeeLayout.error = null
-            feeSelector.customFeeLayout.helperText = null
-            val value = sliderRate()
-            feeSelector.selectedFeeRate.text = "${decimalFormat.format(value)} sat/vB"
-            setFeeLabels()
-            showEstimatedBlocks(CustomFee.estimatedBlocks(value, feeLow, feeMed, feeHigh))
-            viewModel.setFee(value * 1000)
+        // A sync round that lands while Send is open refreshes the note.
+        feeRepository.getFees().observe(viewLifecycleOwner) {
+            customFeeControl?.showFreshness(feeRepository.freshness())
         }
     }
 
@@ -982,46 +964,6 @@ class SendFragment : Fragment() {
     private fun sliderRate(): Float =
         (fragmentSpendBinding.fragmentComposeTx.feeSelector.feeSlider.value + FEE_SLIDER_MULTIPLIER) /
             FEE_SLIDER_MULTIPLIER
-
-    private fun applyCustomFee() {
-        val feeSelector = fragmentSpendBinding.fragmentComposeTx.feeSelector
-        val layout = feeSelector.customFeeLayout
-        when (val check = CustomFee.check(feeSelector.customFeeInput.text?.toString().orEmpty(), feeHigh)) {
-            is CustomFee.Check.Ok -> {
-                layout.error = null
-                layout.helperText = if (check.aboveHighEstimate) {
-                    getString(R.string.fee_custom_above_high, feeHigh)
-                } else {
-                    null
-                }
-                val rate = check.satPerVb
-                feeSelector.selectedFeeRate.text = "${customFeeFormat.format(rate)} sat/vB"
-                feeSelector.selectedFeeRateLayman.setText(R.string.fee_custom)
-                showEstimatedBlocks(CustomFee.estimatedBlocks(rate.toFloat(), feeLow, feeMed, feeHigh))
-                viewModel.setFee(CustomFee.perKb(rate))
-            }
-            else -> {
-                layout.helperText = null
-                layout.error = when (check) {
-                    CustomFee.Check.TooLow -> getString(R.string.custom_fee_too_low) + " " + rangeText()
-                    CustomFee.Check.TooHigh -> getString(R.string.custom_fee_too_high) + " " + rangeText()
-                    CustomFee.Check.Invalid -> getString(R.string.fee_custom_invalid)
-                    // Nothing typed yet: no error, but nothing to compose with either.
-                    else -> null
-                }
-                feeSelector.selectedFeeRateLayman.setText(R.string.fee_custom)
-                feeSelector.selectedFeeRate.text = "-"
-                feeSelector.estBlockTime.text = "-"
-                viewModel.setFeeInvalid()
-            }
-        }
-    }
-
-    private fun rangeText(): String = getString(
-        R.string.fee_custom_range,
-        customFeeFormat.format(CustomFee.MIN_SAT_PER_VB),
-        customFeeFormat.format(CustomFee.MAX_SAT_PER_VB)
-    )
 
     private fun setFeeLabels() {
         if (fragmentSpendBinding.fragmentComposeTx.feeSelector.feeSlider.valueTo <= 0) {

@@ -40,6 +40,23 @@
         app:layout_constraintTop_toTopOf="@+id/textView6"
         tools:visibility="visible" />
 
+    <!-- #77 option 4: says when the estimates behind the slider are old
+         or only defaults. Hidden while they are fresh. -->
+    <TextView
+        android:id="@+id/feeFreshnessNote"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:layout_marginEnd="16dp"
+        android:textColor="@color/md_amber_500"
+        android:textSize="12sp"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="@+id/textView6"
+        app:layout_constraintTop_toBottomOf="@+id/textView6"
+        tools:text="Fee estimates are 3 h old. Check the mempool, or set a custom fee."
+        tools:visibility="visible" />
+
     <com.google.android.material.slider.Slider
         android:id="@+id/feeSlider"
         android:layout_width="0dp"
@@ -49,7 +66,7 @@
         android:splitTrack="false"
         app:layout_constraintEnd_toStartOf="@+id/linearLayout2"
         app:layout_constraintStart_toStartOf="@+id/textView6"
-        app:layout_constraintTop_toBottomOf="@+id/textView6"
+        app:layout_constraintTop_toBottomOf="@+id/feeFreshnessNote"
         app:thumbColor="@color/accent"
         app:thumbRadius="8dp"
         app:trackColor="#0D5170" />

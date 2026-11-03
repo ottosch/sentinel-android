@@ -47,6 +47,7 @@ import com.samourai.sentinel.data.repository.TransactionsRepository
 import com.samourai.sentinel.databinding.ContentCollectionSelectBinding
 import com.samourai.sentinel.databinding.ContentPubkeySelectBinding
 import com.samourai.sentinel.databinding.ContentSweepPreviewBinding
+import com.samourai.sentinel.ui.collectionDetails.send.CustomFeeControl
 import com.samourai.sentinel.databinding.FragmentBottomsheetViewPagerBinding
 import com.samourai.sentinel.send.SuggestedFee
 import com.samourai.sentinel.ui.SentinelActivity
@@ -630,6 +631,9 @@ class PreviewBottomSheet : GenericBottomSheet() {
 
     private var selectedFee: Long = 1000L
 
+    // #77: the typed fee rate (and freshness note) on the fee selector.
+    private var customFeeControl: CustomFeeControl? = null
+
     private var onChangePubkeyButton: () -> Unit = {}
 
     private val exchangeRateRepository: ExchangeRateRepository by KoinJavaComponent.inject(
@@ -801,7 +805,11 @@ class PreviewBottomSheet : GenericBottomSheet() {
             var fee: Long = computeFee(bipFormat, utxoList, selectedFee.div(1000.0).toLong())
             var amount = totalValue - fee
             //Check if the amount too low for a tx or miner fee is high
-            if (amount == 0L || fee > totalValue || amount <= SamouraiWalletConst.bDust.toLong()) {
+            // #77: never for a typed rate - the field already refused one
+            // that takes the whole amount, and silently sweeping at the
+            // lowest rate instead is not what the user set.
+            if (customFeeControl?.active != true &&
+                (amount == 0L || fee > totalValue || amount <= SamouraiWalletConst.bDust.toLong())) {
                 //check if the tx is possible with 1sat/b rate
                 feeRange = 0.1f
                 feePerKb = MathUtils.lerp(feeLow.toFloat(), feeHigh.toFloat(), 0.0f).coerceAtLeast(1f)
@@ -994,6 +1002,8 @@ class PreviewBottomSheet : GenericBottomSheet() {
             (((binding.feeSelector.feeSlider.value + multiplier) / multiplier)*1000).toLong()
         var nbBlocks = 6
         binding.feeSelector.feeSlider.addOnChangeListener { slider, sliderVal, fromUser ->
+            // #77: a typed rate owns the fee while Custom is on.
+            if (customFeeControl?.active == true) return@addOnChangeListener
             val value = (sliderVal + multiplier) / multiplier
             var pct = 0F
             if (value <= feeLow) {
@@ -1024,6 +1034,55 @@ class PreviewBottomSheet : GenericBottomSheet() {
         binding.feeSelector.estBlockTime.text = "$nbBlocks blocks"
         binding.totalMinerFee.text =
             "${computeFee(bipFormat, utxoList, selectedFee.div(1000.0).toLong())} sats"
+        setUpCustomFee(multiplier)
+    }
+
+    /**
+     * #77: the typed fee rate and freshness note, shared with Send
+     * (CustomFeeControl). Sweep's fee math takes whole sat/vB, so the field
+     * does too. A rate whose fee would leave nothing (or only dust) to
+     * sweep is refused on the field rather than swept at another rate.
+     */
+    private fun setUpCustomFee(multiplier: Int) {
+        val sliderRate = { (binding.feeSelector.feeSlider.value + multiplier) / multiplier }
+        customFeeControl = CustomFeeControl(
+            feeSelector = binding.feeSelector,
+            wholeOnly = true,
+            tiers = { Triple(feeLow, feeMed, feeHigh) },
+            sliderRate = sliderRate,
+            onRate = { perKb ->
+                selectedFee = perKb.toLong()
+                val fee = computeFee(bipFormat, utxoList, selectedFee.div(1000.0).toLong())
+                binding.totalMinerFee.text = "$fee sats"
+                val left = UnspentOutput.sumValue(utxoList) - fee
+                if (left <= SamouraiWalletConst.bDust.toLong()) {
+                    binding.feeSelector.customFeeLayout.error =
+                        getString(R.string.fee_custom_exceeds_sweep)
+                    setSweepEnabled(false)
+                } else {
+                    setSweepEnabled(true)
+                }
+            },
+            onUnusable = {
+                binding.totalMinerFee.text = "-"
+                setSweepEnabled(false)
+            },
+            onBackToSlider = {
+                setFeeLabels()
+                selectedFee = (sliderRate() * 1000).toLong()
+                binding.totalMinerFee.text =
+                    "${computeFee(bipFormat, utxoList, selectedFee.div(1000.0).toLong())} sats"
+                setSweepEnabled(true)
+            },
+        ).also {
+            it.attach()
+            it.showFreshness(feeRepository.freshness())
+        }
+    }
+
+    private fun setSweepEnabled(enabled: Boolean) {
+        binding.sweepBtn.isEnabled = enabled
+        binding.sweepBtn.alpha = if (enabled) 1f else 0.6f
     }
 
     private fun setFeeLabels() {
