@@ -37,6 +37,13 @@ class SendViewModel : ViewModel() {
     private var enteredAmount: Double = 0.0
     var job: Job? = null
     private var selectedFee = 0L
+
+    /**
+     * #77: set while the custom fee field holds no usable rate. Composing
+     * must stop then: the last good rate is still in FeeUtil, and building
+     * a PSBT with it would not be the fee the user is looking at.
+     */
+    private var feeInvalid = false
     private var transactionComposer = TransactionComposer()
     private val utxoDao: UtxoDao by inject(UtxoDao::class.java)
     private var receivers: HashMap<String, BigInteger> = hashMapOf()
@@ -72,7 +79,12 @@ class SendViewModel : ViewModel() {
         /** #190: a pinned coin has been marked do-not-spend since it was pinned. */
         SELECTION_BLOCKED,
         /** #190: a pinned coin is no longer unspent (spent, or gone after a sync). */
-        SELECTION_MISSING
+        SELECTION_MISSING,
+        /**
+         * #77: the custom fee field holds no usable rate (empty, not a
+         * number, or out of range). The field says which.
+         */
+        INVALID_FEE
     }
 
     private val _spendBlocker = MutableLiveData(SpendBlocker.NO_ADDRESS)
@@ -253,6 +265,9 @@ class SendViewModel : ViewModel() {
         if (amount.toLong() > spendableSats()) {
             return block(SpendBlocker.INSUFFICIENT_FUNDS)
         }
+        if (feeInvalid) {
+            return block(SpendBlocker.INVALID_FEE)
+        }
         // #190: an explicit selection that no longer holds, or cannot cover
         // the amount, is reported - never composed around. A coin frozen
         // after it was pinned is the hard do-not-spend strip; it fails the
@@ -392,6 +407,17 @@ class SendViewModel : ViewModel() {
         suggestedFee.defaultPerKB = BigInteger.valueOf((customValue).toLong())
         FeeUtil.getInstance().suggestedFee = suggestedFee
         selectedFee = fee.toLong()
+        feeInvalid = false
+        prepareSpend()
+    }
+
+    /**
+     * #77: the custom fee field holds no usable rate; block composing until
+     * [setFee] is called with one.
+     */
+    fun setFeeInvalid() {
+        if (feeInvalid) return
+        feeInvalid = true
         prepareSpend()
     }
 

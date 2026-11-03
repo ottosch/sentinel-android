@@ -283,6 +283,13 @@
     <string name="set_sat">Set your custom fee in sat/b.</string>
     <string name="custom_fee_too_low">Custom fee is set too low.</string>
     <string name="custom_fee_too_high">Custom fee is set too high.</string>
+    <!-- #77: typed fee rate on Send -->
+    <string name="fee_custom" translatable="false">Custom</string>
+    <string name="fee_use_slider" translatable="false">Use slider</string>
+    <string name="fee_custom_hint" translatable="false">Fee rate</string>
+    <string name="fee_custom_invalid" translatable="false">Enter a fee rate in sat/vB</string>
+    <string name="fee_custom_range" translatable="false">Between %1$s and %2$s sat/vB</string>
+    <string name="fee_custom_above_high" translatable="false">Well above the current High estimate (%1$d sat/vB)</string>
     <string name="change_is_dust">The change from this transaction is a dust amount. Try again and either modify the spend amount or spend the entire balance.</string>
 
 
