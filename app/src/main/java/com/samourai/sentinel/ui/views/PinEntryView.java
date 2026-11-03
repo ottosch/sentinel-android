@@ -1,6 +1,8 @@
 package com.samourai.sentinel.ui.views;
 
 import android.content.Context;
+import android.graphics.Color;
+import android.graphics.PorterDuff;
 import android.util.AttributeSet;
 import android.view.HapticFeedbackConstants;
 import android.view.View;
@@ -41,6 +43,9 @@ public class PinEntryView extends FrameLayout implements View.OnClickListener {
     private boolean scramble = false;
     private pinEntryListener entryListener = null;
     private pinClearListener clearListener = null;
+    /** #415: true while the confirm slot shows the red error cross. */
+    private boolean errorCrossShowing = false;
+    private final Runnable errorCrossRestore = this::hideErrorCross;
      private View view;
 
     public PinEntryView(Context context) {
@@ -124,10 +129,16 @@ public class PinEntryView extends FrameLayout implements View.OnClickListener {
 
 
     public void showCheckButton() {
+        if (errorCrossShowing) {
+            hideErrorCross();
+        }
         tconfirm.setVisibility(VISIBLE);
     }
 
     public void hideCheckButton() {
+        if (errorCrossShowing) {
+            hideErrorCross();
+        }
         tconfirm.setVisibility(GONE);
     }
 
@@ -137,6 +148,33 @@ public class PinEntryView extends FrameLayout implements View.OnClickListener {
 
     public void removeUserInput() {
         this.pinLen = 0;
+    }
+
+    /**
+     * #415: a rejected entry flashes a red cross in the confirm slot, the
+     * same place the green check lives. The restore puts the check back and
+     * re-decides visibility from the current entry length; show/hide of the
+     * check during the window snaps the cross away instead.
+     */
+    public void flashErrorCross() {
+        tconfirm.removeCallbacks(errorCrossRestore);
+        tconfirm.setBackgroundResource(R.drawable.rounded_rectangle_red);
+        tconfirm.setImageResource(R.drawable.ic_close_black_24dp);
+        tconfirm.setColorFilter(Color.WHITE, PorterDuff.Mode.SRC_ATOP);
+        tconfirm.setVisibility(VISIBLE);
+        tconfirm.setEnabled(false);
+        errorCrossShowing = true;
+        tconfirm.postDelayed(errorCrossRestore, 600L);
+    }
+
+    private void hideErrorCross() {
+        tconfirm.removeCallbacks(errorCrossRestore);
+        errorCrossShowing = false;
+        tconfirm.setBackgroundResource(R.drawable.rounded_rectangle_green);
+        tconfirm.setImageResource(R.drawable.ic_done_white_24dp);
+        tconfirm.setColorFilter(null);
+        tconfirm.setEnabled(true);
+        tconfirm.setVisibility(pinLen >= AccessFactory.MIN_PIN_LENGTH ? VISIBLE : GONE);
     }
 
     private void setButtonLabels() {

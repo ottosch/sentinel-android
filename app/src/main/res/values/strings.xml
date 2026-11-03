@@ -57,6 +57,8 @@
     <string name="pin_5_8">Please create a PIN code between 5 and 8 characters. You will need this PIN to access Sentinel on this device.</string>
     <string name="pin_5_8_confirm">Please confirm 5-8 digit PIN code</string>
     <string name="pin_error">Pin code error</string>
+    <!-- #415: wrong-PIN advisory swapped into the prompt slot. -->
+    <string name="pin_incorrect" translatable="false">Incorrect PIN</string>
     <string name="no_internet">No Internet connectivity. Please try again.</string>
     <string name="bip38_pw">BIP38 password</string>
     <string name="bip38_pw_error">BIP38 password error</string>

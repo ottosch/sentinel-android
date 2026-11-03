@@ -111,7 +111,9 @@ class MainActivity : AppCompatActivity() {
                 }
                 is UnlockResult.Unavailable -> {
                     unlockBusy = false
-                    dialog.showError()
+                    // #415: the PIN was never judged - the saved unlock
+                    // data would not open. The toast below says the rest.
+                    dialog.resetPad()
                     Toast.makeText(this@MainActivity, result.message, Toast.LENGTH_LONG).show()
                 }
             }
