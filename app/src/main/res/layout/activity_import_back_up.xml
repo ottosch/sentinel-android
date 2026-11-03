@@ -142,17 +142,25 @@
         android:layout_marginEnd="16dp"
         android:ems="10"
         android:hint="Password"
-        android:inputType="textPassword"
+        android:importantForAutofill="no"
+        app:endIconMode="password_toggle"
         app:hintTextColor="@color/md_grey_100"
+        app:startIconContentDescription="@string/pairing_password_paste"
+        app:startIconDrawable="@drawable/ic_content_paste_24px"
         app:layout_constraintEnd_toEndOf="@+id/importPastePayloadBtn"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="@+id/guideline11">
 
+        <!-- #282: revealable, no suggestions/autocorrect, not saved to autofill. -->
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/importPasswordInput"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:inputType="textPassword" />
+            android:fontFamily="monospace"
+            android:imeOptions="flagNoPersonalizedLearning"
+            android:importantForAutofill="no"
+            android:inputType="textPassword|textNoSuggestions"
+            android:singleLine="true" />
 
     </com.google.android.material.textfield.TextInputLayout>
 

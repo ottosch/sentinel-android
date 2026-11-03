@@ -1,20 +1,23 @@
 package com.samourai.sentinel.ui.fragments
 
+import android.graphics.Typeface
 import android.os.Bundle
-import android.text.InputFilter
-import android.text.method.PasswordTransformationMethod
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.FrameLayout
+import android.widget.ProgressBar
 import android.widget.TextView
-import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.chip.Chip
+import com.google.android.material.chip.ChipGroup
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import com.samourai.sentinel.R
@@ -26,13 +29,17 @@ import com.samourai.sentinel.data.repository.TransactionsRepository
 import com.samourai.sentinel.databinding.FragmentBottomsheetViewPagerBinding
 import com.samourai.sentinel.databinding.LayoutLoadingBottomBinding
 import com.samourai.sentinel.ui.home.HomeViewModel
+import com.samourai.sentinel.ui.utils.PairingWordsAsset
+import com.samourai.sentinel.ui.utils.enablePasteAction
 import com.samourai.sentinel.ui.views.GenericBottomSheet
 import com.samourai.sentinel.util.ExportImportUtil
+import com.samourai.sentinel.util.PairingWords
 import com.samourai.sentinel.util.apiScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koin.java.KoinJavaComponent
 import timber.log.Timber
 import java.util.concurrent.CancellationException
@@ -161,10 +168,37 @@ class WalletPairingFragment : GenericBottomSheet {
     }
 }
 
+/**
+ * #282: the one-time pairing password page.
+ *
+ * The password is three words of the EFF large wordlist joined with "-"
+ * (see [PairingWords]). The field can be revealed, pasted into and
+ * autocompleted; spaces and capitals are turned into the canonical form
+ * as the user types; a word that isn't on the list is named inline, and
+ * Decrypt is enabled only for exactly three list words. Decryption (AES +
+ * PBKDF2) runs off the main thread behind a progress bar, and a wrong
+ * password is reported on the field with the typed text kept.
+ *
+ * If the wordlist can't be read, none of the word checks apply and
+ * Decrypt is enabled for any non-blank text, so a missing asset can't
+ * lock anyone out. The password is never logged.
+ */
 class PasswordFragment : Fragment() {
 
     private lateinit var payload: String
     private var onSelect: (PubKeyCollection?) -> Unit = {}
+
+    private var words: PairingWords? = null
+    private var busy = false
+    private var wrongPassword = false
+    /** Set while this class rewrites the field, so its watcher ignores that edit. */
+    private var shaping = false
+
+    private var layout: TextInputLayout? = null
+    private var input: TextInputEditText? = null
+    private var suggestions: ChipGroup? = null
+    private var progress: ProgressBar? = null
+    private var decryptBtn: MaterialButton? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -172,8 +206,8 @@ class PasswordFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View {
         val view = inflater.inflate(R.layout.layout_bottom_sheet, container)
-        view.findViewById<TextView>(R.id.dialogTitle).text = "Enter one time pairing password"
-        val inputContent = inflater.inflate(R.layout.content_bottom_sheet_input, null)
+        view.findViewById<TextView>(R.id.dialogTitle).text = getString(R.string.pairing_password_title)
+        val inputContent = inflater.inflate(R.layout.content_pairing_password, null)
         val content = view.findViewById<FrameLayout>(R.id.contentContainer)
         content.addView(inputContent)
         return view
@@ -187,24 +221,142 @@ class PasswordFragment : Fragment() {
         this.payload = payload
     }
 
-    override fun onActivityCreated(savedInstanceState: Bundle?) {
-        super.onActivityCreated(savedInstanceState)
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        layout = view.findViewById(R.id.pairingPasswordLayout)
+        input = view.findViewById(R.id.pairingPasswordInput)
+        suggestions = view.findViewById(R.id.pairingPasswordSuggestions)
+        progress = view.findViewById(R.id.pairingPasswordProgress)
+        decryptBtn = view.findViewById(R.id.pairingPasswordDecryptBtn)
+        val input = input ?: return
 
-        view?.findViewById<MaterialButton>(R.id.bottomSheetConfirmPositiveBtn)?.text = "Decrypt"
-        view?.findViewById<TextInputLayout>(R.id.bottomSheetInputFieldLayout)?.hint = "password"
-        val textInput = view?.findViewById<TextInputEditText>(R.id.bottomSheetInputField);
-        textInput?.inputType = EditorInfo.TYPE_TEXT_VARIATION_PASSWORD
-        textInput?.transformationMethod = PasswordTransformationMethod.getInstance();
-        textInput?.filters = arrayOf<InputFilter>(InputFilter.LengthFilter(34))
-        view?.findViewById<MaterialButton>(R.id.bottomSheetConfirmPositiveBtn)?.setOnClickListener { _ ->
-            val password = textInput?.text.toString()
-            val collection = ExportImportUtil().decryptAndParseSamouraiPayload(payload, password)
-            if (collection == null) {
-                Toast.makeText(context, "Error decrypting payload. Check password.", Toast.LENGTH_LONG).show()
+        // No length cap (#282): the old 34-char LengthFilter dropped input
+        // silently; the word check below is the guard instead.
+        input.filters = arrayOf()
+        input.typeface = Typeface.MONOSPACE
+        layout?.enablePasteAction(input)
+
+        input.addTextChangedListener(object : TextWatcher {
+            private var inserted = false
+
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {
+                inserted = after > count
             }
-            else {
-                this.onSelect(collection)
-                this.onDestroy()
+
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+
+            override fun afterTextChanged(s: Editable?) {
+                if (shaping || s == null) return
+                wrongPassword = false
+                val list = words
+                // Only on typing or pasting: a deletion is left exactly as
+                // the user made it, or a removed "-" would come straight back.
+                if (list != null && inserted) {
+                    val current = s.toString()
+                    val shaped = list.autoSeparate(current)
+                    if (shaped != current) replaceText(shaped)
+                }
+                refresh()
+            }
+        })
+        input.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE && decryptBtn?.isEnabled == true) {
+                decrypt()
+                true
+            } else {
+                false
+            }
+        }
+        decryptBtn?.setOnClickListener { decrypt() }
+
+        refresh()
+        viewLifecycleOwner.lifecycleScope.launch {
+            words = PairingWordsAsset.load(requireContext())
+            refresh()
+        }
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        layout = null
+        input = null
+        suggestions = null
+        progress = null
+        decryptBtn = null
+    }
+
+    private fun replaceText(text: String) {
+        val input = input ?: return
+        shaping = true
+        input.setText(text)
+        input.setSelection(text.length)
+        shaping = false
+    }
+
+    /** Re-derives the error, the suggestions and the button from the field. */
+    private fun refresh() {
+        val text = input?.text?.toString().orEmpty()
+        val list = words
+        val analysis = list?.analyze(text)
+
+        layout?.error = when {
+            wrongPassword -> getString(R.string.pairing_password_wrong)
+            analysis?.invalid != null -> getString(R.string.pairing_password_not_a_word, analysis.invalid)
+            analysis?.tooMany == true -> getString(R.string.pairing_password_too_many)
+            else -> null
+        }
+
+        val group = suggestions
+        if (group != null) {
+            group.removeAllViews()
+            val options = if (list == null || busy) emptyList() else list.suggestions(text)
+            for (word in options) {
+                group.addView(Chip(group.context).apply {
+                    this.text = word
+                    isCheckable = false
+                    setOnClickListener {
+                        replaceText(list!!.complete(input?.text?.toString().orEmpty(), word))
+                        refresh()
+                    }
+                })
+            }
+            group.visibility = if (options.isEmpty()) View.GONE else View.VISIBLE
+        }
+
+        val ready = if (analysis != null) analysis.isComplete else text.isNotBlank()
+        decryptBtn?.isEnabled = ready && !busy
+        decryptBtn?.alpha = if (ready && !busy) 1f else 0.6f
+    }
+
+    private fun setBusy(value: Boolean) {
+        busy = value
+        progress?.visibility = if (value) View.VISIBLE else View.GONE
+        input?.isEnabled = !value
+        layout?.isEnabled = !value
+        refresh()
+    }
+
+    private fun decrypt() {
+        if (busy) return
+        val typed = input?.text?.toString().orEmpty()
+        // Canonical form first; the text exactly as typed only if it differs
+        // (and only matters when the wordlist could not be read).
+        val candidates = listOf(PairingWords.normalize(typed), typed).filter { it.isNotEmpty() }.distinct()
+        if (candidates.isEmpty()) return
+        val payload = payload
+        setBusy(true)
+        viewLifecycleOwner.lifecycleScope.launch {
+            val collection = withContext(Dispatchers.Default) {
+                candidates.firstNotNullOfOrNull {
+                    ExportImportUtil().decryptAndParseSamouraiPayload(payload, it)
+                }
+            }
+            setBusy(false)
+            if (collection == null) {
+                wrongPassword = true
+                refresh()
+            } else {
+                onSelect(collection)
             }
         }
     }

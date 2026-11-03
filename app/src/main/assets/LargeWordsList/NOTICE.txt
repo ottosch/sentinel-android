@@ -1,0 +1,11 @@
+eff_large_wordlist.txt
+
+EFF Large Wordlist for Passphrases, by the Electronic Frontier Foundation.
+https://www.eff.org/dice
+Licensed under the Creative Commons Attribution 3.0 License
+(https://creativecommons.org/licenses/by/3.0/us/).
+
+Bundled unmodified (SHA-256 addd35536511597a02fa0a9ff1e5284677b8883b83e986e43f15a3db996b903e).
+Ashigaru / Samourai wallets build the one-time pairing password from three
+words of this list joined with "-"; Sentinel uses it only to check and
+autocomplete that password on entry (#282).
