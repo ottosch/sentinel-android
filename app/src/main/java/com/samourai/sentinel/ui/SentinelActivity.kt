@@ -106,6 +106,25 @@ open class SentinelActivity : AppCompatActivity(), SwipeBackActivityBase {
         }
     }
 
+    /**
+     * #290: the idle clock used to count 15 minutes from the last
+     * *unlock*, so an actively-used session hit the wall mid-flow and
+     * lost whatever screen it was on. Every user interaction now
+     * refreshes the timestamp; the wall still applies in full after
+     * real inactivity, and every onResume still enforces it.
+     *
+     * MainActivity is a plain AppCompatActivity - not a
+     * SentinelActivity - so this can never fire on the lock pad
+     * itself. updatePin() touches only the timestamp: never
+     * sessionAdmitted, never the payload key.
+     */
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        if (prefsUtil.isPinConfigured()) {
+            accessFactory.updatePin()
+        }
+    }
+
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         if (item.itemId == android.R.id.home) {
             finish()
