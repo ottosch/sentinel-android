@@ -2,6 +2,8 @@ package com.samourai.sentinel.ui.settings
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -15,6 +17,18 @@ import java.util.TimeZone
  *
  * The date format is UTC-pinned so the millis-to-date half cannot
  * flake with the CI runner's timezone.
+ *
+ * The dump legs pin the envelope half of the card. They assert on
+ * quoted keys and full value strings, never on "key": value
+ * composites: the JVM org.json artifact and Android's bundled copy
+ * disagree on the space after the colon, and a display helper's
+ * tests must not hang on that.
+ *
+ * The dump's truncation marker is ASCII "..." for the same reason
+ * the helper emits it: org.json escapes U+2026 in serialized string
+ * values (the whole U+2000-U+20FF block), so the first local run
+ * failed on exactly the three ellipsis composites while every key
+ * and ASCII assertion in the same tests passed.
  */
 class BackupPreviewLineTest {
 
@@ -97,5 +111,55 @@ class BackupPreviewLineTest {
     fun `envelope with no fields at all is the valid-backup fallback`() {
         val line = backupPreviewLine(JSONObject(), dateFormat)
         assertEquals("Valid backup file", line)
+    }
+
+    // --- backupEnvelopeDump: the restored raw half of the card ---
+
+    @Test
+    fun `envelope dump truncates the payload blob to head and size`() {
+        val blob = "A".repeat(1400)
+        val dump = backupEnvelopeDump(
+            JSONObject().put("time", time).put("payload", blob)
+        )
+        // 1400 base64 chars estimate 1050 bytes -> "1.0 KB"
+        assertTrue(dump.contains("AAAAAAAAAAAAAAAA... (1.0 KB)"))
+        assertFalse(dump.contains("A".repeat(64)))
+    }
+
+    @Test
+    fun `a 32-char blob is the verbatim boundary - no truncation yet`() {
+        val blob = "B".repeat(32)
+        val dump = backupEnvelopeDump(JSONObject().put("payload", blob))
+        assertTrue(dump.contains(blob))
+        assertFalse(dump.contains("..."))
+    }
+
+    @Test
+    fun `envelope dump carries every envelope field and nothing invented`() {
+        val dump = backupEnvelopeDump(
+            JSONObject()
+                .put("format", 3)
+                .put("version", 55)
+                .put("time", time)
+                .put("network", "mainnet")
+                .put("payload", "C".repeat(1400))
+        )
+        assertTrue(dump.contains("\"format\""))
+        assertTrue(dump.contains("\"version\""))
+        assertTrue(dump.contains("\"network\""))
+        assertTrue(dump.contains("\"mainnet\""))
+        assertTrue(dump.contains("CCCCCCCCCCCCCCCC... (1.0 KB)"))
+        assertFalse(dump.contains("\"kdf\""))
+    }
+
+    @Test
+    fun `samourai shape dumps with its blob truncated to a byte note`() {
+        // 72 base64 chars estimate 54 bytes
+        val dump = backupEnvelopeDump(
+            JSONObject().put("external", true).put("payload", "D".repeat(72))
+        )
+        assertTrue(dump.contains("\"external\""))
+        assertTrue(dump.contains("true"))
+        assertTrue(dump.contains("DDDDDDDDDDDDDDDD... (54 B)"))
     }
 }
