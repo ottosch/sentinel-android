@@ -168,6 +168,19 @@ class NetworkActivity : SentinelActivity() {
         }
     }
 
+    /**
+     * #412: every camera ask on this screen is on the way to the Dojo
+     * setup sheet (the dojoButton listener and removeDojo()), so the
+     * base class's default - the xpub scanner - is wrong here exactly
+     * as it was on Home (#299). Mirror the DENIED arm this activity's
+     * onRequestPermissionsResult already runs: toast, then the sheet,
+     * whose Paste pairing needs no camera.
+     */
+    override fun onCameraRationaleDeclined() {
+        Toast.makeText(this, getString(R.string.camera_permission_denied), Toast.LENGTH_LONG).show()
+        showDojoSetUpBottomSheet()
+    }
+
     private fun removeDojo() {
         dojoUtility.clearDojo()
         setDojoStatus()
