@@ -6,6 +6,7 @@ import com.samourai.sentinel.data.exchange.CexIoExchangeProvider
 import com.samourai.sentinel.data.exchange.CoinGeckoExchangeProvider
 import com.samourai.sentinel.data.exchange.CryptoCompareExchangeProvider
 import com.samourai.sentinel.data.exchange.ExchangeProviderImpl
+import com.samourai.sentinel.tor.SentinelTorManager
 import com.samourai.sentinel.ui.utils.PrefsUtil
 import com.samourai.sentinel.util.apiScope
 import kotlinx.coroutines.CancellationException
@@ -65,6 +66,19 @@ class ExchangeRateRepository {
         if (prefsUtil.fiatDisabled!!) {
             return;
         }
+        // #384: fiat prices leave the device only through Tor. With Tor
+        // off and no Dojo paired, a fetch told the selected exchange that
+        // someone at this IP runs Sentinel - and the rate is only useful
+        // next to balances, which already wait for Tor. Same early-return
+        // shape as fiatDisabled above: the last stored rate keeps
+        // rendering (emitChanges), and the next fetch once Tor is ready
+        // refreshes it. The gate sits before the job churn so a refused
+        // fetch also never cancels an in-flight Tor-routed one.
+        if (!SentinelTorManager.isTorReady()) {
+            Timber.i("exchange rate fetch skipped: Tor not ready (#384)")
+            return;
+        }
+
         job?.let {
             if (it.isActive) {
                 it.cancel()
