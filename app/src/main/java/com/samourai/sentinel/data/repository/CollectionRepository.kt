@@ -147,35 +147,34 @@ class CollectionRepository {
      * sync needs to be called after changing collection (edit,delete,add)
      */
     fun sync() {
-        // Never persist on top of a payload we failed to read.
-        if (!isPayloadUsable) {
-            Timber.w("sync() suppressed: payload is not in a known-good state")
-            emit()
-            return
-        }
-
-        val snapshot: ArrayList<PubKeyCollection>
-        synchronized(pubKeyCollections) {
-            val dupRemoved = pubKeyCollections.distinctBy { it.id }
-            pubKeyCollections.clear()
-            pubKeyCollections.addAll(dupRemoved)
-            // Hand the writer its own copy so it cannot observe concurrent
-            // mutation from fetchFromServer while serializing.
-            // #89: deep copy - `pubs` must be a fresh list too, or the claim
-            // above only held for the outer list (shallow data-class copy).
-            snapshot = ArrayList(pubKeyCollections.map { it.copy(pubs = ArrayList(it.pubs)) })
-        }
-
         dataBaseScope.launch(Dispatchers.IO) {
+            // Check at write time: usability can flip between the call
+            // and this coroutine's dispatch.
+            if (!isPayloadUsable) {
+                Timber.w("sync() suppressed: payload is not in a known-good state")
+                emit()
+                return@launch
+            }
+
+            // Snapshot needs to be taken inside the write-mutex block
+            // to prevent outdated snapshots being written
             writeMutex.withLock {
+                val snapshot: ArrayList<PubKeyCollection>
+                synchronized(pubKeyCollections) {
+                    val dupRemoved = pubKeyCollections.distinctBy { it.id }
+                    pubKeyCollections.clear()
+                    pubKeyCollections.addAll(dupRemoved)
+                    // Own copy so concurrent mutation cannot race serialization.
+                    snapshot = ArrayList(pubKeyCollections.map { it.copy(pubs = ArrayList(it.pubs)) })
+                }
                 try {
                     sentinelCollectionStore.getCollectionStore().write(snapshot)
                 } catch (e: Exception) {
                     Timber.e(e, "Failed to persist collections")
                 }
             }
+            this@CollectionRepository.emit()
         }
-        this.emit()
     }
 
     /**
