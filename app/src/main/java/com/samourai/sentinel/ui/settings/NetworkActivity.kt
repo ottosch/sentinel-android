@@ -67,6 +67,14 @@ class NetworkActivity : SentinelActivity() {
         Timber.e(t, "network import failed")
     }
 
+    // #409: the burst subscription handle - assigned ONCE so subscribe and
+    // unsubscribe always carry the same reference. The holder publishes
+    // ticks to the CURRENT screen; this instance renders them in
+    // onBurstEvent below.
+    private val burstListener: (BurstEvent) -> Unit = { event ->
+        onBurstEvent(event)
+    }
+
 
     override fun onCreateAdmitted(savedInstanceState: Bundle?) {
         setContentView(R.layout.activity_network)
@@ -248,10 +256,11 @@ class NetworkActivity : SentinelActivity() {
                     }
                     // #158: attempt counter in the holder - option B keeps
                     // the row counting attempts; failures advance it too.
+                    // #409: onItemStarted publishes the tick from the
+                    // holder to the current subscriber - the launching
+                    // instance's own view write is gone, so a recreated
+                    // screen no longer freezes behind a dead writer.
                     KeyRegistrationBurst.onItemStarted(index + 1)
-                    // #98: main-confined, destroy-guarded view write; the
-                    // registration work itself is untouched.
-                    showKeyRegistrationProgress(index + 1, toImport.size)
                     try {
                         apiService.importXpub(pubKey, purpose)
                         registered++
@@ -281,8 +290,10 @@ class NetworkActivity : SentinelActivity() {
                 if (roundRan) {
                     // #158: every round states its own delta; the gate
                     // re-arms so the next retry round reports too.
+                    // #409: complete() publishes the Finished event, so
+                    // the row restore and the tally snackbar land on
+                    // whichever screen is live - not only the launcher.
                     KeyRegistrationBurst.complete(registered, failed, KeyRegistrationBurst.total)
-                    showKeyRegistrationResult(registered, failed, KeyRegistrationBurst.total)
                 } else {
                     KeyRegistrationBurst.markFinished()
                 }
@@ -290,31 +301,32 @@ class NetworkActivity : SentinelActivity() {
         }
     }
 
-    // #98: per-item progress on the Dojo status row - the surface the
-    // pairing flow already owns. Main-confined like every view write on
-    // this screen (setTorConnectionState precedent); destroy-guarded
-    // because the burst runs on apiScope and can outlive the screen by
-    // design - #85's containment semantics are untouched, only the view
-    // write skips when the screen is gone.
-    private fun showKeyRegistrationProgress(done: Int, total: Int) {
+    // #409: burst events render here. KeyRegistrationBurst publishes
+    // ticks and completions to whoever is subscribed, so the row advances
+    // on the CURRENT screen - not only on the instance that launched the
+    // burst, whose destroy-guarded writes no-op'd after a recreate behind
+    // the pairing sheet. Main-confined and destroy-guarded like every view
+    // write on this screen (#85 containment semantics untouched); the
+    // registration work itself is unchanged.
+    private fun onBurstEvent(event: BurstEvent) {
         runOnUiThread {
             if (isFinishing || isDestroyed) return@runOnUiThread
-            dojoConnectionStatus?.text = KeyRegistrationBurst.progressText(done, total)
-        }
-    }
-
-    // #98: completion report - restore the row, then surface the tally.
-    // Partial registration (per-item failures, or the #85 pairing-erased
-    // mid-loop skip) gets the retry note - the import screen's
-    // partial-tally vocabulary (#48/#125), same shape.
-    private fun showKeyRegistrationResult(registered: Int, failed: Int, total: Int) {
-        runOnUiThread {
-            if (isFinishing || isDestroyed) return@runOnUiThread
-            setDojoStatus()
-            this@NetworkActivity.showFloatingSnackBar(
-                findViewById(R.id.network_dojo_layout),
-                text = KeyRegistrationBurst.resultText(registered, failed, total)
-            )
+            when (event) {
+                is BurstEvent.Progress ->
+                    dojoConnectionStatus?.text =
+                        KeyRegistrationBurst.progressText(event.done, event.total)
+                is BurstEvent.Finished -> {
+                    // #98/#158: restore the row from holder state, then the
+                    // tally - partial rounds keep the retry note.
+                    setDojoStatus()
+                    this@NetworkActivity.showFloatingSnackBar(
+                        findViewById(R.id.network_dojo_layout),
+                        text = KeyRegistrationBurst.resultText(
+                            event.registered, event.failed, event.total
+                        )
+                    )
+                }
+            }
         }
     }
 
@@ -535,11 +547,20 @@ class NetworkActivity : SentinelActivity() {
      */
     override fun onResume() {
         super.onResume()
+        // #409: attach BEFORE the first render so no tick can land between
+        // the subscribe and the snapshot below; a mid-burst arrival gets
+        // the current count immediately from subscribe's snapshot event.
+        KeyRegistrationBurst.subscribe(burstListener)
         setNetworkStatus()
         setDojoStatus()
     }
 
     override fun onDestroy() {
+        // #409: detach - a destroyed instance must not receive view
+        // writes (the guard inside onBurstEvent is the backstop; this is
+        // the clean exit). The burst itself keeps running on apiScope by
+        // design (#85).
+        KeyRegistrationBurst.unsubscribe(burstListener)
         super.onDestroy()
     }
 
