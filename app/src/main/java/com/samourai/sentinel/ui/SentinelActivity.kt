@@ -137,8 +137,7 @@ open class SentinelActivity : AppCompatActivity(), SwipeBackActivityBase {
             .setTitle(resources.getString(R.string.permission_alert_dialog_title_camera))
             .setMessage(resources.getString(R.string.permission_dialog_message_camera))
             .setNegativeButton(resources.getString(R.string.no)) { _, _ ->
-                val bottomSheetFragment = AddNewPubKeyBottomSheet()
-                bottomSheetFragment.show(supportFragmentManager, bottomSheetFragment.tag)
+                onCameraRationaleDeclined()
             }
             .setPositiveButton(resources.getString(R.string.yes)) { _, _ ->
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -148,6 +147,22 @@ open class SentinelActivity : AppCompatActivity(), SwipeBackActivityBase {
                 }
             }
             .show()
+    }
+
+    /**
+     * #299: the rationale's NO used to show AddNewPubKeyBottomSheet
+     * unconditionally, so a first-run user who declined the camera on
+     * the way to Dojo setup was dumped on the xpub scanner and never
+     * offered the Dojo sheet - even though pairing via Paste needs no
+     * camera. The default below is the old behaviour verbatim, kept
+     * for callers whose ask really is a pubkey add
+     * (CollectionEditActivity's FAB); HomeActivity overrides it to
+     * route through the same connectingDojo branch its
+     * onRequestPermissionsResult already runs.
+     */
+    protected open fun onCameraRationaleDeclined() {
+        val bottomSheetFragment = AddNewPubKeyBottomSheet()
+        bottomSheetFragment.show(supportFragmentManager, bottomSheetFragment.tag)
     }
 
     /**
