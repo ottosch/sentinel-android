@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
+import androidx.core.widget.addTextChangedListener
 import androidx.fragment.app.FragmentTransaction
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -30,11 +31,14 @@ import com.samourai.sentinel.ui.dojo.validateDojoPairingPayload
 import com.samourai.sentinel.ui.home.HomeActivity
 import com.samourai.sentinel.ui.utils.AndroidUtil
 import com.samourai.sentinel.ui.utils.PrefsUtil
+import com.samourai.sentinel.ui.utils.enablePasteAction
+import com.samourai.sentinel.ui.utils.enableRevealToggle
 import com.samourai.sentinel.ui.utils.startDocumentPickerForResult
 import com.samourai.sentinel.ui.utils.showFloatingSnackBar
 import com.samourai.sentinel.ui.views.KdfProgressOverlay
 import com.samourai.sentinel.ui.views.LockScreenDialog
 import com.samourai.sentinel.util.ExportImportUtil
+import com.samourai.sentinel.util.PairingWords
 import com.samourai.sentinel.util.apiScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -117,6 +121,18 @@ class ImportBackUpActivity : SentinelActivity() {
         if (supportFragmentManager.findFragmentByTag(TAG_IMPORT_PIN) != null && importPinContinuation == null) {
             dismissImportPinDialog()
         }
+
+        // #282: the password field can be revealed (eye icon, which also
+        // switches PASSWORD/VISIBLE_PASSWORD) and pasted into (no
+        // suggestions, no autofill),
+        // and a wrong password is reported on the field itself, cleared as
+        // soon as the user edits it. This field also takes Sentinel backup
+        // passwords the user chose, so it is never reshaped as they type.
+        binding.importPasswordInputLayout.enableRevealToggle(binding.importPasswordInput)
+        binding.importPasswordInputLayout.enablePasteAction(binding.importPasswordInput)
+        binding.importPasswordInput.addTextChangedListener(afterTextChanged = {
+            binding.importPasswordInputLayout.error = null
+        })
 
         binding.importChoosePayloadBtn.setOnClickListener {
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
@@ -362,11 +378,9 @@ class ImportBackUpActivity : SentinelActivity() {
                             ExportImportUtil().decryptSentinel(payloadText, password)
                         }
                     } catch (e: Exception) {
-                        this@ImportBackUpActivity.showFloatingSnackBar(
-                            binding.importPayloadTextView.parent as ViewGroup,
-                            text = "Incorrect password, please try again.",
-                            duration = Snackbar.LENGTH_SHORT
-                        )
+                        // #282: inline, on the field, with the text kept.
+                        binding.importPasswordInputLayout.error =
+                            getString(R.string.backup_password_wrong)
                     }
 
                     kdfOverlay.dismiss()
@@ -461,10 +475,19 @@ class ImportBackUpActivity : SentinelActivity() {
                 val password = binding.importPasswordInput.text.toString()
                 viewModel.viewModelScope.launch(Dispatchers.Main + importExceptionHandler) {
                     val collection = withContext(Dispatchers.IO) {
+                        // #282: exactly as typed first. A pairing-format
+                        // payload's password is three list words, so only if
+                        // that fails is the canonical form (trimmed,
+                        // lowercased, spaces as "-") tried as well.
                         ExportImportUtil().decryptAndParseSamouraiPayload(payloadText, password)
+                            ?: PairingWords.normalize(password)
+                                .takeIf { it.isNotEmpty() && it != password }
+                                ?.let { ExportImportUtil().decryptAndParseSamouraiPayload(payloadText, it) }
                     }
                     if (collection == null) {
                         setImportBusy(false)
+                        binding.importPasswordInputLayout.error =
+                            getString(R.string.backup_password_wrong)
                         this@ImportBackUpActivity.showFloatingSnackBar(
                             binding.importPayloadTextView.parent as ViewGroup,
                             text = "Import failed - check the password, or use the wallet's Pairing tool for watch-only setup.",

@@ -465,6 +465,18 @@
     <string name="send_error_no_funds" translatable="false">No spendable coins in this collection</string>
     <string name="send_error_insufficient_funds" translatable="false">More than the spendable balance</string>
     <string name="send_error_cannot_compose" translatable="false">Cannot build a transaction from these inputs</string>
+    <!-- #282: one-time pairing password / backup password entry -->
+    <string name="pairing_password_title" translatable="false">Enter one time pairing password</string>
+    <string name="pairing_password_hint" translatable="false">Pairing password</string>
+    <string name="pairing_password_helper" translatable="false">Three words, as shown in your wallet</string>
+    <string name="pairing_password_decrypt" translatable="false">Decrypt</string>
+    <string name="pairing_password_paste" translatable="false">Paste</string>
+    <string name="password_show" translatable="false">Show password</string>
+    <string name="password_hide" translatable="false">Hide password</string>
+    <string name="pairing_password_not_a_word" translatable="false">Not a pairing word: \'%1$s\'</string>
+    <string name="pairing_password_too_many" translatable="false">A pairing password has three words</string>
+    <string name="pairing_password_wrong" translatable="false">Wrong password. Check the three words and try again</string>
+    <string name="backup_password_wrong" translatable="false">Incorrect password, please try again</string>
     <!-- #190: manual coin control -->
     <string name="send_error_selection_insufficient" translatable="false">Selected coins do not cover the amount plus fee</string>
     <string name="send_error_selection_blocked" translatable="false">A selected coin is now marked do-not-spend. Review your coin selection</string>
