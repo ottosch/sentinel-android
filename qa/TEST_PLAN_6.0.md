@@ -175,7 +175,7 @@ The PIN is 5–8 digits (AccessFactory). Lock timeout is 15 min. No wrong-attemp
 | SYNC-03 | Pull to refresh (known) | Collection | Pull down | Triggers a sync with a spinner **(known: does nothing)** | P1 | M | |
 | SYNC-04 | UTXO ⋮ Refresh | UTXO screen | ⋮ → Refresh | Re-fetches | P2 | M | |
 | SYNC-05 | Failed sync reported as failed (known) | Tor SOCKS failing (TTL expired) | Sync | Error shown. Never "success" **(known)** | P0 | E | |
-| SYNC-06 | Total while syncing (known) | Sync in progress | Look at home | Last known total, not blank. Fiat not "00.00" **(known)** | P1 | M | |
+| SYNC-06 | Total while syncing | Sync in progress | Look at home | Last known total, not blank. Fiat not "00.00" (fixed; passes on dojobay.6 and .8) | P1 | M | |
 | SYNC-07 | Pending incoming tx | Send tBTC to a watched address | Wait | Yellow Pending row with the amount. Then it confirms | P0 | E | ✓ |
 | SYNC-08 | Outgoing tx shown | After a broadcast | Wait | Outgoing amount, fee, change handled. Balance drops by amount + fee | P0 | E | ✓ |
 | SYNC-09 | Key tabs | Multi-key collection | All, then each key tab | Header and list filtered per key | P0 | M | |

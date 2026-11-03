@@ -147,7 +147,7 @@ UTXO-01/02/03/04/05/07 · SEND-01/02/04/05/06/07/08/09/10/11/13/16/17/18 · PSBT
 ROB-07/11 · SET-01/05/06/12/15 · COL-01..09/11/12/14..19/24.
 
 Expected failures (tagged `known`): BC-09, UTXO-05, PIN-17 (N4), COL-12b (N9). SYNC-06 was `known` on
-8cfb74d and passes from v5.1.3-dojobay.6. See `../README.md` for the full list of failures to expect.
+8cfb74d; the tag was dropped after it passed on v5.1.3-dojobay.6 and dojobay.8. See `../README.md` for the full list of failures to expect.
 
 Not automated, and why:
 | Cases | Reason |

@@ -5,11 +5,9 @@ tags:
 - p1
 - home
 - sync
-- known
 properties:
-  plan: 'SYNC-06: Home total while syncing is not blank and fiat is not 00.00 (known)'
-  expect: fail
-  known: 'Known: blank total and "00.00" fiat until the first sync (RESULTS SYNC-06)'
+  plan: 'SYNC-06: Home total while syncing is not blank and fiat is not 00.00'
+  expect: pass
 ---
 - runFlow: ../subflows/lock.yaml
 - runFlow: ../subflows/unlock.yaml

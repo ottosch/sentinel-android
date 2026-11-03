@@ -29,8 +29,8 @@ qa/
                             make_dummy_backup.py, qr_decode.py, hier.py
     data/*.env.example      templates for the generated throwaway test data (real *.env is git-ignored)
   docs/
-    DEV_BOT_SETUP_PROMPT.md         a prompt that has an AI assistant (e.g. Grok Bot) set up the emulator,
-                                    build, helpers and release watch, then test the same way
+    SETUP.md                        step-by-step setup of the emulator, build, helpers and release watch,
+                                    then testing the same way (by hand or with an AI coding assistant)
 ```
 
 **Edit flows in `maestro/gen/flows_*.py`, then run `python3 maestro/gen/build.py`.** Don't hand-edit
@@ -38,8 +38,8 @@ qa/
 
 ## How to run
 
-1. **Set up the environment.** Follow [`docs/DEV_BOT_SETUP_PROMPT.md`](docs/DEV_BOT_SETUP_PROMPT.md)
-   (paste it into your own assistant, or follow it by hand). It covers the JDK, Android SDK, the
+1. **Set up the environment.** Follow [`docs/SETUP.md`](docs/SETUP.md)
+   (by hand, or give it to an AI coding assistant to carry out). It covers the JDK, Android SDK, the
    `sentinel30atd` AVD (API 30 ATD x86_64, 1080×2340 @440 dpi, started with `-grpc 8554`), the build,
    pairing your own testnet Dojo, and app-data backup/restore. Then follow
    [`maestro/README.md`](maestro/README.md) → Setup for Maestro 2.11.0, the helper venv and the secrets file.
@@ -101,15 +101,17 @@ Timings from the v5.1.3-dojobay.6 run (KVM, batches of 6): 13–171 s per flow, 
 - **Clipboard and QR flows need the emulator gRPC** (`-grpc 8554` and `scripts/helper.py`); they fail on
   a real device. Everything else works on a device.
 
-## Expected failures (as of v5.1.3-dojobay.6, tag commit 0385bc2c)
+## Expected failures (as of v5.1.3-dojobay.6, tag commit 0385bc2c; re-baselined on dojobay.8)
 
 Last full run (smoke set of 25, then the other 61; `00-SETUP` and `ZZ-RESTORE` run in both, 84 distinct
 flows): **56 pass, 25 fail, 4 expected-fail, 1 unexpected pass**.
 
+Re-baseline on v5.1.3-dojobay.8 (2026-11-01): `SYNC-06` passed on .8 and is no longer tagged `known`
+(it was an unexpected pass from .6). `SET-01` stays a failure (#340) until #352 is in a build.
+
 | Flows | Why |
 |---|---|
 | `BC-09`, `UTXO-05`, `PIN-17`, `COL-12b` | Tagged `known`: open app issues kept as regression cases (expected-fail) |
-| `SYNC-06` | Tagged `known` on 8cfb74d; **passes** from .6 (unexpected pass, the tag can be dropped) |
 | `SET-01` | App bug #340 (Export Sentinel Backup shows no options) |
 | `SYNC-09`, `RCV-06`, `RCV-08`, `SEND-04` | Flaky / flow-side (above) |
 | `SYNC-04`, `UTXO-03`, `SEND-07`, `SEND-16` | Same failure on 8cfb74d (pre-existing; SEND-07: no dust guard for a 300-sat output; SEND-16: available amount doesn't change when switching Cold Storage keys) |
