@@ -244,7 +244,7 @@ flow('SYNC-03', ['smoke','p1','home','sync'], 'Pull to refresh triggers a sync w
 - takeScreenshot: SYNC-03-done
 ''')
 
-flow('SYNC-06', ['p1','home','sync','known'], 'Home total while syncing is not blank and fiat is not 00.00 (known)', '''- runFlow: ../subflows/lock.yaml
+flow('SYNC-06', ['p1','home','sync'], 'Home total while syncing is not blank and fiat is not 00.00', '''- runFlow: ../subflows/lock.yaml
 - runFlow: ../subflows/unlock.yaml
 - runFlow: ../subflows/dismiss_anr.yaml
 - assertVisible: { id: "fab" }
@@ -257,7 +257,7 @@ flow('SYNC-06', ['p1','home','sync','known'], 'Home total while syncing is not b
     id: "exchangeRateTxt"
     text: "00\\\\.00.*"
     label: "Fiat is not 00.00"
-''', expect='fail', known='Known: blank total and "00.00" fiat until the first sync (RESULTS SYNC-06)')
+''')
 
 flow('TOOL-01', ['smoke','p2','tools'], 'Tools menu lists Sweep and Broadcast', '''- runFlow: ../subflows/open_tools.yaml
 - assertVisible: { text: "Sweep Private Key" }

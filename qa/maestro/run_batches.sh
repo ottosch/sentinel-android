@@ -38,18 +38,20 @@ guard() {
     echo "$prefs" | grep -q '<boolean name="scramblePin" value="false"' && echo "GUARD WARN before $1: scramblePin=false"
     echo "[guard] prefs OK before $1 (adb)"; return 0
   fi
-  "$SUITE/run.sh" "${PASS[@]}" -n "$1-guard" "$SUITE/subflows/baseline_guard.yaml" > "/tmp/$1-guard.log" 2>&1 \
+  "$SUITE/run.sh" "${PASS[@]}" -n "$1-guard" "$SUITE/subflows/baseline_guard.yaml" > "$LOGDIR/$1-guard.log" 2>&1 \
     && { echo "[guard] UI OK before $1 (Maestro guard flow)"; return 0; }
-  echo "GUARD FAILED before $1: Street mode on / balances masked, or the guard flow could not run (see /tmp/$1-guard.log)."; return 1
+  echo "GUARD FAILED before $1: Street mode on / balances masked, or the guard flow could not run (see $LOGDIR/$1-guard.log)."; return 1
 }
+# Console logs stay under runs/ (gitignored, chmod 700) instead of /tmp.
+LOGDIR="$SUITE/runs/console"; ( umask 077; mkdir -p "$LOGDIR" ); chmod 700 "$LOGDIR"
 mkdir -p "$SUITE/runs"; LIST="$SUITE/runs/$LABEL-batches.txt"; : > "$LIST"; i=0; n=1
 while [ $i -lt ${#IDS[@]} ]; do
   files=(); for id in "${IDS[@]:i:B}"; do files+=("$SUITE/flows/$id.yaml"); done
   tag=$(printf "%s-b%02d" "$LABEL" $n)
   guard "$tag" || { echo "Stopping: next batch would start at ${IDS[$i]}. Fix the app state (run flows/ZZ-RESTORE.yaml), then resume with -s ${IDS[$i]}."; exit 3; }
-  "$SUITE/run.sh" "${PASS[@]}" -n "$tag" "${files[@]}" > "/tmp/$tag.log" 2>&1
+  "$SUITE/run.sh" "${PASS[@]}" -n "$tag" "${files[@]}" > "$LOGDIR/$tag.log" 2>&1
   ls -td "$SUITE"/runs/*-"$tag" | head -1 >> "$LIST"
-  grep "^\[" "/tmp/$tag.log"
+  grep "^\[" "$LOGDIR/$tag.log"
   i=$((i+B)); n=$((n+1))
 done
 echo "ALL BATCHES DONE"

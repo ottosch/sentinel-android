@@ -1,31 +1,33 @@
-# Sentinel Android test setup: prompt for your own Grok Bot
+# Sentinel Android test setup
 
-**For the developer:** paste everything under "Prompt" into a chat with your own Grok Bot. It sets up an Android emulator test environment on its computer, builds Sentinel's staging app from the DojoBay fork, and then tests the same way the maintainer's QA bot does.
+This guide sets up an Android emulator test environment on your computer, builds Sentinel's staging app from the DojoBay fork, and then tests it the same way the maintainer's QA runs do.
 
-**You supply these yourself, and the bot will ask for them when it needs them:**
-- **Your own Dojo** running on testnet4 and reachable over Tor, plus its pairing payload and password. You do the pairing on the emulator; the bot never gets anyone else's.
+You can follow the steps by hand, or give the whole file to an AI coding assistant to carry out. The same rules apply either way. If an assistant does it, it should ask you for the items below when it needs them, and you keep control of every secret and every signature.
+
+**You supply these yourself:**
+- **Your own Dojo** running on testnet4 and reachable over Tor, plus its pairing payload and password. Pair only with your own Dojo, never anyone else's.
 - **Testnet4 wallets** to watch: an Ashigaru testnet wallet for the pairing import, and/or a vpub. Testnet coins only.
-- **A PIN** for the app, which the bot keeps in a private file.
-- **Signing:** you sign any transactions in your own wallet and hand back the signed hex or QR.
+- **A PIN** for the app, kept in a private file.
+- **Signing:** you sign any transactions in your own wallet, outside the test setup, and use the signed hex or QR.
 - **The Maestro suite and test plan:** they're in this repo under `qa/` (see `qa/README.md`).
-- **Optional:** a GitHub login on the bot's computer. It isn't needed for public releases.
+- **Optional:** a GitHub login on the test computer. It isn't needed for public releases.
 
 ---
 
-## Prompt
+## Steps
 
-You're going to be my Android tester for **Sentinel**, a watch-only Bitcoin wallet. Use the DojoBay fork **`tetragrammalol/sentinel-android-dojobay`**. Set everything up on your own computer, run it headless, and work through the steps below in order. Tell me when each step is done, or if anything blocks you.
+You'll be testing **Sentinel**, a watch-only Bitcoin wallet. Use the DojoBay fork **`tetragrammalol/sentinel-android-dojobay`**. Set everything up on your own computer, run the emulator headless, and work through the steps below in order. Note when each step is done, and anything that blocks you.
 
 ### Rules (these apply all the time)
 1. **Testnet only** (testnet4). Never use mainnet keys or funds.
 2. **Never print, log, echo or screenshot** the app PIN, the Dojo pairing payload, its password or the Dojo API key. Keep each one in its own `chmod 600` file in a `chmod 700` folder, and load them into environment variables only when a script needs them. Before you save a logcat, check it for secrets and redact anything you find.
-3. **Redact onion addresses** as `<dojo>.onion` everywhere: notes, logs you keep, issue drafts and chat.
-4. **Only broadcast a transaction I've signed and handed to you,** and only when I tell you to. You can compose PSBTs, but you never sign.
-5. **Don't change the app's Dojo pairing** (re-pair, remove it or edit it) unless I ask you to.
+3. **Redact onion addresses** as `<dojo>.onion` everywhere: notes, logs you keep, issue drafts, chat and screenshots you share.
+4. **Only broadcast a transaction you've signed in your own wallet,** and only when you mean to. Compose PSBTs in the test setup, but never sign there.
+5. **Don't change the app's Dojo pairing** (re-pair, remove it or edit it) unless a test needs it and you've taken a backup.
 6. **Back up the app's data before any risky test,** such as an upgrade, an erase, a restore, process death or a stress run, and know how to restore it (step 5).
-7. **Don't post anything to GitHub.** Write each issue as a ready-to-paste draft for `tetragrammalol/sentinel-android-dojobay`. Use real issue numbers you've checked and no placeholders, and I'll post it myself.
+7. **Draft issues before posting them.** Write each issue as a draft for `tetragrammalol/sentinel-android-dojobay` and read it through for secrets before you post it. Use real issue numbers you've checked and no placeholders. An assistant should never post to GitHub itself.
 8. **A follow-up to a closed issue becomes a new issue** that links to the old one, such as "Follow-up to #NNN", using the real number.
-9. **Don't start testing a new pre-release until I tell you to.**
+9. **Don't start testing a new pre-release until you've decided to.** An assistant should wait for your go-ahead.
 
 ### Setup
 1. **Tools.** Install these in a working folder on your computer:
@@ -64,7 +66,7 @@ You're going to be my Android tester for **Sentinel**, a watch-only Bitcoin wall
    Use it for three-button and gesture navigation, and for the API 34 permission cases. Switch between the two with `adb shell cmd overlay enable com.android.internal.systemui.navbar.threebutton` or `…navbar.gestural`. Only run one emulator at a time if memory is tight.
 
 4. **Build and install the app.**
-   - Clone `https://github.com/tetragrammalol/sentinel-android-dojobay`, check out the commit or tag I give you (default: `master`), and write `sdk.dir` to `local.properties`.
+   - Clone `https://github.com/tetragrammalol/sentinel-android-dojobay`, check out the commit or tag you want to test (default: `master`), and write `sdk.dir` to `local.properties`.
    - Run `./gradlew :app:assembleStagingDebug` (Gradle 8.14.3 through the wrapper).
    - The APK is under `app/build/outputs/apk/staging/debug/`. Record its SHA-256, the commit, `versionName` and `versionCode`.
    - Install it with `adb install -r <apk>`. The package is `com.samourai.sentinel.staging`.
@@ -79,24 +81,24 @@ You're going to be my Android tester for **Sentinel**, a watch-only Bitcoin wall
    - **Backup/restore:** as root, force-stop the app and tar `databases`, `shared_prefs`, `files` and `app_wallet` from `/data/data/com.samourai.sentinel.staging` into your private folder. To restore, push the tar back, extract it, then fix ownership to the app's UID and run `restorecon`.
    - **Logcat:** capture `adb logcat` for the app's PID per test, then redact it.
 
-6. **Pairing and wallets.** Ask me to do the Dojo pairing myself:
+6. **Pairing and wallets.** Do the Dojo pairing yourself:
    1. Start the app.
    2. Choose Testnet.
-   3. Enter the Dojo pairing payload and password through a private form or file, never through chat.
-   4. Add my test wallets: the Ashigaru pairing import and/or a vpub.
+   3. Enter the Dojo pairing payload and password directly in the app. Never paste them into chat, issues or logs.
+   4. Add your test wallets: the Ashigaru pairing import and/or a vpub.
 
    After that, check that Tor reaches "Enabled", the Dojo connects, and the balances sync. Take a backup straight away. That's your known-good restore point.
 
 ### How to test
-7. **Test plan.** Use `qa/TEST_PLAN_6.0.md` from the repo (at the commit you're testing), unless I give you a newer one.
+7. **Test plan.** Use `qa/TEST_PLAN_6.0.md` from the repo (at the commit you're testing), unless you have a newer one.
    - Cases are grouped by area: INS, UPG, PAIR, DOJO, TOR, PIN, COL, SYNC, UTXO, RCV, SEND, PSBT, BC, TOOL, SET, NOT, SEC, ROB and MON.
-   - Each case is tagged P0/P1/P2. **M** marks cases for Maestro, **E** marks exploratory cases, and **✓** (the "Human" column) marks cases that need me.
+   - Each case is tagged P0/P1/P2. **M** marks cases for Maestro, **E** marks exploratory cases, and **✓** (the "Human" column) marks cases that need a person, such as signing.
    - Run P0 first, then the smoke subset across both emulators, then P1/P2, and then monkey stress runs (`adb shell monkey` with fixed seeds).
 
 8. **Maestro.** Install the Maestro CLI (`curl -fsSL https://get.maestro.mobile.dev | bash`) and point it at the running emulator. Use the suite in `qa/maestro/` of the repo exactly as provided (follow `qa/maestro/README.md` for setup, and run it with `run_batches.sh`). Don't rewrite it; propose changes as a PR instead.
    - Maestro runs the repeatable **M** cases on every build.
-   - You test the **E** cases by driving the app with adb and UI dumps.
-   - Cases that need me (signing, real pairing, mainnet) come to me.
+   - Test the **E** cases by driving the app with adb and UI dumps.
+   - Cases that need a person (signing, real pairing, mainnet) are done by you, outside any automation.
 
    Inject the PIN into flows from an environment variable, never as a literal in a flow file.
 
@@ -112,18 +114,18 @@ You're going to be my Android tester for **Sentinel**, a watch-only Bitcoin wall
 10. **Transactions.** For a send test:
     1. Compose the PSBT in the app.
     2. Copy it out and decode it to check inputs, outputs, change derivation and fee.
-    3. Give it to me to sign.
-    4. Broadcast only the signed hex or QR I return, through **Tools → Broadcast Signed Transaction**.
+    3. Sign it in your own wallet.
+    4. Broadcast only that signed hex or QR, through **Tools → Broadcast Signed Transaction**.
 
     Testnet4 confirmations can take a day or more, so check back on them later rather than waiting.
 
 ### Watching for releases
-11. **Release watch.** Set up a routine that checks `https://api.github.com/repos/tetragrammalol/sentinel-android-dojobay/releases` every 2 hours, including pre-releases.
+11. **Release watch.** Set up a scheduled job that checks `https://api.github.com/repos/tetragrammalol/sentinel-android-dojobay/releases` every 2 hours, including pre-releases.
     - Record the releases you've already seen in a small state file.
-    - When a new tag appears, tell me the tag, the date (in my time zone), the release notes and the APK asset.
-    - **Don't download or test it until I say so.**
+    - When a new tag appears, report the tag, the date (in your time zone), the release notes and the APK asset.
+    - **Don't download or test it until you've decided to.**
 
-When the setup is done, send me a short summary covering:
+When the setup is done, check and note:
 - the tool versions you installed
 - both AVDs and their settings
 - the build commit, APK SHA-256 and versionName
@@ -131,4 +133,4 @@ When the setup is done, send me a short summary covering:
 - whether Maestro is installed and the suite is in place
 - that the release watch is running
 
-Then wait for my go-ahead before you start a test run.
+Then decide when to start a test run. An assistant should wait for your go-ahead.
