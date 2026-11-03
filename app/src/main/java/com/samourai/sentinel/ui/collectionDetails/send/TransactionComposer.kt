@@ -44,6 +44,15 @@ class TransactionComposer {
 
     data class ComposeException(private val displayMessage: String) : Exception(displayMessage)
 
+    /**
+     * #190: a pinned (explicit) input set that cannot cover the amount plus
+     * the fee at the selected rate. Separate from [ComposeException] so the
+     * send screen can say "your selected coins are not enough" instead of
+     * the undifferentiated cannot-compose message.
+     */
+    class InsufficientSelectionException(val selectedSats: Long, val requiredSats: Long) :
+        Exception("Selected coins ($selectedSats sats) do not cover amount + fee ($requiredSats sats)")
+
     private var changeECKey: ECKey? = null
     private var changeIndex: Int? = null
     private var psbt: PSBT? = null
@@ -73,11 +82,23 @@ class TransactionComposer {
         this.selectPubKeyModel = selectPubKeyModel
     }
 
+    /**
+     * Builds the PSBT.
+     *
+     * #190: with [explicitSelection] false (the default) [inputUtxos] is a
+     * candidate pool and the automatic selection below picks from it. With
+     * [explicitSelection] true the caller has pinned the input set: every
+     * coin in [inputUtxos] is spent and nothing else is, so the automatic
+     * passes are skipped. Fee, change and dust are computed the same way
+     * against whichever set was selected, and the PSBT is assembled by the
+     * same SendFactory.makeTransaction call either way.
+     */
     suspend fun compose(
         inputUtxos: ArrayList<Utxo>,
         inputAddress: String,
         inputFee: Long,
-        inputAmount: Double
+        inputAmount: Double,
+        explicitSelection: Boolean = false
     ): Boolean {
         composeMutex.withLock {
             if (selectPubKeyModel == null) {
@@ -100,6 +121,12 @@ class TransactionComposer {
             val utxos: ArrayList<UTXO> = arrayListOf();
             for (utxoCoin in inputUtxos) {
                 if (!selectPubKeyModel.any{it!!.pubKey == utxoCoin.pubKey}) {
+                    // #190: a pinned coin outside the account being spent
+                    // from must not be dropped quietly - the PSBT would then
+                    // spend a different set than the one the user chose.
+                    if (explicitSelection) {
+                        throw ComposeException("Pinned coin is not in the selected account")
+                    }
                     continue
                 } else {
                     val u = UTXO()
@@ -113,8 +140,22 @@ class TransactionComposer {
             Collections.sort(utxos, UTXO.UTXOComparator())
             utxos.reverse()
             receivers[address] = BigInteger.valueOf(amount.toLong())
+            if (explicitSelection) {
+                // #190: the pinned set is the selection. No threshold loops.
+                if (utxos.isEmpty()) {
+                    throw ComposeException("No coins selected")
+                }
+                for (u in utxos) {
+                    selectedUtxos.add(u)
+                    totalValueSelected += u.value
+                }
+                if (totalValueSelected < amount.toLong()) {
+                    throw InsufficientSelectionException(totalValueSelected, amount.toLong())
+                }
+            }
             // get smallest 1 UTXO > than spend + fee + dust
             for (u in utxos) {
+                if (explicitSelection) break
                 val outpointTypes: Triple<Int, Int, Int> =
                     FeeUtil.getInstance().getOutpointCount(Vector(u.outpoints))
                 if (u.value >= amount + bDust.toLong() + FeeUtil.getInstance().estimatedFeeSegwit(
@@ -135,7 +176,7 @@ class TransactionComposer {
                 }
             }
 
-            if (selectedUtxos.size == 0) {
+            if (selectedUtxos.size == 0 && !explicitSelection) {
                 // sort in descending order by value
                 Collections.sort(utxos, UTXO.UTXOComparator())
                 var selected = 0
@@ -167,7 +208,10 @@ class TransactionComposer {
 
             change = (totalValueSelected - (amount + fee!!.toLong())).toLong()
 
-            if (change > 0L && change < bDust.toLong()) {
+            // #190: this pre-fee check is skipped for a pinned set - a set
+            // that covers the amount but not the fee would read as "dust"
+            // here. The post-fee checks below cover both outcomes.
+            if (!explicitSelection && change > 0L && change < bDust.toLong()) {
                 throw ComposeException("Change is dust 1")
             }
 
@@ -202,6 +246,14 @@ class TransactionComposer {
             }
 
             change = (totalValueSelected - (amount + fee.toLong())).toLong()
+            if (explicitSelection && change < 0L) {
+                // #190: the auto passes can always reach for another coin;
+                // a pinned set cannot. Say so rather than reporting dust.
+                throw InsufficientSelectionException(
+                    totalValueSelected,
+                    (amount + fee.toLong()).toLong()
+                )
+            }
             minerFeeChannel.send(fee.toLong())
             //
             //                    Log.d("SendActivity", "change:" + change);

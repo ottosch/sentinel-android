@@ -465,5 +465,21 @@
     <string name="send_error_no_funds" translatable="false">No spendable coins in this collection</string>
     <string name="send_error_insufficient_funds" translatable="false">More than the spendable balance</string>
     <string name="send_error_cannot_compose" translatable="false">Cannot build a transaction from these inputs</string>
+    <!-- #190: manual coin control -->
+    <string name="send_error_selection_insufficient" translatable="false">Selected coins do not cover the amount plus fee</string>
+    <string name="send_error_selection_blocked" translatable="false">A selected coin is now marked do-not-spend. Review your coin selection</string>
+    <string name="send_error_selection_missing" translatable="false">A selected coin is no longer unspent. Review your coin selection</string>
+    <string name="coin_picker_title" translatable="false">Coin control</string>
+    <string name="coin_picker_inputs_label" translatable="false">Inputs</string>
+    <string name="coin_picker_mode_auto" translatable="false">Automatic</string>
+    <string name="coin_picker_mode_pinned" translatable="false">%1$d pinned · %2$s BTC</string>
+    <string name="coin_picker_choose" translatable="false">Choose coins</string>
+    <string name="coin_picker_none_selected" translatable="false">No coins selected. Select the coins to spend, or keep automatic selection</string>
+    <string name="coin_picker_confirm" translatable="false">Spend selected (%d)</string>
+    <string name="coin_picker_use_auto" translatable="false">Use automatic selection</string>
+    <string name="coin_picker_do_not_spend" translatable="false">Do not spend</string>
+    <string name="coin_picker_frozen_refused" translatable="false">This coin is marked do-not-spend. Unmark it in UTXOs before spending it</string>
+    <string name="coin_picker_selection_refused" translatable="false">Your coins changed while picking. Review the selection and try again</string>
+    <string name="coin_picker_cospend_warning" translatable="false">Warning: this selection spends Bad Bank coins together with other coins. The transaction links them on-chain</string>
     <string name="no_file_picker_available" translatable="false">No file picker is available on this device.</string>
 </resources>
