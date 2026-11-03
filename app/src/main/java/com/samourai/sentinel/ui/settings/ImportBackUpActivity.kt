@@ -901,16 +901,24 @@ class ImportBackUpActivity : SentinelActivity() {
                         showImportButton(true)
                         showFloatingSnackBar(binding.importStartBtn, text = "Invalid payload")
                     }
-                    // #404 (decision 7): the calm preview line replaces the
-                    // raw JSON dump. Rendered only for CLASSIFIED envelopes:
-                    // a parseable-but-unrecognized object must not read as
-                    // "Valid backup file" - the else branch's snackbar is
-                    // its only verdict. Both entry points (file pick, paste)
-                    // clear the view before validating, so an invalid
-                    // re-pick leaves the line blank, never stale.
+                    // #404 (decision 7)'s calm preview line stays; the raw
+                    // envelope returns BENEATH it. The pre-#405 dump
+                    // carried real distinguishing value (format, kdf era,
+                    // app version, blob size) that a date-only line cannot;
+                    // an old backup's date-only line reads as "the data is
+                    // gone". The dump truncates the base64 blob to head +
+                    // size, and nothing decrypts - every value is
+                    // envelope-level, the ciphertext stays ciphertext.
+                    // Rendered only for CLASSIFIED envelopes: a parseable-
+                    // but-unrecognized object must not read as a valid
+                    // backup - the else branch's snackbar is its only
+                    // verdict. Both entry points (file pick, paste) clear
+                    // the view before validating, so an invalid re-pick
+                    // leaves the card blank, never stale.
                     if (payloadObject != null) {
                         binding.importPayloadTextView.text =
-                            backupPreviewLine(json, backupPreviewDateFormat)
+                            backupPreviewLine(json, backupPreviewDateFormat) +
+                                "\n\n" + backupEnvelopeDump(json)
                     }
                 }
             } catch (e: Exception) {
