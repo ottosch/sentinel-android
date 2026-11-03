@@ -220,6 +220,14 @@ class HomeViewModel : ViewModel() {
      * -> honest terminal state, #47 coalescing guards stacking). Runs on
      * endpointPoke dispatch so the pref write has landed before reads.
      *
+     * #411: the retryable flavor is just as obsolete once an endpoint
+     * write lands. Pairing over a standing "Could not reach the server."
+     * matched no arm before - the poke fired and the stale banner stood
+     * until a manual pull-to-refresh cleared it. Any standing Failed is
+     * now spent on a quiet round: the poke only fires on an endpoint pref
+     * write, so a user-earned Failed on an unchanged setup keeps standing
+     * until its Retry (#174).
+     *
      * #186: the vanish direction. computeIndicator() is stateless and its
      * Success arm is evaluated BEFORE the no-endpoint RED arm, so a
      * standing Success from the paired era keeps the dot GREEN after
@@ -239,7 +247,8 @@ class HomeViewModel : ViewModel() {
             sync?.javaClass?.simpleName
         )
         when {
-            prefsUtil.isAPIEndpointEnabled() && sync is SyncState.Failed && !sync.retryable -> {
+            // #411: any standing Failed - retryable or not; see KDoc.
+            prefsUtil.isAPIEndpointEnabled() && sync is SyncState.Failed -> {
                 fetchBalance(userInitiated = false)
             }
             !prefsUtil.isAPIEndpointEnabled() && sync is SyncState.Success -> {
