@@ -738,6 +738,21 @@ class TxHistoryPagingTest {
         assertTrue(start >= 0 && end > start)
         val fn = repo.substring(start, end)
         assertTrue(fn.contains("val autoLabels = prefsUtil.whirlpoolAutoLabels == true"))
+        // #425 sibling pin: the entropy capture must NOT be gated on
+        // the auto-labels toggle - the 87d0958a coupling stranded
+        // toggle-off installs with zero rows. Keyed on the kill
+        // switch only.
+        val gateAt = fn.indexOf("val entropyTxids =")
+        assertTrue("entropyTxids declaration not found in fetchFromServer", gateAt >= 0)
+        val gate = fn.substring(gateAt, gateAt + 200)
+        assertTrue(
+            "entropy gate must test ENTROPY_FEATURE_ENABLED",
+            gate.contains("if (ENTROPY_FEATURE_ENABLED)"),
+        )
+        assertFalse(
+            "entropy gate must not test the auto-labels toggle (#425)",
+            gate.contains("autoLabels"),
+        )
         assertTrue(fn.contains("if (!autoLabels)"))
         assertTrue(fn.contains("fetchRemainingTxHistory("))
         assertTrue(fn.contains("getHashesForPub("))

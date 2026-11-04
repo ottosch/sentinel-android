@@ -127,8 +127,15 @@ class TransactionsRepository {
             // and only when that page is short of n_tx or this pub
             // already holds rows past the page.
             val autoLabels = prefsUtil.whirlpoolAutoLabels == true
+            // #425: the ingest is keyed on its own kill switch, never
+            // on the auto-labels toggle. The coupling was 87d0958a
+            // convenience ("beside the whirlpool block, same flag"),
+            // not a design call: toggle-off installs never rowed any
+            // tx. Toggle off still captures the wallet-page window
+            // here; walking older pages stays the toggle's own /txs
+            // cost decision (TxHistoryPaging).
             val entropyTxids =
-                if (ENTROPY_FEATURE_ENABLED && autoLabels) LinkedHashSet<String>() else null
+                if (ENTROPY_FEATURE_ENABLED) LinkedHashSet<String>() else null
             val jobs: ArrayList<Deferred<Response>> = arrayListOf()
             collection.pubs.forEach {
                 val item = apiScope.async {
@@ -489,6 +496,8 @@ class TransactionsRepository {
             // already have returned; the log is the telemetry).
             // #105: dead code while the kill switch is OFF - kept
             // intact as the re-enable point (see EntropyFeature.kt).
+            // #425: keyed only on that kill switch, never on the
+            // auto-labels toggle (see the capture above).
             entropyTxids?.let { captured ->
                 apiScope.launch {
                     val entropyResult = txEntropyIngest.ingestTxids(captured)
@@ -514,6 +523,18 @@ class TransactionsRepository {
             Timber.e(e)
             throw e
         }
+    }
+
+    /**
+     * #425: on-demand entropy ingest for a single bare txid, called
+     * by the tx-details sheet's PENDING row. Thin pass-through to
+     * txEntropyIngest.ingestTxids: the cache guard means a rowed
+     * txid is a no-op, so the sheet never recomputes a verdict;
+     * fetch/engine containment and the row shapes are the ingest's
+     * own. Masked logging only (#264/#96).
+     */
+    suspend fun ingestEntropyFor(txids: List<String>) {
+        txEntropyIngest.ingestTxids(txids)
     }
 
     private fun keepTransactionWithVariousPubkeys(transactions: ArrayList<Tx>): ArrayList<Tx> {

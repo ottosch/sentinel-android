@@ -93,6 +93,8 @@ class TransactionsDetailsBottomSheet() : GenericBottomSheet() {
     private val prefsUtil: PrefsUtil by inject(PrefsUtil::class.java)
     private val exchangeRateRepository: ExchangeRateRepository by inject(ExchangeRateRepository::class.java)
     private val labelRepository: LabelRepository by inject(LabelRepository::class.java)
+    private val transactionsRepository: com.samourai.sentinel.data.repository.TransactionsRepository
+        by inject(com.samourai.sentinel.data.repository.TransactionsRepository::class.java)
     private val txEntropyDao: TxEntropyDao by inject(TxEntropyDao::class.java)
     var job: Job? = null
 
@@ -128,56 +130,42 @@ class TransactionsDetailsBottomSheet() : GenericBottomSheet() {
         // by bare txid (same expression as the label row — the two can
         // never disagree about which tx this is). States are engine
         // truth only: honest numbers, "too complex to analyze" (engine
-        // declined), zero entropy (nbCmbn = 1). No cached row (flag
-        // off / not yet computed) hides the row — never a guess. Secure
-        // mode (street mode) hides the entropy row too.
+        // declined), zero entropy (nbCmbn = 1). Secure mode (street
+        // mode) hides the entropy row too.
         // #105: kill switch. While ENTROPY_FEATURE_ENABLED is false the
         // row is GONE unconditionally- no DAO read on sheet open.
+        // #425: no cached row is no longer a silent GONE - that hid
+        // three producer holes (toggle-off ingest, failed fetches, the
+        // paging-stranded tail; pre-April txs on the census device).
+        // The row renders a dimmed "not analyzed · tap to analyze"
+        // pending state and computes ON DEMAND - the exact fetch the
+        // fee row above already pays on every open (fetchFee), run
+        // through the ingest itself so the cache guard, per-tx
+        // containment, and row shapes stay one code path. Result cached
+        // (deterministic, compute-once contract intact). A compute that
+        // yields no row (fetch failed / InsufficientData) stays honestly
+        // pending - re-attempted on next open or sync. GREY stays
+        // engine-declined only; pending is alpha + no-bar, never a
+        // reused verdict.
         if (secure || !ENTROPY_FEATURE_ENABLED) {
             binding.txDetailsEntropyRow.visibility = View.GONE
         } else {
             // #118: the row itself is the tap target (ripple + trailing
             // external-link icon live in the layout); ONE listener for
-            // all three row classes - the #117-shipped advisory path,
-            // unchanged.
+            // all row classes - the #117-shipped advisory path,
+            // unchanged. #425: pending rows keep the tap target -
+            // tapping a pending row computes it inline first (the
+            // advisory still opens; the row below refreshes from cache).
             binding.txDetailsEntropyRow.setOnClickListener {
+                if (entropyState == EntropyRowState.PENDING) {
+                    computeEntropyOnDemand()
+                }
                 showExternalAnalysisAdvisory()
             }
             apiScope.launch {
                 val entry = txEntropyDao.findByTxid(tx.hash.split("-")[0])
                 withContext(Dispatchers.Main) {
-                    if (entry == null) {
-                        binding.txDetailsEntropyRow.visibility = View.GONE
-                        return@withContext
-                    }
-                    when {
-                        entry.tooComplex -> {
-                            // #115 grey band: no verdict - track only,
-                            // nothing filled. Red no longer means
-                            // "declined"; refusal plus a pointer.
-                            binding.txDetailsEntropy.text = "too complex · analyze externally"
-                            binding.txDetailsEntropy.alpha = 0.5f
-                            binding.txDetailsEntropyBar.setDeclined()
-                        }
-                        entry.nbCmbn == 1 -> {
-                            // Zero entropy: red band, 1 rung (nbCmbn=1
-                            // <= 2 per the ladder).
-                            binding.txDetailsEntropy.text = "0 bits · 1 interpretation"
-                            binding.txDetailsEntropyBar.setState(EntropyBand.RED, 1)
-                        }
-                        else -> {
-                            // #115 ladder: color = tier (red <=2,
-                            // amber 3-4, green >=5 = the Stonewall
-                            // pin), fill = min(nbCmbn, 5) rungs.
-                            binding.txDetailsEntropy.text =
-                                "%.2f bits · %d interpretations"
-                                    .format(entry.entropyBits, entry.nbCmbn)
-                            binding.txDetailsEntropyBar.setState(
-                                EntropyBands.band(entry.nbCmbn),
-                                EntropyBands.filled(entry.nbCmbn),
-                            )
-                        }
-                    }
+                    renderEntropyRow(entry)
                 }
             }
         }
@@ -329,6 +317,107 @@ class TransactionsDetailsBottomSheet() : GenericBottomSheet() {
 
     }
 
+    /** #425: the entropy row's lifecycle. PENDING = no cached row. */
+    private enum class EntropyRowState { PENDING, ROWED }
+
+    private var entropyState = EntropyRowState.PENDING
+    private var entropyJob: Job? = null
+    private var entropyAttemptFailed = false
+
+    /**
+     * #425: every entropy row render funnels here. A null entry is
+     * the PENDING state - visible, dimmed, empty bar - never a
+     * silent GONE. Rowed arms are the pre-#425 arms, verbatim.
+     */
+    private fun renderEntropyRow(entry: com.samourai.sentinel.data.db.entity.TxEntropy?) {
+        if (_binding == null) return
+        // Explicit VISIBLE: the layout's default is visible, but the
+        // render contract owns visibility - GONE exists only under
+        // the hide gates (secure / kill switch) in onViewCreated.
+        binding.txDetailsEntropyRow.visibility = View.VISIBLE
+        if (entry == null) {
+            if (entropyJob?.isActive == true) return // compute in flight: its render lands
+            entropyState = EntropyRowState.PENDING
+            binding.txDetailsEntropy.text = if (entropyAttemptFailed)
+                "not analyzed · unavailable"
+            else
+                "not analyzed · tap to analyze"
+            binding.txDetailsEntropy.alpha = 0.5f
+            binding.txDetailsEntropyBar.setDeclined()
+            return
+        }
+        entropyState = EntropyRowState.ROWED
+        binding.txDetailsEntropy.alpha = 1f
+        when {
+            entry.tooComplex -> {
+                // #115 grey band: no verdict - track only,
+                // nothing filled. Red no longer means
+                // "declined"; refusal plus a pointer.
+                binding.txDetailsEntropy.text = "too complex · analyze externally"
+                binding.txDetailsEntropy.alpha = 0.5f
+                binding.txDetailsEntropyBar.setDeclined()
+            }
+            entry.nbCmbn == 1 -> {
+                // Zero entropy: red band, 1 rung (nbCmbn=1
+                // <= 2 per the ladder).
+                binding.txDetailsEntropy.text = "0 bits · 1 interpretation"
+                binding.txDetailsEntropyBar.setState(EntropyBand.RED, 1)
+            }
+            else -> {
+                // #115 ladder: color = tier (red <=2,
+                // amber 3-4, green >=5 = the Stonewall
+                // pin), fill = min(nbCmbn, 5) rungs.
+                binding.txDetailsEntropy.text =
+                    "%.2f bits · %d interpretations"
+                        .format(entry.entropyBits, entry.nbCmbn)
+                binding.txDetailsEntropyBar.setState(
+                    EntropyBands.band(entry.nbCmbn),
+                    EntropyBands.filled(entry.nbCmbn),
+                )
+            }
+        }
+    }
+
+    /**
+     * #425: on-demand compute for a PENDING row - the stranded-tail
+     * and toggle-off healing. Same containment class as fetchFee
+     * (#112): runs on apiScope/IO, entropyJob cancelled in
+     * onDestroy - job cancellation IS the post-dismiss guard
+     * (_binding stays live in this fragment class; writes to
+     * detached views are inert, the fetchFee class). Runs the
+     * ingest itself - cache guard, per-tx containment, row shapes
+     * stay ONE code path with the sync-side producer. A no-row outcome
+     * (fetch failed / InsufficientData) renders the honest "unavailable"
+     * variant - never a hidden row; the next open re-attempts.
+     * requireContext() is proven attached: the only call sites are
+     * the row's click listener, wired in onViewCreated.
+     */
+    private fun computeEntropyOnDemand() {
+        if (entropyState != EntropyRowState.PENDING) return
+        entropyJob?.let { if (it.isActive) return } // one compute per open
+        entropyState = EntropyRowState.ROWED // re-entry guard until re-render
+        binding.txDetailsEntropy.text = "analyzing…"
+        entropyJob = apiScope.launch(Dispatchers.IO) {
+            try {
+                transactionsRepository.ingestEntropyFor(listOf(tx.hash.split("-")[0]))
+                val entry = txEntropyDao.findByTxid(tx.hash.split("-")[0])
+                withContext(Dispatchers.Main) {
+                    entropyAttemptFailed = (entry == null)
+                    renderEntropyRow(entry)
+                }
+            } catch (e: CancellationException) {
+                // Dismiss mid-compute: cancellation is not failure.
+                throw e
+            } catch (e: Exception) {
+                Timber.e(e, "on-demand entropy failed txid=REDACTED")
+                withContext(Dispatchers.Main) {
+                    entropyAttemptFailed = true
+                    renderEntropyRow(null)
+                }
+            }
+        }
+    }
+
 
     private fun setFeeDetails(txFeeData: TxFeeData) {
         binding.txDetailsFeesProgress.visibility = View.GONE
@@ -415,6 +504,9 @@ class TransactionsDetailsBottomSheet() : GenericBottomSheet() {
 
     override fun onDestroy() {
         job?.let {
+            if (it.isActive) it.cancel()
+        }
+        entropyJob?.let {
             if (it.isActive) it.cancel()
         }
         super.onDestroy()
