@@ -518,6 +518,6 @@
       existing pattern of English fallbacks for newer strings
       (see send_error_* above).
     -->
-    <string name="collection_network_badge_paired" translatable="false">%1$s collection · Your Dojo is on %2$s</string>
-    <string name="collection_network_badge_unpaired" translatable="false">%1$s collection · You are on %2$s</string>
+    <string name="collection_network_badge_paired" translatable="false">%1$s collection\nYour Dojo is on %2$s</string>
+    <string name="collection_network_badge_unpaired" translatable="false">%1$s collection\nYou are on %2$s</string>
 </resources>
