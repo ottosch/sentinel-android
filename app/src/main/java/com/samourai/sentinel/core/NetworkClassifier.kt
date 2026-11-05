@@ -1,5 +1,7 @@
 package com.samourai.sentinel.core
 
+import com.samourai.sentinel.data.PubKeyCollection
+
 import java.net.URI
 
 /**
@@ -11,8 +13,9 @@ import java.net.URI
  * unrecognized input to mainnet is exactly the shape of the bug
  * this fixes (a wrong verdict that rejects correct keys).
  *
- * Deliberately dependency-free: core must not reach into ui/util,
- * and this needs no bitcoinj. Validation of the xpub itself stays
+ * Deliberately minimal: core must not reach into ui/util and
+ * needs no bitcoinj; #429's fromCollection adds the pure-Kotlin
+ * data package as its only import. Validation of the xpub itself stays
  * with FormatsUtil.isValidXpub; this only answers "which network".
  */
 enum class DerivedNetwork { MAINNET, TESTNET, UNKNOWN }
@@ -53,6 +56,16 @@ object NetworkClassifier {
             else -> null
         }
     }
+
+    /**
+     * #429: a single collection's network verdict - aggregate over
+     * its pubs' prefixes. The per-collection counterpart of the
+     * whole-keychain vote in SentinelState.xpubVotes: mixed, empty,
+     * or all-abstaining pubs yield null ("no verdict"), never a
+     * guess. Consumers render null as Normal and exclude nothing.
+     */
+    fun fromCollection(collection: PubKeyCollection): DerivedNetwork? =
+        aggregate(collection.pubs.map { fromXpub(it.pubKey) })
 
     /**
      * #250: the pairing payload's URL whisper.

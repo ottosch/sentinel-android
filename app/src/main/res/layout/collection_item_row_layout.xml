@@ -7,22 +7,53 @@
     android:background="?attr/selectableItemBackground">
 
 
-    <TextView
-        android:id="@+id/rvItemCollectionTitle"
+    <!--
+        #429: the title column is a vertical LinearLayout so the badge
+        can toggle GONE/VISIBLE without disturbing the constraint math -
+        a GONE TextView wired between the title and the parent edge
+        drops its own margins in ConstraintLayout, which would shrink
+        every normal row by the old 32dp bottom margin. The container
+        inherits the title's exact outer geometry (16/32/3/32 margins,
+        bottom-to-parent anchor), so normal rows render pixel-identical
+        to master; a visible badge grows the wrap_content row.
+    -->
+    <LinearLayout
+        android:id="@+id/rvItemCollectionTextColumn"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_marginStart="16dp"
         android:layout_marginTop="32dp"
         android:layout_marginEnd="3dp"
         android:layout_marginBottom="32dp"
-        android:ellipsize="end"
-        android:text="TextView"
-        android:textSize="14sp"
+        android:orientation="vertical"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toStartOf="@+id/guideline2"
         app:layout_constraintHorizontal_bias="0.0"
         app:layout_constraintStart_toEndOf="@+id/rvItemCollectionIcon"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toTopOf="parent">
+
+        <TextView
+            android:id="@+id/rvItemCollectionTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:text="TextView"
+            android:textSize="14sp" />
+
+        <!--
+            #429: off-network badge, last text line of the left column.
+            maxLines=2 + ellipsize=end: wrap or ellipsize, never clip
+            (decision 2, frozen on the issue).
+        -->
+        <TextView
+            android:id="@+id/rvItemCollectionBadge"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textSize="12sp" />
+    </LinearLayout>
 
     <ImageView
         android:id="@+id/rvItemCollectionIcon"
@@ -45,11 +76,11 @@
         android:ellipsize="end"
         android:gravity="end"
         android:textStyle="bold"
-        app:layout_constraintBottom_toBottomOf="@+id/rvItemCollectionTitle"
+        app:layout_constraintBottom_toBottomOf="@+id/rvItemCollectionTextColumn"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHorizontal_bias="1.0"
         app:layout_constraintStart_toStartOf="@+id/guideline2"
-        app:layout_constraintTop_toTopOf="@+id/rvItemCollectionTitle" />
+        app:layout_constraintTop_toTopOf="@+id/rvItemCollectionTextColumn" />
 
     <androidx.constraintlayout.widget.Guideline
         android:id="@+id/guideline2"

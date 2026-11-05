@@ -1,5 +1,8 @@
 package com.samourai.sentinel.core
 
+import com.samourai.sentinel.data.AddressTypes
+import com.samourai.sentinel.data.PubKeyCollection
+import com.samourai.sentinel.data.PubKeyModel
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -181,6 +184,61 @@ class NetworkClassifierTest {
             NetworkClassifier.aggregate(
                 listOf(DerivedNetwork.UNKNOWN, DerivedNetwork.UNKNOWN)
             )
+        )
+    }
+
+    /**
+     * #429: per-collection derivation - fromCollection. Fixtures
+     * are fake suffixes on real prefixes (the classifier reads
+     * only the prefix): no usable key material.
+     */
+    private fun collection(vararg prefixes: String) = PubKeyCollection(
+        pubs = prefixes.mapIndexed { i, p ->
+            PubKeyModel(
+                pubKey = "${p}fake-key-$i",
+                label = "fixture $i",
+                type = AddressTypes.BIP84,
+                balance = 0L
+            )
+        }.toCollection(ArrayList())
+    )
+
+    @Test
+    fun `collection of testnet pubs derives testnet`() {
+        assertEquals(
+            DerivedNetwork.TESTNET,
+            NetworkClassifier.fromCollection(collection("tpub", "vpub"))
+        )
+    }
+
+    @Test
+    fun `collection of mainnet pubs derives mainnet`() {
+        assertEquals(
+            DerivedNetwork.MAINNET,
+            NetworkClassifier.fromCollection(collection("xpub", "zpub"))
+        )
+    }
+
+    @Test
+    fun `mixed collection yields no verdict`() {
+        assertEquals(null, NetworkClassifier.fromCollection(collection("xpub", "tpub")))
+    }
+
+    @Test
+    fun `empty collection yields no verdict`() {
+        assertEquals(null, NetworkClassifier.fromCollection(collection()))
+    }
+
+    @Test
+    fun `all-unknown collection yields no verdict`() {
+        assertEquals(null, NetworkClassifier.fromCollection(collection("fake-a", "fake-b")))
+    }
+
+    @Test
+    fun `abstaining pub does not change a unanimous verdict`() {
+        assertEquals(
+            DerivedNetwork.TESTNET,
+            NetworkClassifier.fromCollection(collection("tpub", "fake"))
         )
     }
 

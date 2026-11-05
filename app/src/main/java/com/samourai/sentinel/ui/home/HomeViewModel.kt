@@ -16,7 +16,7 @@ import com.samourai.sentinel.ui.utils.Preferences
 import com.samourai.sentinel.ui.utils.PrefsUtil
 import com.samourai.sentinel.util.MonetaryUtil
 import com.samourai.sentinel.util.UtxoMetaUtil
-import com.samourai.sentinel.util.figuresForAll
+import com.samourai.sentinel.util.figuresForActiveNetwork
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
@@ -836,7 +836,13 @@ class HomeViewModel : ViewModel() {
         try {
             // #301: one derivation for every surface (SpendableBalance.kt);
             // this inline subtraction was the stale-until-sync half.
-            val figures = figuresForAll(collections)
+            // #429: the active-network filter sits INSIDE the derivation
+            // (decision 1) - off-network collections leave the header
+            // total while their rows keep cached balances, greyed.
+            // The pref is read directly, matching the adapter bind
+            // truth: SentinelState lags a flip by one pref write
+            // (listeners fire before the value lands).
+            val figures = figuresForActiveNetwork(collections, prefsUtil.testnet == true)
             balance.postValue(figures.spendable)
             frozen.postValue(figures.frozen)
         } catch (e: Exception) {
