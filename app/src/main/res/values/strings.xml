@@ -508,4 +508,16 @@
     <string name="coin_picker_selection_refused" translatable="false">Your coins changed while picking. Review the selection and try again</string>
     <string name="coin_picker_cospend_warning" translatable="false">Warning: this selection spends Bad Bank coins together with other coins. The transaction links them on-chain</string>
     <string name="no_file_picker_available" translatable="false">No file picker is available on this device.</string>
+
+    <!--
+      #429: the off-network collection badge. Two templates, network
+      names interpolated; the paired/unpaired pick happens at bind
+      time via isDojoEnabled(). Network names reuse
+      network_testnet / network_mainnet (the #250 precedent), not
+      duplicates. Marked translatable="false" to match the project's
+      existing pattern of English fallbacks for newer strings
+      (see send_error_* above).
+    -->
+    <string name="collection_network_badge_paired" translatable="false">This is a %1$s collection · you are connected to a %2$s Dojo</string>
+    <string name="collection_network_badge_unpaired" translatable="false">This is a %1$s collection · Sentinel is set to %2$s</string>
 </resources>

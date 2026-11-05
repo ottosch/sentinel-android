@@ -1,6 +1,9 @@
 package com.samourai.sentinel.ui.adapters
 
+import android.content.Context
 import android.content.res.ColorStateList
+import android.os.Handler
+import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -10,8 +13,10 @@ import androidx.recyclerview.widget.AsyncListDiffer
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import com.samourai.sentinel.R
+import com.samourai.sentinel.core.SentinelState
 import com.samourai.sentinel.data.PubKeyCollection
 import com.samourai.sentinel.ui.adapters.CollectionsAdapter.CollectionHolder
+import com.samourai.sentinel.ui.utils.Preferences
 import com.samourai.sentinel.ui.utils.PrefsUtil
 import com.samourai.sentinel.util.BalanceDisplayFormatter
 import com.samourai.sentinel.util.BalanceDisplayMode
@@ -25,6 +30,7 @@ import java.math.BigInteger
 import java.nio.ByteBuffer
 import java.text.DecimalFormat
 import java.util.UUID
+import kotlin.reflect.KProperty
 
 
 class
@@ -34,6 +40,29 @@ CollectionsAdapter : RecyclerView.Adapter<CollectionHolder>() {
     private var layoutType: LayoutType = LayoutType.ROW;
     private val prefsUtil: PrefsUtil by inject(PrefsUtil::class.java)
     private val walletIconTint = ColorStateList.valueOf(0xFFE4E4E4.toInt())
+
+    // #429: grey-out rendering constants. ALPHA_GREYED dims the whole
+    // row (icon, text, badge, ripple) in one move - an informative
+    // state, not a gate: rows stay clickable for view-only access.
+    private val ALPHA_NORMAL = 1f
+    private val ALPHA_GREYED = 0.38f
+
+    /**
+     * #429: live re-render on a network flip. AsyncListDiffer sees
+     * identical items when only the testnet pref changed, so nothing
+     * rebinds on its own (#235 class). Registered on attach and
+     * removed on detach - the sheet recreates its adapter per
+     * open (#216), so an init-registered listener would accumulate
+     * on PrefsUtil. The delegate fires listeners BEFORE the value
+     * lands, so the rebind posts to the main handler: by the time
+     * it runs, the pref reads fresh.
+     */
+    private val testnetChangeListener = object : Preferences.SharedPrefsListener {
+        override fun onSharedPrefChanged(property: KProperty<*>) {
+            if (property.name != "testnet") return
+            Handler(Looper.getMainLooper()).post { notifyDataSetChanged() }
+        }
+    }
 
     private val diffCallBack = object : DiffUtil.ItemCallback<PubKeyCollection>() {
 
@@ -58,6 +87,7 @@ CollectionsAdapter : RecyclerView.Adapter<CollectionHolder>() {
         var title: TextView = view.findViewById(R.id.rvItemCollectionTitle)
         var balance: TextView = view.findViewById(R.id.rvItemCollectionBalance)
         var icon: ImageView = view.findViewById(R.id.rvItemCollectionIcon)
+        var badge: TextView = view.findViewById(R.id.rvItemCollectionBadge)
     }
 
     fun setOnClickListener(callback: (PubKeyCollection) -> Unit) {
@@ -66,6 +96,17 @@ CollectionsAdapter : RecyclerView.Adapter<CollectionHolder>() {
 
     fun setLayoutType(layout: LayoutType) {
         this.layoutType = layout
+    }
+
+    // #429: symmetric register/remove - see testnetChangeListener.
+    override fun onAttachedToRecyclerView(recyclerView: RecyclerView) {
+        super.onAttachedToRecyclerView(recyclerView)
+        prefsUtil.addListener(testnetChangeListener)
+    }
+
+    override fun onDetachedFromRecyclerView(recyclerView: RecyclerView) {
+        prefsUtil.removeListener(testnetChangeListener)
+        super.onDetachedFromRecyclerView(recyclerView)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): CollectionHolder {
@@ -118,6 +159,46 @@ CollectionsAdapter : RecyclerView.Adapter<CollectionHolder>() {
             holder.icon.imageTintList = walletIconTint
             holder.icon.setImageResource(R.drawable.ic_baseline_wallet_24)
         }
+
+        // #429: render state vs the active network. Both arms set
+        // alpha AND badge unconditionally - a recycled row can
+        // never inherit a previous collection grey.
+        //
+        // The pref is the truth source here, NOT SentinelState: the
+        // delegate fires listeners before the value lands, so
+        // SentinelState.networkParams lags a flip until the next
+        // pref write heals it. Rows must not paint that lag.
+        val activeIsTestnet = prefsUtil.testnet == true
+        when (
+            collectionRowNetworkState(
+                collection,
+                activeIsTestnet = activeIsTestnet,
+                dojoEnabled = SentinelState.isDojoEnabled()
+            )
+        ) {
+            is CollectionRowNetworkState.Normal -> {
+                holder.view.alpha = ALPHA_NORMAL
+                holder.badge.visibility = View.GONE
+            }
+            is CollectionRowNetworkState.GreyedPaired -> {
+                holder.view.alpha = ALPHA_GREYED
+                holder.badge.visibility = View.VISIBLE
+                holder.badge.text = networkBadgeText(
+                    holder.view.context,
+                    activeIsTestnet,
+                    paired = true
+                )
+            }
+            is CollectionRowNetworkState.GreyedUnpaired -> {
+                holder.view.alpha = ALPHA_GREYED
+                holder.badge.visibility = View.VISIBLE
+                holder.badge.text = networkBadgeText(
+                    holder.view.context,
+                    activeIsTestnet,
+                    paired = false
+                )
+            }
+        }
     }
 
     /**
@@ -127,6 +208,35 @@ CollectionsAdapter : RecyclerView.Adapter<CollectionHolder>() {
      */
     fun setBalance(position: Int): Long {
         return figuresFor(mDiffer.currentList[position]).spendable
+    }
+
+    /**
+     * #429: the off-network badge text. Only reached in a greyed
+     * state, where the collection network is by definition the
+     * opposite of the active one - no re-derivation needed.
+     * Network names reuse the #250 labels (network_testnet /
+     * network_mainnet) resolved at bind time; copy is decision 2,
+     * frozen on the issue. Template pair picked by the Dojo flag.
+     */
+    private fun networkBadgeText(
+        context: Context,
+        activeIsTestnet: Boolean,
+        paired: Boolean
+    ): String {
+        val collectionNetwork = context.getString(
+            if (!activeIsTestnet) R.string.network_testnet
+            else R.string.network_mainnet
+        )
+        val activeNetwork = context.getString(
+            if (activeIsTestnet) R.string.network_testnet
+            else R.string.network_mainnet
+        )
+        return context.getString(
+            if (paired) R.string.collection_network_badge_paired
+            else R.string.collection_network_badge_unpaired,
+            collectionNetwork,
+            activeNetwork
+        )
     }
 
     fun update(newItems: ArrayList<PubKeyCollection>) {
