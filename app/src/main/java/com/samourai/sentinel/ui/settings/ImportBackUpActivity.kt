@@ -541,7 +541,7 @@ class ImportBackUpActivity : SentinelActivity() {
                                 binding.importStartBtn.text = "Imported \u2713"
                                 requireRestart = true
                                 showFloatingSnackBar(
-                                    binding.importPastePayloadBtn, "Successfully imported${networkPlan.flipNote.orEmpty()}",
+                                    binding.importPastePayloadBtn, "Successfully imported collection.${networkPlan.flipNote.orEmpty()}",
                                     anchorView = binding.importStartBtn.id,
                                     actionText = "restart",
                                     actionClick = { restart() }
@@ -695,7 +695,7 @@ class ImportBackUpActivity : SentinelActivity() {
                                         " Dojo pairing failed - retry from Network screen."
                                     else "") + networkNote
                                 showFloatingSnackBar(
-                                        binding.importPastePayloadBtn, "Successfully imported$note",
+                                        binding.importPastePayloadBtn, "Successfully imported collection.$note",
                                         anchorView = binding.importStartBtn.id,
                                         actionText = "restart",
                                         actionClick = { restart() }
@@ -828,13 +828,15 @@ class ImportBackUpActivity : SentinelActivity() {
                         else
                             networkPlan.flipNote.orEmpty() +
                                 networkPlan.dojoObjection.orEmpty()
+                    val importNoun =
+                        if (binding.importCollections.isChecked) " collection(s)" else ""
                     val note = "$xpubNote" +
                         (if (dojoPairingFailed)
                             " Dojo pairing failed - retry from Network screen."
                         else "") +
                         networkNote
                     showFloatingSnackBar(
-                        binding.importPastePayloadBtn, "Successfully imported$note",
+                        binding.importPastePayloadBtn, "Successfully imported$importNoun.$note",
                         anchorView = binding.importStartBtn.id,
                         actionText = "restart",
                         actionClick = { restart() }
