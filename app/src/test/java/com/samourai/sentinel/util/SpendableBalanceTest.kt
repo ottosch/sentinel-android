@@ -1,5 +1,8 @@
 package com.samourai.sentinel.util
 
+import com.samourai.sentinel.data.AddressTypes
+import com.samourai.sentinel.data.PubKeyCollection
+import com.samourai.sentinel.data.PubKeyModel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -69,5 +72,66 @@ class SpendableBalanceTest {
         val f = balanceFigures(0L, emptyList())
         assertEquals(0L, f.spendable)
         assertFalse(f.hasFrozen)
+    }
+
+    /**
+     * #429: the pure active-network filter behind the Home total.
+     * Fixtures are fake suffixes on real prefixes - no usable key
+     * material. figuresForActiveNetwork itself rides the device
+     * leg with the other figuresFor helpers.
+     */
+    private fun pub(prefix: String, n: Int) = PubKeyModel(
+        pubKey = "${prefix}fake-key-$n",
+        label = "fixture $n",
+        type = AddressTypes.BIP84,
+        balance = 0L
+    )
+
+    private fun collection(vararg prefixes: String) = PubKeyCollection(
+        pubs = prefixes.mapIndexed { i, p -> pub(p, i) }.toCollection(ArrayList())
+    )
+
+    @Test
+    fun filterKeepsOnNetworkCollections() {
+        val kept = collectionsForActiveNetwork(
+            listOf(collection("xpub"), collection("zpub")),
+            activeIsTestnet = false
+        )
+        assertEquals(2, kept.size)
+    }
+
+    @Test
+    fun filterDropsOffNetworkCollectionsBothDirections() {
+        val collections = listOf(collection("xpub"), collection("tpub"))
+        assertEquals(
+            listOf("tpubfake-key-0"),
+            collectionsForActiveNetwork(collections, activeIsTestnet = true)
+                .flatMap { c -> c.pubs.map { it.pubKey } }
+        )
+        assertEquals(
+            listOf("xpubfake-key-0"),
+            collectionsForActiveNetwork(collections, activeIsTestnet = false)
+                .flatMap { c -> c.pubs.map { it.pubKey } }
+        )
+    }
+
+    @Test
+    fun filterKeepsNoVerdictCollections() {
+        val noVerdict = listOf(
+            collection("xpub", "tpub"),
+            collection(),
+            collection("fake")
+        )
+        assertEquals(3, collectionsForActiveNetwork(noVerdict, activeIsTestnet = false).size)
+        assertEquals(3, collectionsForActiveNetwork(noVerdict, activeIsTestnet = true).size)
+    }
+
+    @Test
+    fun abstainingPubDoesNotShieldAnOffNetworkCollection() {
+        val collections = listOf(collection("tpub", "fake"))
+        assertEquals(
+            emptyList<PubKeyCollection>(),
+            collectionsForActiveNetwork(collections, activeIsTestnet = false)
+        )
     }
 }

@@ -1,6 +1,5 @@
 package com.samourai.sentinel.ui.adapters
 
-import com.samourai.sentinel.core.DerivedNetwork
 import com.samourai.sentinel.data.AddressTypes
 import com.samourai.sentinel.data.PubKeyCollection
 import com.samourai.sentinel.data.PubKeyModel
@@ -9,7 +8,9 @@ import org.junit.Test
 
 /**
  * #429: every row of the row-state table, pinned without Android
- * machinery - the PairingNetworkDecisionTest precedent.
+ * machinery - the PairingNetworkDecisionTest precedent. The
+ * derivation underneath (fromCollection) is covered in
+ * NetworkClassifierTest since stage 2 moved it to core.
  *
  * Fixtures are deliberately-fake prefix strings ("xpubfake-key-1"):
  * NetworkClassifier.fromXpub reads only the prefix, so no real or
@@ -149,37 +150,5 @@ class CollectionRowNetworkStateTest {
                 dojoEnabled = false
             )
         )
-    }
-
-    // prefix coverage and case, via the derivation helper
-
-    @Test
-    fun `ypub and zpub vote mainnet`() {
-        assertEquals(DerivedNetwork.MAINNET, collectionNetwork(collection("ypub", "zpub")))
-    }
-
-    @Test
-    fun `upub and vpub vote testnet`() {
-        assertEquals(DerivedNetwork.TESTNET, collectionNetwork(collection("upub", "vpub")))
-    }
-
-    @Test
-    fun `prefixes match case-insensitively`() {
-        assertEquals(DerivedNetwork.TESTNET, collectionNetwork(collection("TPUB")))
-    }
-
-    @Test
-    fun `unknown prefixes abstain and yield no verdict`() {
-        assertEquals(null, collectionNetwork(collection("fake-a", "fake-b")))
-    }
-
-    @Test
-    fun `empty collection yields no verdict`() {
-        assertEquals(null, collectionNetwork(collection()))
-    }
-
-    @Test
-    fun `mixed collection yields no verdict`() {
-        assertEquals(null, collectionNetwork(collection("xpub", "tpub")))
     }
 }

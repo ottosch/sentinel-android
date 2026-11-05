@@ -1,5 +1,7 @@
 package com.samourai.sentinel.util
 
+import com.samourai.sentinel.core.DerivedNetwork
+import com.samourai.sentinel.core.NetworkClassifier
 import com.samourai.sentinel.data.PubKeyCollection
 import com.samourai.sentinel.data.PubKeyModel
 
@@ -56,6 +58,34 @@ fun figuresForAll(collections: List<PubKeyCollection>): BalanceFigures =
                 collections.sumOf { it.balance },
                 blockedAmountsFor(collections.flatMap { c -> c.pubs.map { it.pubKey } })
         )
+
+/**
+ * #429: collections the active network can serve. A collection
+ * with no unanimous verdict (mixed, all-unknown, empty) ALWAYS
+ * stays - never guess a collection off the total. Pure, so the
+ * filter arithmetic is plain-JVM testable.
+ */
+fun collectionsForActiveNetwork(
+        collections: List<PubKeyCollection>,
+        activeIsTestnet: Boolean
+): List<PubKeyCollection> =
+        collections.filter { collection ->
+            val verdict = NetworkClassifier.fromCollection(collection)
+            verdict == null || (verdict == DerivedNetwork.TESTNET) == activeIsTestnet
+        }
+
+/**
+ * #429: the Home total over only what the active network serves
+ * (decision 1 on the issue). Filtering BEFORE figuresForAll is
+ * load-bearing: blocked marks on off-network pubs must not leak
+ * into the frozen caption. Rides the device leg like the other
+ * figuresFor helpers (blockedAmountsFor touches UtxoMetaUtil).
+ */
+fun figuresForActiveNetwork(
+        collections: List<PubKeyCollection>,
+        activeIsTestnet: Boolean
+): BalanceFigures =
+        figuresForAll(collectionsForActiveNetwork(collections, activeIsTestnet))
 
 private fun blockedAmountsFor(pubKeys: List<String>): List<Long> =
         UtxoMetaUtil.getBlockedAssociatedWithPubKeyList(pubKeys).map { it.amount }
