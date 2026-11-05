@@ -600,8 +600,19 @@ class MainSettingsFragment : PreferenceFragmentCompat() {
             val box = findPreference<CheckBoxPreference>("pinEnabled") ?: return
             pendingNewPin = null
             setPinCode(pin, box)
-            (parentFragmentManager.findFragmentByTag(TAG_PIN_ENTER) as? LockScreenDialog)?.dismiss()
-            parentFragmentManager.popBackStack()
+            // #433: this flow leaves TWO pad records behind - the set
+            // pad and the confirm pad stacked above it. The old cleanup
+            // dismissed the set pad, which only removed its fragment (a
+            // raw add() is not show(), so dismiss() cannot pop the
+            // record), then popped once - popping the confirm's record.
+            // The set pad's record survived with a still-findable ghost;
+            // showPinDialog's guard read the ghost as an open pad and
+            // silently dropped the next toggle tap, and leaving Settings
+            // took two Backs. Settings' back stack holds nothing but pad
+            // records, so popping them all closes every pad at once.
+            while (parentFragmentManager.backStackEntryCount > 0) {
+                parentFragmentManager.popBackStack()
+            }
         } else {
             Toast.makeText(requireContext(), "Pins are not the same", Toast.LENGTH_SHORT).show()
             dialog.showError()
