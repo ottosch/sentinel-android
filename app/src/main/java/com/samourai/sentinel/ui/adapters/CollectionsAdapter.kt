@@ -12,6 +12,7 @@ import android.widget.TextView
 import androidx.recyclerview.widget.AsyncListDiffer
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
+import androidx.recyclerview.widget.SimpleItemAnimator
 import com.samourai.sentinel.R
 import com.samourai.sentinel.core.SentinelState
 import com.samourai.sentinel.data.PubKeyCollection
@@ -102,6 +103,16 @@ CollectionsAdapter : RecyclerView.Adapter<CollectionHolder>() {
     override fun onAttachedToRecyclerView(recyclerView: RecyclerView) {
         super.onAttachedToRecyclerView(recyclerView)
         prefsUtil.addListener(testnetChangeListener)
+        // #429 device leg: DefaultItemAnimator's change cross-fade
+        // animates the rebound view's alpha 0 -> 1, stomping the
+        // bind-time grey. A balance update (AsyncListDiffer change
+        // event) then renders an off-network row white while its
+        // badge stays - the advisory without the dim. Disabling
+        // change animations (adds and moves still animate) keeps
+        // the bind-time alpha authoritative; set here so every
+        // host of this adapter inherits it.
+        (recyclerView.itemAnimator as? SimpleItemAnimator)
+            ?.supportsChangeAnimations = false
     }
 
     override fun onDetachedFromRecyclerView(recyclerView: RecyclerView) {
