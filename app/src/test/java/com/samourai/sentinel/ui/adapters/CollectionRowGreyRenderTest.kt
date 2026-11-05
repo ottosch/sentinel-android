@@ -15,7 +15,8 @@ import java.io.File
  *
  * What these legs pin: grey applied on mismatch and reset on
  * recycle, the bind truth source, the live-rebind wiring, and the
- * badge slot in both layouts.
+ * badge slot in both layouts, and the change-animation guard
+ * that keeps the grey paintable after a content change.
  */
 class CollectionRowGreyRenderTest {
 
@@ -79,6 +80,20 @@ class CollectionRowGreyRenderTest {
         val adapter = source("app/src/main/java/com/samourai/sentinel/ui/adapters/CollectionsAdapter.kt")
         assertTrue(adapter.contains("R.string.collection_network_badge_paired"))
         assertTrue(adapter.contains("R.string.collection_network_badge_unpaired"))
+    }
+
+    @Test
+    fun `change animations cannot stomp the grey - attach hook disables the cross-fade`() {
+        // Device leg, post-#430: DefaultItemAnimator's change
+        // cross-fade animates a rebound view's alpha 0 -> 1,
+        // overwriting the bind-time grey while the badge stays -
+        // a white row carrying the off-network advisory. The
+        // attach hook must disable change animations so the
+        // bind-time alpha survives content-change rebinds.
+        val src = source("app/src/main/java/com/samourai/sentinel/ui/adapters/CollectionsAdapter.kt")
+        val attach = src.substringAfter("override fun onAttachedToRecyclerView")
+            .substringBefore("override fun onDetachedFromRecyclerView")
+        assertTrue(attach.contains("supportsChangeAnimations = false"))
     }
 
     private fun source(relative: String): String {
