@@ -504,7 +504,9 @@ class MainSettingsFragment : PreferenceFragmentCompat() {
         parentFragmentManager.beginTransaction()
             .setTransition(FragmentTransaction.TRANSIT_FRAGMENT_FADE)
             .add(android.R.id.content, dialog, tag)
-            .addToBackStack("Lock")
+            // #440: name the record for its tag - a named, inclusive
+            // pop can then close this pad and anything above it.
+            .addToBackStack(tag)
             .commit()
     }
 
@@ -600,19 +602,17 @@ class MainSettingsFragment : PreferenceFragmentCompat() {
             val box = findPreference<CheckBoxPreference>("pinEnabled") ?: return
             pendingNewPin = null
             setPinCode(pin, box)
-            // #433: this flow leaves TWO pad records behind - the set
-            // pad and the confirm pad stacked above it. The old cleanup
-            // dismissed the set pad, which only removed its fragment (a
-            // raw add() is not show(), so dismiss() cannot pop the
-            // record), then popped once - popping the confirm's record.
-            // The set pad's record survived with a still-findable ghost;
-            // showPinDialog's guard read the ghost as an open pad and
-            // silently dropped the next toggle tap, and leaving Settings
-            // took two Backs. Settings' back stack holds nothing but pad
-            // records, so popping them all closes every pad at once.
-            while (parentFragmentManager.backStackEntryCount > 0) {
-                parentFragmentManager.popBackStack()
-            }
+            // #440: this flow leaves two pad records behind - the set
+            // pad's and the confirm pad's stacked above it. #433's
+            // count-driven loop never terminated: popBackStack() only
+            // enqueues, backStackEntryCount cannot move until the looper
+            // runs again, and the loop stacked pending actions until the
+            // heap gave out. One named, inclusive pop is asynchronous
+            // but position-independent - it closes the set pad's record
+            // and everything above it without reading any count.
+            parentFragmentManager.popBackStack(
+                TAG_PIN_ENTER, FragmentManager.POP_BACK_STACK_INCLUSIVE
+            )
         } else {
             Toast.makeText(requireContext(), "Pins are not the same", Toast.LENGTH_SHORT).show()
             dialog.showError()

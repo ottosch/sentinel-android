@@ -1,4 +1,4 @@
-from flows_a import F, flow
+from flows_a import F, flow, tapdigits
 from flows_b import MW, CS
 
 SET = '''- runFlow: ../subflows/open_settings.yaml
@@ -16,6 +16,35 @@ def checkbox(title, checked):
     containsChild: {{ id: "android:id/widget_frame", containsChild: {{ id: "android:id/checkbox", checked: {str(checked).lower()} }} }}
     containsDescendants: [ {{ text: "{title}" }} ]
     label: "{title} is {'on' if checked else 'off'}"
+'''
+
+def checkbox_wait(title, checked, timeout=180000):
+    # KDF-backed toggles (PIN set/remove run Argon2id) need a wait, not an
+    # instant assert; same S1-safe row-scoped selector as checkbox().
+    return f'''- extendedWaitUntil:
+    visible:
+      containsChild: {{ id: "android:id/widget_frame", containsChild: {{ id: "android:id/checkbox", checked: {str(checked).lower()} }} }}
+      containsDescendants: [ {{ text: "{title}" }} ]
+    timeout: {timeout}
+    label: "{title} turns {'on' if checked else 'off'}"
+'''
+
+REALPIN = '''- evalScript:
+    script: ${output.pinIdx = 0; output.pinLen = String(MAESTRO_SENTINEL_PIN).length}
+    label: "Prepare fixture PIN entry"
+- repeat:
+    times: ${output.pinLen}
+    commands:
+      - tapOn:
+          id: "t[a-j]"
+          text: ${String(MAESTRO_SENTINEL_PIN).charAt(output.pinIdx)}
+          label: "Fixture PIN key"
+      - evalScript:
+          script: ${output.pinIdx = output.pinIdx + 1}
+          label: "Next PIN key"
+- tapOn:
+    id: "tconfirm"
+    label: "Confirm the pad"
 '''
 
 flow('SET-15', ['smoke','p1','settings'], 'Settings -> About shows the version', SET + scroll_to('Version') + '''- assertVisible: { text: "[0-9]+\\\\.[0-9]+\\\\.[0-9]+.*", below: { text: "Version" } }
@@ -101,6 +130,63 @@ EXPORT_OPEN = SET + scroll_to('Export Sentinel Backup') + '''- tapOn: "Export Se
 flow('PIN-17', ['p0','settings','security','known'], 'Backup export asks for the PIN first (known N4: it does not)', EXPORT_OPEN + '''- takeScreenshot: PIN-17-after-export-tap
 - assertVisible: { id: "lockScreenText", label: "PIN prompt before export" }
 ''', expect='fail', known='Known N4 (P0 per plan): export and erase are not PIN-gated. Erase is never tapped by this suite')
+
+flow('PIN-18', ['p0','pin','lock','settings','known-fixed'], 'Set a throwaway PIN, then remove it in the SAME Settings visit: pad opens on the first tap, one Back leaves Settings (crash guard for #440/#439)', SET + checkbox('User PIN code', True) + '''
+# baseline: fixture PIN on - remove it first
+- tapOn: "User PIN code"
+- extendedWaitUntil:
+    visible: { id: "lockScreenText", text: "Enter current pin code" }
+    timeout: 15000
+- runFlow: ../subflows/unlock.yaml
+''' + checkbox_wait('User PIN code', False) + '''
+# throwaway set flow - its confirm tap is the crash site of #440
+- evalScript:
+    script: "${output.p2 = (String(MAESTRO_SENTINEL_PIN).indexOf('13579') === 0) ? '24680' : '13579'}"
+    label: "Pick a 5-digit throwaway PIN (never the real one)"
+- tapOn: "User PIN code"
+- extendedWaitUntil:
+    visible: { id: "lockScreenText", text: "Enter new pin code" }
+    timeout: 15000
+''' + tapdigits('output.p2', 5, 'Throwaway PIN key') + '''- tapOn: { id: "tconfirm", label: "Confirm the set pad" }
+- extendedWaitUntil:
+    visible: { id: "lockScreenText", text: "Please Re-Enter Pin Code" }
+    timeout: 15000
+''' + tapdigits('output.p2', 5, 'Throwaway PIN key again') + '''- tapOn: { id: "tconfirm", label: "Confirm the confirm pad (crash site of #440)" }
+- extendedWaitUntil:
+    notVisible: { id: "lockScreenText" }
+    timeout: 15000
+    label: "Both pads closed after the confirm (no #440 freeze)"
+''' + checkbox_wait('User PIN code', True) + '''
+- takeScreenshot: PIN-18-set
+# #433 core: toggle OFF in the SAME visit - the pad must open on the FIRST tap
+- tapOn: "User PIN code"
+- extendedWaitUntil:
+    visible: { id: "lockScreenText", text: "Enter current pin code" }
+    timeout: 15000
+    label: "Remove pad opens on the first tap (no ghost record)"
+''' + tapdigits('output.p2', 5, 'Throwaway PIN key') + '''- tapOn: { id: "tconfirm", label: "Confirm remove" }
+''' + checkbox_wait('User PIN code', False) + '''
+- takeScreenshot: PIN-18-removed-same-visit
+# the two-Back tell: ONE Back must leave Settings
+- back
+- extendedWaitUntil:
+    visible: { id: "fab" }
+    timeout: 30000
+    label: "ONE Back press left Settings"
+# restore the fixture PIN for the rest of the suite
+- runFlow: ../subflows/open_settings.yaml
+- tapOn: "User PIN code"
+- extendedWaitUntil:
+    visible: { id: "lockScreenText", text: "Enter new pin code" }
+    timeout: 15000
+''' + REALPIN + '''- extendedWaitUntil:
+    visible: { id: "lockScreenText", text: "Please Re-Enter Pin Code" }
+    timeout: 15000
+    label: "Confirm pad up (restore)"
+''' + REALPIN + checkbox_wait('User PIN code', True) + '''
+- takeScreenshot: PIN-18-restored
+- runFlow: ../subflows/home_basic.yaml
+''', known='A midway failure leaves the app PIN-less or on the throwaway PIN; restore_baseline does not touch the PIN, so that state needs a manual fix')
 
 flow('SET-01', ['smoke','p0','settings','backup','clipboard'], 'Export backup to the clipboard produces an encrypted blob (random throwaway password, clipboard cleared after)', '''- evalScript:
     script: ${output.pw = 'mt-' + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)}
