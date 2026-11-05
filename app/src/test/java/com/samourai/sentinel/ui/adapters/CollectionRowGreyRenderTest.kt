@@ -15,20 +15,22 @@ import java.io.File
  *
  * What these legs pin: grey applied on mismatch and reset on
  * recycle, the bind truth source, the live-rebind wiring, and the
- * badge slot in both layouts, and the change-animation guard
- * that keeps the grey paintable after a content change.
+ * badge slot in both layouts, the animator boundary (the dim
+ * rides content views because item animators own itemView.alpha),
+ * and the change-animation guard as a flicker mitigation - the
+ * device leg falsified its grey-protection claim on Home.
  */
 class CollectionRowGreyRenderTest {
 
     @Test
-    fun `bind sets and resets grey and badge in every arm - recycle cannot inherit a stale grey`() {
+    fun `bind sets and resets content dim and badge in every arm - recycle cannot inherit a stale grey`() {
         val src = source("app/src/main/java/com/samourai/sentinel/ui/adapters/CollectionsAdapter.kt")
         val bind = src.substringAfter("override fun onBindViewHolder")
         // reset arm: a recycled row returns to normal
-        assertTrue(bind.contains("holder.view.alpha = ALPHA_NORMAL"))
+        assertTrue(bind.contains("dimRowContent(holder, dimmed = false)"))
         assertTrue(bind.contains("holder.badge.visibility = View.GONE"))
-        // grey arms: whole-row dim + badge visible, text resolved
-        assertTrue(bind.contains("holder.view.alpha = ALPHA_GREYED"))
+        // grey arms: content dim + badge visible, text resolved
+        assertTrue(bind.contains("dimRowContent(holder, dimmed = true)"))
         assertTrue(bind.contains("holder.badge.visibility = View.VISIBLE"))
         assertTrue(bind.contains("holder.badge.text = networkBadgeText("))
         // the state comes from the pure table, not ad-hoc logic
@@ -94,6 +96,25 @@ class CollectionRowGreyRenderTest {
         val attach = src.substringAfter("override fun onAttachedToRecyclerView")
             .substringBefore("override fun onDetachedFromRecyclerView")
         assertTrue(attach.contains("supportsChangeAnimations = false"))
+    }
+
+    @Test
+    fun `the dim rides the content views, never itemView alpha - item animators own that`() {
+        // Device leg 2, post-#435: Home's SlideInItemAnimator owns
+        // itemView.alpha on every path - animateAdd zeroes it, the
+        // add spring returns it to 1f, the change cross-fade
+        // animates it to 1f, clearAnimatedValues hard-resets 1f -
+        // so the bind-time itemView dim was one data pass away
+        // from being whitened while the badge stayed. The dim must
+        // ride the content views, outside every animator's set.
+        val src = source("app/src/main/java/com/samourai/sentinel/ui/adapters/CollectionsAdapter.kt")
+        // no itemView alpha writes remain anywhere in the adapter
+        assertFalse(src.contains("holder.view.alpha"))
+        val dim = src.substringAfter("private fun dimRowContent")
+        assertTrue(dim.contains("holder.title.alpha = alpha"))
+        assertTrue(dim.contains("holder.balance.alpha = alpha"))
+        assertTrue(dim.contains("holder.icon.alpha = alpha"))
+        assertTrue(dim.contains("holder.badge.alpha = alpha"))
     }
 
     private fun source(relative: String): String {
