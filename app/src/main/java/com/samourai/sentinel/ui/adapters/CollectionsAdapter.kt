@@ -42,8 +42,12 @@ CollectionsAdapter : RecyclerView.Adapter<CollectionHolder>() {
     private val prefsUtil: PrefsUtil by inject(PrefsUtil::class.java)
     private val walletIconTint = ColorStateList.valueOf(0xFFE4E4E4.toInt())
 
-    // #429: grey-out rendering constants. ALPHA_GREYED dims the whole
-    // row (icon, text, badge, ripple) in one move - an informative
+    // #429: grey-out rendering constants. The dim rides the row's
+    // CONTENT views (dimRowContent), not itemView.alpha - the item
+    // animator owns that (SlideInItemAnimator zeroes and re-springs
+    // it on adds; the change cross-fade animates it to 1f), so a
+    // bind-time itemView dim did not survive a data pass (device
+    // leg 2: pull-to-refresh whitened greyed rows). An informative
     // state, not a gate: rows stay clickable for view-only access.
     private val ALPHA_NORMAL = 1f
     private val ALPHA_GREYED = 0.38f
@@ -103,14 +107,14 @@ CollectionsAdapter : RecyclerView.Adapter<CollectionHolder>() {
     override fun onAttachedToRecyclerView(recyclerView: RecyclerView) {
         super.onAttachedToRecyclerView(recyclerView)
         prefsUtil.addListener(testnetChangeListener)
-        // #429 device leg: DefaultItemAnimator's change cross-fade
-        // animates the rebound view's alpha 0 -> 1, stomping the
-        // bind-time grey. A balance update (AsyncListDiffer change
-        // event) then renders an off-network row white while its
-        // badge stays - the advisory without the dim. Disabling
-        // change animations (adds and moves still animate) keeps
-        // the bind-time alpha authoritative; set here so every
-        // host of this adapter inherits it.
+        // #429 device leg 2: a change-flicker mitigation on hosts
+        // that run a SimpleItemAnimator at attach (the
+        // choose-collection sheet) - NOT the grey's protection.
+        // Home falsified that claim: it assigns SlideInItemAnimator
+        // AFTER the adapter attaches, so this armed on the replaced
+        // stock animator and never applied there. The grey rides
+        // the content views (dimRowContent), outside every
+        // animator's write set.
         (recyclerView.itemAnimator as? SimpleItemAnimator)
             ?.supportsChangeAnimations = false
     }
@@ -172,7 +176,7 @@ CollectionsAdapter : RecyclerView.Adapter<CollectionHolder>() {
         }
 
         // #429: render state vs the active network. Both arms set
-        // alpha AND badge unconditionally - a recycled row can
+        // content dim AND badge unconditionally - a recycled row can
         // never inherit a previous collection grey.
         //
         // The pref is the truth source here, NOT SentinelState: the
@@ -188,11 +192,11 @@ CollectionsAdapter : RecyclerView.Adapter<CollectionHolder>() {
             )
         ) {
             is CollectionRowNetworkState.Normal -> {
-                holder.view.alpha = ALPHA_NORMAL
+                dimRowContent(holder, dimmed = false)
                 holder.badge.visibility = View.GONE
             }
             is CollectionRowNetworkState.GreyedPaired -> {
-                holder.view.alpha = ALPHA_GREYED
+                dimRowContent(holder, dimmed = true)
                 holder.badge.visibility = View.VISIBLE
                 holder.badge.text = networkBadgeText(
                     holder.view.context,
@@ -201,7 +205,7 @@ CollectionsAdapter : RecyclerView.Adapter<CollectionHolder>() {
                 )
             }
             is CollectionRowNetworkState.GreyedUnpaired -> {
-                holder.view.alpha = ALPHA_GREYED
+                dimRowContent(holder, dimmed = true)
                 holder.badge.visibility = View.VISIBLE
                 holder.badge.text = networkBadgeText(
                     holder.view.context,
@@ -210,6 +214,28 @@ CollectionsAdapter : RecyclerView.Adapter<CollectionHolder>() {
                 )
             }
         }
+    }
+
+    /**
+     * #429: the dim lives on the row's CONTENT views, never on
+     * itemView.alpha. Home's SlideInItemAnimator owns itemView.alpha
+     * on every path - adds zero it and spring it back to 1f, the
+     * inherited change cross-fade animates it to 1f, and the cancel
+     * reset (clearAnimatedValues) hard-sets 1f - so the bind-time
+     * itemView dim of #430/#435 was one data pass away from being
+     * whitened (device leg 2: pull-to-refresh whitened greyed rows
+     * while their badges stayed). Child-view alpha is outside every
+     * animator's write set, so the grey survives adds, changes,
+     * cancels and animator swaps by construction. Accepted cost:
+     * the ripple background no longer dims; rows stay clickable
+     * either way - grey is informative, not a gate.
+     */
+    private fun dimRowContent(holder: CollectionHolder, dimmed: Boolean) {
+        val alpha = if (dimmed) ALPHA_GREYED else ALPHA_NORMAL
+        holder.title.alpha = alpha
+        holder.balance.alpha = alpha
+        holder.icon.alpha = alpha
+        holder.badge.alpha = alpha
     }
 
     /**
