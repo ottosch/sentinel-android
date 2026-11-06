@@ -40,7 +40,10 @@ import com.samourai.sentinel.ui.utils.showFloatingSnackBar
 import com.samourai.sentinel.ui.views.KdfProgressOverlay
 import com.samourai.sentinel.ui.views.LockScreenDialog
 import com.samourai.sentinel.util.ExportImportUtil
+import com.samourai.sentinel.util.PairingImportFailure
 import com.samourai.sentinel.util.PairingWords
+import com.samourai.sentinel.util.pairingImportUserMessage
+import com.samourai.sentinel.util.readSamouraiPairingPayloadTrying
 import com.samourai.sentinel.util.apiScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -479,31 +482,49 @@ class ImportBackUpActivity : SentinelActivity() {
                 val payloadText = payloadObject.toString()
                 val password = binding.importPasswordInput.text.toString()
                 viewModel.viewModelScope.launch(Dispatchers.Main + importExceptionHandler) {
-                    val collection = withContext(Dispatchers.IO) {
+                    val outcome = withContext(Dispatchers.IO) {
                         // #282: exactly as typed first. A pairing-format
                         // payload's password is three list words, so only if
-                        // that fails is the canonical form tried as well.
-                        // #431: the canonical form now also re-joins words
-                        // that were typed with no separators at all.
+                        // that fails to decrypt is the canonical form tried.
+                        // A password that opens the ciphertext is kept even
+                        // when the plaintext does not parse (#399) — trying
+                        // the next candidate used to report that as a wrong
+                        // password. #431: the canonical form also re-joins
+                        // words that were typed with no separators at all.
                         val canonical = PairingWordsAsset.load(this@ImportBackUpActivity)
                             ?.canonical(password)
                             ?: PairingWords.normalize(password)
-                        ExportImportUtil().decryptAndParseSamouraiPayload(payloadText, password)
-                            ?: canonical
-                                .takeIf { it.isNotEmpty() && it != password }
-                                ?.let { ExportImportUtil().decryptAndParseSamouraiPayload(payloadText, it) }
+                        readSamouraiPairingPayloadTrying(
+                            payloadText,
+                            listOf(password, canonical)
+                        )
                     }
+                    val collection = outcome.collection
                     if (collection == null) {
                         setImportBusy(false)
-                        binding.importPasswordInputLayout.error =
-                            getString(R.string.backup_password_wrong)
-                        this@ImportBackUpActivity.showFloatingSnackBar(
-                            binding.importPayloadTextView.parent as ViewGroup,
-                            text = "Import failed - check the password, or use the wallet's Pairing tool for watch-only setup.",
-                            duration = Snackbar.LENGTH_SHORT
-                        )
+                        // #399: only a failed decrypt is a wrong password.
+                        // The shared reader names every other outcome.
+                        if (outcome.failure == PairingImportFailure.DECRYPT_FAILED) {
+                            binding.importPasswordInputLayout.error =
+                                getString(R.string.backup_password_wrong)
+                            this@ImportBackUpActivity.showFloatingSnackBar(
+                                binding.importPayloadTextView.parent as ViewGroup,
+                                text = "Import failed - check the password, or use the wallet's Pairing tool for watch-only setup.",
+                                duration = Snackbar.LENGTH_SHORT
+                            )
+                        } else {
+                            val message = pairingImportUserMessage(this@ImportBackUpActivity, outcome)
+                                ?: getString(R.string.pairing_import_unrecognised)
+                            binding.importPasswordInputLayout.error = message
+                            this@ImportBackUpActivity.showFloatingSnackBar(
+                                binding.importPayloadTextView.parent as ViewGroup,
+                                text = message,
+                                duration = Snackbar.LENGTH_LONG
+                            )
+                        }
                         return@launch
                     }
+                    val importNote = pairingImportUserMessage(this@ImportBackUpActivity, outcome)
                     // #272: the same door plan for the Samourai arm -
                     // these imports always merge (replace=false), so an
                     // established wallet plus a cross-network backup is
@@ -545,8 +566,9 @@ class ImportBackUpActivity : SentinelActivity() {
                             if (it == null) {
                                 binding.importStartBtn.text = "Imported \u2713"
                                 requireRestart = true
+                                val note = importNote?.let { " $it" }.orEmpty()
                                 showFloatingSnackBar(
-                                    binding.importPastePayloadBtn, "Successfully imported collection.${networkPlan.flipNote.orEmpty()}",
+                                    binding.importPastePayloadBtn, "Successfully imported collection.$note${networkPlan.flipNote.orEmpty()}",
                                     anchorView = binding.importStartBtn.id,
                                     actionText = "restart",
                                     actionClick = { restart() }

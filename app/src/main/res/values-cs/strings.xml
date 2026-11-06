@@ -316,5 +316,18 @@
     <string name="path">Cesta</string>
     <string name="advanced">Pokročilé</string>
 
+    <string name="pairing_import_wrong_password">Nesprávné heslo, zkuste to prosím znovu.</string>
+    <string name="pairing_import_unrecognised">Tento párovací payload není ve formátu, který Sentinel rozpoznává.</string>
+    <string name="pairing_import_legacy">Toto je starší formát párování, který tato verze Sentinelu nepodporuje.</string>
+    <string name="pairing_import_not_json">Dešifrovaná párovací data nejsou platné JSON.</string>
+    <string name="pairing_import_no_keys">Tento párovací payload neobsahuje žádné platné klíče k importu.</string>
+    <string name="pairing_import_newer_ashigaru">Toto párování vytvořila novější verze Ashigaru (v%1$s), než jakou tato verze Sentinelu podporuje. Aktualizujte prosím Sentinel.</string>
+    <string name="pairing_import_skipped">Importovány byly klíče, které šlo přečíst. Přeskočeno: %1$s.</string>
+    <string name="pairing_import_skipped_only">Přeskočeno: %1$s.</string>
+    <string name="pairing_import_slot">%1$s (%2$s)</string>
+    <string name="pairing_import_slot_missing">chybí</string>
+    <string name="pairing_import_slot_invalid">není platný XPUB</string>
+    <string name="pairing_import_slot_unrecognised">nerozpoznaná položka</string>
+    <string name="pairing_import_extra_entry">Položka %1$d</string>
 
 </resources>

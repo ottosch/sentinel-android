@@ -491,6 +491,20 @@
     <string name="pairing_password_too_many" translatable="false">A pairing password has three words</string>
     <string name="pairing_password_wrong" translatable="false">Wrong password. Check the three words and try again</string>
     <string name="backup_password_wrong" translatable="false">Incorrect password, please try again</string>
+    <!-- #399: each pairing-import failure has its own sentence. -->
+    <string name="pairing_import_wrong_password">Incorrect password, please try again.</string>
+    <string name="pairing_import_unrecognised">This pairing payload isn\'t in a format Sentinel recognises.</string>
+    <string name="pairing_import_legacy">This is an older pairing format this version of Sentinel does not support.</string>
+    <string name="pairing_import_not_json">The decrypted pairing data is not valid JSON.</string>
+    <string name="pairing_import_no_keys">This pairing payload has no valid keys to import.</string>
+    <string name="pairing_import_newer_ashigaru">This pairing was created by a newer version of Ashigaru (v%1$s) than this version of Sentinel supports. Please update Sentinel.</string>
+    <string name="pairing_import_skipped">Imported the keys that could be read. Skipped: %1$s.</string>
+    <string name="pairing_import_skipped_only">Skipped: %1$s.</string>
+    <string name="pairing_import_slot">%1$s (%2$s)</string>
+    <string name="pairing_import_slot_missing">missing</string>
+    <string name="pairing_import_slot_invalid">not a valid XPUB</string>
+    <string name="pairing_import_slot_unrecognised">unrecognised entry</string>
+    <string name="pairing_import_extra_entry">Entry %1$d</string>
     <!-- #190: manual coin control -->
     <string name="send_error_selection_insufficient" translatable="false">Selected coins do not cover the amount plus fee</string>
     <string name="send_error_selection_blocked" translatable="false">A selected coin is now marked do-not-spend. Review your coin selection</string>

@@ -20,6 +20,19 @@ import java.util.*
  *
  */
 
+/**
+ * Visible row count for the collection edit list.
+ *
+ * A wallet import hides the last two stored keys (Deposit BIP44 and
+ * Deposit BIP49, kept at the end of the list). An empty import used
+ * to compute -2 (#399); the count stays at zero instead.
+ */
+internal fun pubKeyAdapterItemCount(stored: Int, importFromWallet: Boolean): Int {
+    val size = stored.coerceAtLeast(0)
+    if (!importFromWallet) return size
+    return (size - 2).coerceAtLeast(0)
+}
+
 class PubKeyAdapter : RecyclerView.Adapter<PubKeyAdapter.PubKeyViewHolder>() {
 
     private var editingItem = ""
@@ -71,10 +84,7 @@ class PubKeyAdapter : RecyclerView.Adapter<PubKeyAdapter.PubKeyViewHolder>() {
     }
 
     override fun getItemCount(): Int {
-        return if (isImportFromWallet)
-                mDiffer.currentList.size - 2
-            else
-                mDiffer.currentList.size
+        return pubKeyAdapterItemCount(mDiffer.currentList.size, isImportFromWallet)
     }
 
     override fun onBindViewHolder(holderPubKey: PubKeyViewHolder, position: Int) {
