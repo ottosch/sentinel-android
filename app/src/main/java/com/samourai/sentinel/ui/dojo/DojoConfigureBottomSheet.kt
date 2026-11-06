@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Application
 import android.content.Context
 import android.content.DialogInterface
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -38,7 +39,9 @@ import com.samourai.sentinel.helpers.fromJSON
 import com.samourai.sentinel.tor.EnumTorState
 import com.samourai.sentinel.tor.SentinelTorManager
 import com.samourai.sentinel.ui.utils.AndroidUtil
+import com.samourai.sentinel.ui.utils.PermissionResult
 import com.samourai.sentinel.ui.utils.PrefsUtil
+import com.samourai.sentinel.ui.utils.permissionResultOf
 import com.samourai.sentinel.ui.utils.shouldAdmitScan
 import com.samourai.sentinel.ui.views.GenericBottomSheet
 import com.samourai.sentinel.util.OkHttpLogRedaction
@@ -465,6 +468,14 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
         } else
             Toast.makeText(requireContext(), getString(R.string.invalid_pairing_payload), Toast.LENGTH_SHORT).show()
     }
+
+    /**
+     * #432: the scan page is the settled, VISIBLE page - not the
+     * height-walk's transient selection (the walk runs with the pager
+     * GONE), and not the payload-passed jump straight to page 2.
+     */
+    fun isScanPageShown(): Boolean =
+        binding.pager.currentItem == 1 && binding.pager.visibility == View.VISIBLE
 
     /**
      * Scan page decoded a QR. True = payload accepted and the sheet
@@ -1275,6 +1286,10 @@ class ScanFragment : Fragment() {
     private var lastDecodePayload: String? = null
     private var lastDecodeAtMs = 0L
 
+    // #432: one ask per sheet lifetime; the latch is persisted across
+    // recreation so a user who already declined is never re-prompted.
+    private var cameraAskSeen = false
+
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         return inflater.inflate(R.layout.content_scan_layout, container, false);
     }
@@ -1321,12 +1336,62 @@ class ScanFragment : Fragment() {
     }
 
 
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // #432: the ask latch survives recreation - a user who said no
+        // is never re-prompted by a restore.
+        cameraAskSeen = savedInstanceState?.getBoolean(STATE_CAMERA_ASK_SEEN) ?: false
+    }
+
     override fun onResume() {
         super.onResume()
         if (AndroidUtil.isPermissionGranted(Manifest.permission.CAMERA, appContext)) {
             mCodeScanner?.startScanner()
+        } else {
+            // #432: the scan page asks for itself, the first time it is
+            // actually shown - never the doors that lead here. One ask
+            // per sheet lifetime; a denial keeps the Paste button live.
+            maybeAskCameraPermission()
         }
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(STATE_CAMERA_ASK_SEEN, cameraAskSeen)
+    }
 
+    private fun maybeAskCameraPermission() {
+        if (cameraAskSeen) return
+        if ((parentFragment as? DojoConfigureBottomSheet)?.isScanPageShown() != true) return
+        cameraAskSeen = true
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(getString(R.string.permission_alert_dialog_title_camera))
+            .setMessage(getString(R.string.permission_dialog_message_camera))
+            .setNegativeButton(getString(R.string.no)) { _, _ ->
+                Toast.makeText(context, getString(R.string.camera_permission_denied), Toast.LENGTH_LONG).show()
+            }
+            .setPositiveButton(getString(R.string.yes)) { _, _ ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    requestPermissions(arrayOf(Manifest.permission.CAMERA), REQUEST_CAMERA)
+                }
+            }
+            .show()
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQUEST_CAMERA) return
+        // NOTE: grantResults can be EMPTY when the dialog is cancelled - never index it directly.
+        when (permissionResultOf(grantResults)) {
+            PermissionResult.GRANTED -> mCodeScanner?.startScanner()
+            PermissionResult.DENIED ->
+                Toast.makeText(context, getString(R.string.camera_permission_denied), Toast.LENGTH_LONG).show()
+            PermissionResult.CANCELLED -> Unit
+        }
+    }
+
+    companion object {
+        private const val REQUEST_CAMERA = 432
+        private const val STATE_CAMERA_ASK_SEEN = "dojo_scan_camera_ask_seen"
+    }
 }

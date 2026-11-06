@@ -69,7 +69,6 @@ class HomeActivity : SentinelActivity() {
     private val collectionsAdapter = CollectionsAdapter()
     private val webSocketHandler: WebSocketHandler by inject(WebSocketHandler::class.java)
     private val prefsUtil: PrefsUtil by inject(PrefsUtil::class.java)
-    private var connectingDojo = false
     private var torAutoSyncFired = false
     private lateinit var binding: ActivityHomeBinding
     private val model: HomeViewModel by viewModels()
@@ -189,7 +188,8 @@ class HomeActivity : SentinelActivity() {
         binding.fab.setBackgroundResource(R.drawable.background_gradient);
 
         binding.fab.setOnClickListener {
-            connectingDojo = false
+            // #432: the FAB ask stays - this door leads to the xpub sheet,
+            // whose first page IS the live scanner.
             if (!AndroidUtil.isPermissionGranted(Manifest.permission.CAMERA, applicationContext)) {
                 this.askCameraPermission()
             } else {
@@ -632,12 +632,10 @@ class HomeActivity : SentinelActivity() {
 
     private fun showServerConfig() {
         if (prefsUtil.apiEndPoint.isNullOrEmpty()) {
-            connectingDojo = true
-            if (!AndroidUtil.isPermissionGranted(Manifest.permission.CAMERA, applicationContext)) {
-                this.askCameraPermission()
-            } else {
-                showDojoSetUpBottomSheet()
-            }
+            // #432: no camera ask on the way to the Dojo sheet. The sheet's
+            // scan page asks when the user actually opens the camera; the
+            // community-list and Paste paths pair without one entirely.
+            showDojoSetUpBottomSheet()
         }
     }
 
@@ -777,7 +775,9 @@ class HomeActivity : SentinelActivity() {
                     // User dismissed the dialog; take no action at all.
                     PermissionResult.CANCELLED -> return
                 }
-                if (connectingDojo) showDojoSetUpBottomSheet() else showPubKeyBottomSheet()
+                // #432: the Dojo arm died with the first-run door ask; the
+                // only camera ask left on this screen is the FAB's.
+                showPubKeyBottomSheet()
             }
 
             SentinelActivity.Companion.NOTIF_PERMISSION -> {
@@ -793,16 +793,14 @@ class HomeActivity : SentinelActivity() {
     }
 
     /**
-     * #299: routes the camera rationale's NO through the same branch
-     * onRequestPermissionsResult runs for the system dialog, instead
-     * of the base class's unconditional AddNewPubKeyBottomSheet. On
-     * the first-run path (showServerConfig sets connectingDojo) the
-     * user declined the camera on the way to Dojo setup - the sheet
-     * still pairs via Paste with no camera. The FAB path sets
-     * connectingDojo = false and keeps the pubkey sheet.
+     * #299/#432: the only camera ask left on this screen is the FAB's,
+     * on the way to the xpub sheet - so the rationale's NO routes to
+     * that sheet (whose Paste arm needs no camera), same as the
+     * system-dialog arms above. The first-run Dojo door no longer asks;
+     * the Dojo sheet's scan page asks for itself.
      */
     override fun onCameraRationaleDeclined() {
-        if (connectingDojo) showDojoSetUpBottomSheet() else showPubKeyBottomSheet()
+        showPubKeyBottomSheet()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {

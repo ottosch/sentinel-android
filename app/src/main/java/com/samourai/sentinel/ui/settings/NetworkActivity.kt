@@ -1,6 +1,5 @@
 package com.samourai.sentinel.ui.settings
 
-import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -23,9 +22,6 @@ import com.samourai.sentinel.ui.dojo.DojoConfigureBottomSheet
 import com.samourai.sentinel.ui.dojo.DojoCredentialsBottomSheet
 import com.samourai.sentinel.ui.dojo.DojoUtility
 import com.samourai.sentinel.ui.home.HomeActivity
-import com.samourai.sentinel.ui.utils.AndroidUtil
-import com.samourai.sentinel.ui.utils.PermissionResult
-import com.samourai.sentinel.ui.utils.permissionResultOf
 import com.samourai.sentinel.ui.utils.PrefsUtil
 import com.samourai.sentinel.ui.utils.showFloatingSnackBar
 import com.samourai.sentinel.ui.views.confirm
@@ -137,10 +133,10 @@ class NetworkActivity : SentinelActivity() {
                         removeDojo()
                 }
             } else {
-                if (!AndroidUtil.isPermissionGranted(Manifest.permission.CAMERA, applicationContext))
-                    this.askCameraPermission()
-                else
-                    showDojoSetUpBottomSheet()
+                // #432: no camera ask at the door. The sheet opens directly;
+                // its scan page asks for itself when the user actually opens
+                // the camera, and the community-list / Paste paths never need one.
+                showDojoSetUpBottomSheet()
             }
         }
         torButton!!.setOnClickListener {
@@ -162,42 +158,12 @@ class NetworkActivity : SentinelActivity() {
         setDojoStatus()
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        // NOTE: grantResults can be EMPTY when the dialog is cancelled - never index it directly.
-        if (requestCode != Companion.CAMERA_PERMISSION) return
-        when (permissionResultOf(grantResults)) {
-            PermissionResult.GRANTED -> showDojoSetUpBottomSheet()
-            PermissionResult.DENIED -> {
-                Toast.makeText(this, getString(R.string.camera_permission_denied), Toast.LENGTH_LONG).show()
-                showDojoSetUpBottomSheet()
-            }
-            PermissionResult.CANCELLED -> Unit
-        }
-    }
-
-    /**
-     * #412: every camera ask on this screen is on the way to the Dojo
-     * setup sheet (the dojoButton listener and removeDojo()), so the
-     * base class's default - the xpub scanner - is wrong here exactly
-     * as it was on Home (#299). Mirror the DENIED arm this activity's
-     * onRequestPermissionsResult already runs: toast, then the sheet,
-     * whose Paste pairing needs no camera.
-     */
-    override fun onCameraRationaleDeclined() {
-        Toast.makeText(this, getString(R.string.camera_permission_denied), Toast.LENGTH_LONG).show()
-        showDojoSetUpBottomSheet()
-    }
-
     private fun removeDojo() {
         dojoUtility.clearDojo()
         setDojoStatus()
         if (prefsUtil.apiEndPoint.isNullOrEmpty()) {
-            if (!AndroidUtil.isPermissionGranted(Manifest.permission.CAMERA, applicationContext)) {
-                this.askCameraPermission()
-            } else {
-                showDojoSetUpBottomSheet()
-            }
+            // #432: same as the dojo door - straight to the sheet.
+            showDojoSetUpBottomSheet()
         }
     }
 
