@@ -31,6 +31,7 @@ import com.samourai.sentinel.ui.dojo.isAcceptableDojoPairingUrl
 import com.samourai.sentinel.ui.dojo.validateDojoPairingPayload
 import com.samourai.sentinel.ui.home.HomeActivity
 import com.samourai.sentinel.ui.utils.AndroidUtil
+import com.samourai.sentinel.ui.utils.PairingWordsAsset
 import com.samourai.sentinel.ui.utils.PrefsUtil
 import com.samourai.sentinel.ui.utils.enablePasteAction
 import com.samourai.sentinel.ui.utils.enableRevealToggle
@@ -481,10 +482,14 @@ class ImportBackUpActivity : SentinelActivity() {
                     val collection = withContext(Dispatchers.IO) {
                         // #282: exactly as typed first. A pairing-format
                         // payload's password is three list words, so only if
-                        // that fails is the canonical form (trimmed,
-                        // lowercased, spaces as "-") tried as well.
-                        ExportImportUtil().decryptAndParseSamouraiPayload(payloadText, password)
+                        // that fails is the canonical form tried as well.
+                        // #431: the canonical form now also re-joins words
+                        // that were typed with no separators at all.
+                        val canonical = PairingWordsAsset.load(this@ImportBackUpActivity)
+                            ?.canonical(password)
                             ?: PairingWords.normalize(password)
+                        ExportImportUtil().decryptAndParseSamouraiPayload(payloadText, password)
+                            ?: canonical
                                 .takeIf { it.isNotEmpty() && it != password }
                                 ?.let { ExportImportUtil().decryptAndParseSamouraiPayload(payloadText, it) }
                     }
@@ -1007,5 +1012,4 @@ class ImportBackUpActivity : SentinelActivity() {
         const val TAG_IMPORT_PIN = "lock_screen_import"
         const val REQUEST_KEY_IMPORT_PIN = "lock_screen_import_result"
     }
-
 }

@@ -340,9 +340,17 @@ class PasswordFragment : Fragment() {
     private fun decrypt() {
         if (busy) return
         val typed = input?.text?.toString().orEmpty()
-        // Canonical form first; the text exactly as typed only if it differs
-        // (and only matters when the wordlist could not be read).
-        val candidates = listOf(PairingWords.normalize(typed), typed).filter { it.isNotEmpty() }.distinct()
+        // #431: canonical() also completes words glued with no separators at
+        // all ("abacuszoomabdomen" -> "abacus-zoom-abdomen"), which static
+        // normalize() cannot reshape. The typed text stays as the last resort
+        // and only matters when the wordlist could not be read.
+        val candidates = listOfNotNull(
+            words?.canonical(typed),
+            PairingWords.normalize(typed),
+            typed
+        )
+            .filter { it.isNotEmpty() }
+            .distinct()
         if (candidates.isEmpty()) return
         val payload = payload
         setBusy(true)
