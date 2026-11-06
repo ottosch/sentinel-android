@@ -110,6 +110,46 @@ class PairingWordsTest {
         assertEquals("space becomes the separator", "abacus-", words.autoSeparate("abacus "))
     }
 
+    @Test
+    fun separatorLessWordsParseAndComplete() {
+        val a = words.analyze("abacuszoomabdomen")
+        assertEquals(listOf("abacus", "zoom", "abdomen"), a.words)
+        assertNull(a.invalid)
+        assertTrue(a.isComplete)
+        assertTrue(words.analyze(" AbacusZoomABDOMEN").isComplete)
+    }
+
+    @Test
+    fun separatorLessFragmentGetsSuggestions() {
+        val a = words.analyze("abacuszoomabdo")
+        assertNull(a.invalid)
+        assertEquals("abdo", a.fragment)
+        assertTrue(words.suggestions("abacuszoomabdo").contains("abdomen"))
+    }
+
+    @Test
+    fun mixedSeparatorsParse() {
+        val a = words.analyze("abacus zoom-abdomen")
+        assertEquals(listOf("abacus", "zoom", "abdomen"), a.words)
+        assertTrue(a.isComplete)
+    }
+
+    @Test
+    fun hyphenatedWordWithoutItsInnerHyphenStaysAnError() {
+        assertEquals("tshirt", words.analyze("tshirt-zoom-abdomen").invalid)
+        assertFalse(words.analyze("tshirtzoomabdomen").isComplete)
+    }
+
+    @Test
+    fun canonicalJoinsAnySeparatorShapeWithDashes() {
+        assertEquals("abacus-zoom-abdomen", words.canonical("abacuszoomabdomen"))
+        assertEquals("abacus-zoom-t-shirt", words.canonical("Abacus ZoomT-SHIRT"))
+        assertEquals("abacus-zoom-abdomen", words.canonical("abacus zoom-abdomen"))
+        // Incomplete or non-parsing text falls back to the plain shaper.
+        assertEquals("abacus-zoom", words.canonical("abacus zoom"))
+        assertEquals("appelzoomabdomen", words.canonical("appelzoomabdomen"))
+    }
+
     companion object {
         private lateinit var words: PairingWords
 

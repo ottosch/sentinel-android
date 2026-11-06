@@ -12,15 +12,27 @@ import java.util.TreeSet
  *
  * Four list words contain a hyphen themselves (drop-down, felt-tip,
  * t-shirt, yo-yo), so the text is never split on every "-". It is matched
- * greedily against the list instead. That is unambiguous because the list
- * is prefix-free: no word is the start of another word, so at any position
- * at most one word can match up to a "-" or the end of the text.
+ * against the list instead. That is unambiguous because the list is
+ * prefix-free: no word is the start of another word, so at any position
+ * at most one word can match.
+ *
+ * #431: the "-" between words is entry sugar, not meaning. A list word
+ * matches wherever it starts, so the three words parse just as well with
+ * no separators at all ("word1word2word3") or in any mix of "-" and
+ * spaces, typed or pasted. [canonical] re-joins a complete parse with
+ * "-" for decryption. A hyphenated list word typed without its own "-"
+ * ("tshirt" for "t-shirt") is not repaired; that stays an error.
  *
  * Pure JVM, no Android imports. The password text is never logged.
  */
 class PairingWords(words: Collection<String>) {
 
-    private val words: TreeSet<String> = TreeSet(words.map { it.trim().lowercase(Locale.ROOT) }.filter { it.isNotEmpty() })
+    private val words: TreeSet<String> =
+        TreeSet(words.map { it.trim().lowercase(Locale.ROOT) }.filter { it.isNotEmpty() })
+
+    /** Bounds of the [matchAt] scan; an empty list matches nothing. */
+    private val minWordLen: Int = words.minOfOrNull { it.length } ?: 1
+    private val maxWordLen: Int = words.maxOfOrNull { it.length } ?: 0
 
     val size: Int get() = words.size
 
@@ -64,7 +76,8 @@ class PairingWords(words: Collection<String>) {
             if (match != null) {
                 found.add(match)
                 pos += match.length
-                if (pos < s.length) pos++ // the "-" after the word
+                // The separator after the word, if the user typed one (#431).
+                if (pos < s.length && s[pos] == '-') pos++
                 continue
             }
             val rest = s.substring(pos)
@@ -81,16 +94,19 @@ class PairingWords(words: Collection<String>) {
         return Analysis(found, invalid, fragment, found.size > WORD_COUNT)
     }
 
-    /** The list word at [pos] in [s] that ends at a "-" or at the end, if any. */
+    /**
+     * The list word starting at [pos] in [s], or null. A word may be
+     * followed by a "-", by the next word directly, or by nothing (#431);
+     * it only ever brings its own inner "-" with it (drop-down,
+     * t-shirt...), so "tshirt" does not match "t-shirt". At most one list
+     * word can start at any position: two of them would make one a prefix
+     * of the other, and the list is prefix-free.
+     */
     private fun matchAt(s: String, pos: Int): String? {
-        var end = s.indexOf('-', pos)
-        // A word spans at most one inner "-" (drop-down, t-shirt...).
-        for (attempt in 0..1) {
-            val stop = if (end < 0) s.length else end
-            val candidate = s.substring(pos, stop)
+        val limit = minOf(maxWordLen, s.length - pos)
+        for (len in minWordLen..limit) {
+            val candidate = s.substring(pos, pos + len)
             if (words.contains(candidate)) return candidate
-            if (end < 0) return null
-            end = s.indexOf('-', end + 1)
         }
         return null
     }
@@ -136,6 +152,18 @@ class PairingWords(words: Collection<String>) {
         } else {
             live
         }
+    }
+
+    /**
+     * #431: the dash-joined form decryption uses, for text whose three
+     * words arrive in any mix of "-", spaces or nothing: a complete parse
+     * is re-joined with "-". Any other text falls back to [normalize] -
+     * if the words do not parse, their boundaries are not known, so only
+     * the whitespace/case shaping applies.
+     */
+    fun canonical(raw: String): String {
+        val analysis = analyze(raw)
+        return if (analysis.isComplete) analysis.words.joinToString("-") else normalize(raw)
     }
 
     companion object {
