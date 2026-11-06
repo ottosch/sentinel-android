@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
+import com.invertedx.hummingbird.QrPerf
 import com.samourai.sentinel.R
 import com.sparrowwallet.hummingbird.URDecoder
 import com.sparrowwallet.hummingbird.registry.RegistryType
@@ -30,6 +31,11 @@ class ImportLabelsScanBottomSheet : BottomSheetDialogFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         scanFragment.setPasteVisible(false)
+        // #71: counts only. processedPartsCount is the accepted (non-duplicate)
+        // part gauge the scanner already exposes. No progress UI change.
+        scanFragment.setUrTransmissionListener { expected, processed, progress ->
+            QrPerf.noteTransmission(expected, processed, progress)
+        }
         scanFragment.setOnScanListener { payload ->
             // #232: same pure action logic, new contract - the scanner's
             // dispatch stops the camera when a decode is consumed, so the

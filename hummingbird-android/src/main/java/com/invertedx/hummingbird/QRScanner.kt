@@ -63,6 +63,9 @@ class QRScanner : FrameLayout, DefaultLifecycleObserver {
     private var isScannerRunning = false
         private set
     private var lifecycleOwner: LifecycleOwner? = null
+    // #71: set when a scan with camera permission starts. A re-bind while
+    // that scan is still running stays in the same QRPerf session.
+    private var perfSessionOpen = false
 
     constructor(context: Context) : super(context) {
         init(null, 0)
@@ -152,6 +155,10 @@ class QRScanner : FrameLayout, DefaultLifecycleObserver {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
             == PackageManager.PERMISSION_GRANTED
         ) {
+            if (!perfSessionOpen) {
+                perfSessionOpen = true
+                QrPerf.onSessionStart()
+            }
             cameraProviderFuture.addListener({
                 cameraProvider = cameraProviderFuture.get()
                 cameraProvider!!.unbindAll()
@@ -182,11 +189,16 @@ class QRScanner : FrameLayout, DefaultLifecycleObserver {
     }
 
     fun stopScanner() {
+        val closingPerfSession = perfSessionOpen
+        perfSessionOpen = false
         isScannerRunning = false
         cameraProvider?.unbindAll()
         camera = null
         preview = null
         cameraProvider = null
+        if (closingPerfSession) {
+            QrPerf.onSessionStop()
+        }
     }
 
     private fun setScanType(type: QrDetectType) {
@@ -254,6 +266,11 @@ class QRScanner : FrameLayout, DefaultLifecycleObserver {
                         )
                     }
                     if (_decoder.result != null && _decoder.result.type == ResultType.SUCCESS) {
+                        // Once per session: a finished decoder stays in frame and
+                        // this branch runs again on every later decode.
+                        if (perfSessionOpen) {
+                            QrPerf.onSessionComplete()
+                        }
                         _progressIndicator?.setProgressCompat(
                             100,
                             false

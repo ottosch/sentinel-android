@@ -29,9 +29,12 @@ class QrCodeAnalyzer(
     private val reader = QRCodeMultiReader()
 
     override fun analyze(image: ImageProxy) {
+        // #71: count the entry, then log only on the rare periodic boundary.
+        val logNow = QrPerf.noteAttempt()
         if (image.format !in yuvFormats) {
             Log.e(TAG, "Format non pris en charge: ${image.format}")
             closeImage(image)
+            if (logNow) QrPerf.logPeriodic()
             return
         }
 
@@ -69,11 +72,13 @@ class QrCodeAnalyzer(
         }
 
         if (result != null) {
+            QrPerf.noteDecoded()
             Log.i(TAG, "Success QR code")
             onQrCodesDetected(result)
         }
 
         closeImage(image)
+        if (logNow) QrPerf.logPeriodic()
     }
 
     private fun closeImage(image: ImageProxy) {

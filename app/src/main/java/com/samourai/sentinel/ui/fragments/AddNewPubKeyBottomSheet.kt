@@ -528,6 +528,8 @@ class ScanPubKeyFragment : Fragment() {
     // single-key contract above stays untouched for single payloads.
     private var onMultiKeyScan: ((URAccountDecode) -> Unit)? = null
     private var urPayloadDecoder: ((URDecoder.Result) -> String?)? = null
+    // #71: label import registers this to feed QRPerf. Other callers leave it null.
+    private var urTransmissionListener: ((Int, Int, Double) -> Unit)? = null
     // #232: the shared invalid-payload policy's state - the payload and
     // clock stamp of the last ADMITTED decode (valid or not): the same QR
     // held in frame and the library's same-frame double-fire stay under
@@ -551,6 +553,15 @@ class ScanPubKeyFragment : Fragment() {
 
     fun setURPayloadDecoder(decoder: (URDecoder.Result) -> String?) {
         this.urPayloadDecoder = decoder
+    }
+
+    fun setUrTransmissionListener(
+        callback: (expectedPartCount: Int, processedPartsCount: Int, progress: Double) -> Unit
+    ) {
+        urTransmissionListener = callback
+        if (::mCodeScanner.isInitialized) {
+            mCodeScanner.setUrTransmissionListener(callback)
+        }
     }
 
     fun resumeScan() {
@@ -608,6 +619,10 @@ class ScanPubKeyFragment : Fragment() {
         view.findViewById<Button>(R.id.pastePubKey).visibility =
             if (pasteVisible) View.VISIBLE else View.GONE
         mCodeScanner = view.findViewById(R.id.scannerViewXpub);
+        // Before the lifecycle observer: that observer can start the camera
+        // as soon as it is registered, and the counters have to be fed from
+        // the first accepted part.
+        urTransmissionListener?.let { mCodeScanner.setUrTransmissionListener(it) }
         mCodeScanner.setLifeCycleOwner(this)
 
         val clipboard = context?.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
