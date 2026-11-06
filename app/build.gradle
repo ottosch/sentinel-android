@@ -219,10 +219,6 @@ dependencies {
     def topl_android_version = "2.1.2"
     def room_version = "2.7.1"
 
-    // for tor dependency
-    def vTor = '4.8.6-0'
-    def vKmpTor = '1.4.4'
-
     configurations.all {
         exclude group: 'com.google.guava', module: 'listenablefuture'
     }
