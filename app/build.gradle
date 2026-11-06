@@ -160,7 +160,7 @@ android {
     }
     packagingOptions {
         resources {
-            excludes += ['META-INF/versions/9/OSGI-INF/MANIFEST.MF', '/META-INF/{AL2.0,LGPL2.1}', 'META-INF/DEPENDENCIES.txt', 'META-INF/LICENSE.txt', 'META-INF/NOTICE.txt', 'META-INF/NOTICE', 'META-INF/LICENSE', 'META-INF/DEPENDENCIES', 'META-INF/notice.txt', 'META-INF/license.txt', 'META-INF/dependencies.txt', 'META-INF/LGPL2.1', 'META-INF/proguard/androidx-annotations.pro', '/META-INF/{AL2.0,LGPL2.1}', 'META-INF/DEPENDENCIES.txt', 'META-INF/LICENSE.txt', 'META-INF/NOTICE.txt', 'META-INF/NOTICE', 'META-INF/LICENSE', 'META-INF/DEPENDENCIES', 'META-INF/notice.txt', 'META-INF/license.txt', 'META-INF/dependencies.txt', 'META-INF/LGPL2.1', 'META-INF/proguard/androidx-annotations.pro', 'META-INF/kotlinx_coroutines_core.version']        }
+            excludes += ['META-INF/versions/9/OSGI-INF/MANIFEST.MF', '/META-INF/{AL2.0,LGPL2.1}', 'META-INF/DEPENDENCIES.txt', 'META-INF/LICENSE.txt', 'META-INF/NOTICE.txt', 'META-INF/NOTICE', 'META-INF/LICENSE', 'META-INF/DEPENDENCIES', 'META-INF/notice.txt', 'META-INF/license.txt', 'META-INF/dependencies.txt', 'META-INF/LGPL2.1', 'META-INF/proguard/androidx-annotations.pro', '/META-INF/{AL2.0,LGPL2.1}', 'META-INF/DEPENDENCIES.txt', 'META-INF/LICENSE.txt', 'META-INF/NOTICE.txt', 'META-INF/NOTICE', 'META-INF/LICENSE', 'META-INF/DEPENDENCIES', 'META-INF/notice.txt', 'META-INF/license.txt', 'META-INF/dependencies.txt', 'META-INF/LGPL2.1', 'META-INF/proguard/androidx-annotations.pro', 'META-INF/kotlinx_coroutines_core.version', 'META-INF/LICENSE.md']        }
     }
     productFlavors {
         production {
