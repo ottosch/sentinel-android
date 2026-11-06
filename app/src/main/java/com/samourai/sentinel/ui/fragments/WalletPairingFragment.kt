@@ -3,6 +3,7 @@ package com.samourai.sentinel.ui.fragments
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -34,6 +35,8 @@ import com.samourai.sentinel.ui.utils.enableRevealToggle
 import com.samourai.sentinel.ui.views.GenericBottomSheet
 import com.samourai.sentinel.util.ExportImportUtil
 import com.samourai.sentinel.util.PairingWords
+import com.samourai.sentinel.util.pairingImportUserMessage
+import com.samourai.sentinel.util.readSamouraiPairingPayloadTrying
 import com.samourai.sentinel.util.apiScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -87,8 +90,9 @@ class WalletPairingFragment : GenericBottomSheet {
         setUpViewPager()
 
         livePassword().setPayload(payload.trim())
-        livePassword().setOnSelectListener {
-            liveLoading().setCollection(it!!)
+        livePassword().setOnSelectListener { collection, note ->
+            liveLoading().setCollection(collection)
+            liveSuccess().setNote(note)
             binding.pager.currentItem = 1
         }
         liveLoading().setSuccessCheck {
@@ -163,6 +167,9 @@ class WalletPairingFragment : GenericBottomSheet {
     private fun liveLoading(): LoadingFragment =
         childFragmentManager.findFragmentByTag("f1") as? LoadingFragment ?: loadingFragment
 
+    private fun liveSuccess(): SuccessFragment =
+        childFragmentManager.findFragmentByTag("f2") as? SuccessFragment ?: successFragment
+
     companion object {
         private const val ARG_PAYLOAD = "wallet_pairing_arg_payload"
     }
@@ -176,8 +183,11 @@ class WalletPairingFragment : GenericBottomSheet {
  * autocompleted; spaces and capitals are turned into the canonical form
  * as the user types; a word that isn't on the list is named inline, and
  * Decrypt is enabled only for exactly three list words. Decryption (AES +
- * PBKDF2) runs off the main thread behind a progress bar, and a wrong
- * password is reported on the field with the typed text kept.
+ * PBKDF2) runs off the main thread behind a progress bar. A wrong
+ * password, a payload that is not JSON, an unrecognised shape, the
+ * legacy wallet export, a newer Ashigaru version, and a payload with
+ * no readable keys each keep their own sentence on the field. A
+ * partial read says which slots were skipped. The typed text is kept.
  *
  * If the wordlist can't be read, none of the word checks apply and
  * Decrypt is enabled for any non-blank text, so a missing asset can't
@@ -186,11 +196,11 @@ class WalletPairingFragment : GenericBottomSheet {
 class PasswordFragment : Fragment() {
 
     private lateinit var payload: String
-    private var onSelect: (PubKeyCollection?) -> Unit = {}
+    private var onSelect: (PubKeyCollection, String?) -> Unit = { _, _ -> }
 
     private var words: PairingWords? = null
     private var busy = false
-    private var wrongPassword = false
+    private var statusMessage: String? = null
     /** Set while this class rewrites the field, so its watcher ignores that edit. */
     private var shaping = false
 
@@ -213,7 +223,7 @@ class PasswordFragment : Fragment() {
         return view
     }
 
-    fun setOnSelectListener(callback: (PubKeyCollection?) -> Unit = {}) {
+    fun setOnSelectListener(callback: (PubKeyCollection, String?) -> Unit = { _, _ -> }) {
         this.onSelect = callback
     }
 
@@ -248,7 +258,7 @@ class PasswordFragment : Fragment() {
 
             override fun afterTextChanged(s: Editable?) {
                 if (shaping || s == null) return
-                wrongPassword = false
+                statusMessage = null
                 val list = words
                 // Only on typing or pasting: a deletion is left exactly as
                 // the user made it, or a removed "-" would come straight back.
@@ -301,7 +311,7 @@ class PasswordFragment : Fragment() {
         val analysis = list?.analyze(text)
 
         layout?.error = when {
-            wrongPassword -> getString(R.string.pairing_password_wrong)
+            statusMessage != null -> statusMessage
             analysis?.invalid != null -> getString(R.string.pairing_password_not_a_word, analysis.invalid)
             analysis?.tooMany == true -> getString(R.string.pairing_password_too_many)
             else -> null
@@ -353,19 +363,21 @@ class PasswordFragment : Fragment() {
             .distinct()
         if (candidates.isEmpty()) return
         val payload = payload
+        statusMessage = null
         setBusy(true)
         viewLifecycleOwner.lifecycleScope.launch {
-            val collection = withContext(Dispatchers.Default) {
-                candidates.firstNotNullOfOrNull {
-                    ExportImportUtil().decryptAndParseSamouraiPayload(payload, it)
-                }
+            val outcome = withContext(Dispatchers.Default) {
+                readSamouraiPairingPayloadTrying(payload, candidates)
             }
-            setBusy(false)
+            val collection = outcome.collection
+            val message = pairingImportUserMessage(requireContext(), outcome)
             if (collection == null) {
-                wrongPassword = true
-                refresh()
+                statusMessage = message ?: getString(R.string.pairing_import_unrecognised)
+                setBusy(false)
             } else {
-                onSelect(collection)
+                statusMessage = null
+                setBusy(false)
+                onSelect(collection, message)
             }
         }
     }
@@ -422,6 +434,13 @@ class SuccessFragment : Fragment() {
 
     private var _binding: LayoutLoadingBottomBinding? = null
     private val binding get() = _binding!!
+    private var note: String? = null
+
+    fun setNote(note: String?) {
+        this.note = note
+        renderNote()
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -429,6 +448,7 @@ class SuccessFragment : Fragment() {
     ): View {
         _binding = LayoutLoadingBottomBinding.inflate(inflater, container, false)
         binding.dialogTitle.text = "New collection added"
+        renderNote()
         val view = binding.root
         return view
     }
@@ -436,5 +456,25 @@ class SuccessFragment : Fragment() {
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         super.onActivityCreated(savedInstanceState)
         binding.successCheck.visibility = View.VISIBLE
+    }
+
+    /** Skipped slots, or a newer Ashigaru version, under the check mark. */
+    private fun renderNote() {
+        val binding = _binding ?: return
+        val container = binding.contentContainer
+        container.removeAllViews()
+        val text = note?.takeIf { it.isNotBlank() } ?: return
+        val pad = (16 * resources.displayMetrics.density).toInt()
+        container.addView(TextView(container.context).apply {
+            this.text = text
+            gravity = Gravity.CENTER_HORIZONTAL
+            setTextColor(binding.dialogTitle.currentTextColor)
+            setPadding(pad, pad, pad, pad)
+            textSize = 14f
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        })
     }
 }
