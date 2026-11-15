@@ -11,8 +11,8 @@ import com.samourai.sentinel.core.SentinelState
 import com.samourai.sentinel.data.txfacts.TxFactsResolver
 import com.samourai.sentinel.tor.EnumTorState
 import com.samourai.sentinel.tor.SentinelTorManager
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.koin.java.KoinJavaComponent.get
-import java.net.URI
 
 /**
  * Opens a tx or address on the bound explorer. A load to any party
@@ -290,33 +290,45 @@ class ExplorerOpener(
         private const val HOST_LABEL_TAIL = 6
 
         /**
-         * #524: the third party a dialog names. The Custom template
-         * carries a literal {txid} placeholder that must never reach
-         * the user, so the host stands in. An onion host shortens
-         * the same way as the Network row. A URL without a parsable
-         * host falls back to the truncated label, never the raw
-         * template.
+         * #524: the third party a dialog names. The host is the one
+         * Chromium will load. Placeholders are stood in first, `\`
+         * ends the authority the way `/` does, and userinfo is the
+         * part before the last `@`. An onion host shortens the same
+         * way as the Network row. A URL that does not parse is the
+         * truncated URL, never a host guessed from the raw authority,
+         * and the placeholder still does not reach the user.
          */
         internal fun partyLabelOf(url: String): String {
             val trimmed = url.trim()
-            // The substituted page URL parses; the saved template
-            // (a literal {txid} in the path) does not. Take the host
-            // from whatever sits between the scheme and the path
-            // either way, so the placeholder never reaches the user.
-            val noScheme = trimmed.substringAfter("://", trimmed)
-            val authority = noScheme
-                .substringBefore("/")
-                .substringBefore("?")
-                .substringBefore("#")
-            val host = runCatching { URI(trimmed).host }
-                .getOrNull()?.trim()?.takeIf { it.isNotEmpty() }
-                ?: authority.substringAfter('@').takeIf { it.isNotEmpty() }
+            val host = browserHost(ExplorerOptions.parsable(trimmed))
             if (!host.isNullOrEmpty()) {
                 ExplorerBinding.shortenOnion("http://$host/")?.let { return it }
                 if (host.length <= HOST_LABEL_MAX) return host
                 return host.take(HOST_LABEL_KEEP) + "…" + host.takeLast(HOST_LABEL_TAIL)
             }
-            return ExplorerBinding.truncateExplorerLabel(trimmed)
+            return truncatedRaw(trimmed)
+        }
+
+        /**
+         * Host Chromium loads, or null when [substituted] does not
+         * parse. OkHttp follows the same authority rules: `\` is a
+         * delimiter, and the host is after the last `@`. A
+         * scheme-less template is read as http so its host can
+         * still be named.
+         */
+        private fun browserHost(substituted: String): String? {
+            substituted.toHttpUrlOrNull()?.host?.takeIf { it.isNotEmpty() }?.let { return it }
+            if ("://" in substituted) return null
+            return "http://$substituted".toHttpUrlOrNull()?.host?.takeIf { it.isNotEmpty() }
+        }
+
+        /** The URL itself, shortened. Not a host taken from a failed parse. */
+        private fun truncatedRaw(url: String): String {
+            val shown = ExplorerOptions.parsable(url)
+            if (shown.length > ExplorerBinding.LABEL_KEEP_WHOLE) {
+                return shown.take(HOST_LABEL_KEEP) + "…" + shown.takeLast(HOST_LABEL_TAIL)
+            }
+            return shown
         }
     }
 }

@@ -596,6 +596,7 @@
     <string name="explorer_custom_hint" translatable="false">Onion URL, e.g. http://xyz.onion/tx/{txid}</string>
     <string name="explorer_custom_save" translatable="false">Save</string>
     <string name="explorer_custom_empty" translatable="false">No URL entered</string>
+    <string name="explorer_custom_rejected" translatable="false">Enter the explorer address without a backslash or a username.</string>
     <string name="explorer_open" translatable="false">Open in explorer</string>
     <string name="explorer_unbound_title" translatable="false">No block explorer</string>
     <string name="explorer_unbound_message" translatable="false">No explorer is published for this network. Nothing is sent to a third party unless you ask.</string>

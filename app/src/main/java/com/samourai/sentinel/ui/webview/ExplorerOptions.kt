@@ -192,6 +192,26 @@ object ExplorerOptions {
     }
 
     /**
+     * True when Settings must not save this Custom template.
+     * Chromium treats `\` as `/` in an http(s) URL, and the host is
+     * only what follows the last `@` in the authority, so either one
+     * can open a different site than the address looks like. An `@`
+     * in the query or the fragment is not userinfo. A blank value is
+     * a separate "nothing entered" error.
+     */
+    fun customTemplateRejected(url: String): Boolean {
+        val trimmed = url.trim()
+        if (trimmed.isEmpty()) return false
+        if ('\\' in trimmed) return true
+        val authority = trimmed
+            .substringAfter("://", trimmed)
+            .substringBefore('/')
+            .substringBefore('?')
+            .substringBefore('#')
+        return '@' in authority
+    }
+
+    /**
      * A saved Custom template often contains `{txid}` or `{address}`,
      * which [java.net.URI] will not parse. Those placeholders are not
      * part of the host, so they are stood in for before the host check.
@@ -207,7 +227,7 @@ object ExplorerOptions {
             null
         }
 
-    private fun parsable(url: String): String =
+    internal fun parsable(url: String): String =
         url.trim()
             .replace(ExplorerBinding.TXID_PLACEHOLDER, "x", ignoreCase = true)
             .replace(ExplorerBinding.ADDRESS_PLACEHOLDER, "x", ignoreCase = true)
