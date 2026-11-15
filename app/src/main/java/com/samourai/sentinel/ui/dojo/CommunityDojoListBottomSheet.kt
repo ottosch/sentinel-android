@@ -20,6 +20,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.button.MaterialButton
 import com.samourai.sentinel.R
 import com.samourai.sentinel.tor.SentinelTorManager
@@ -32,6 +33,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.samourai.sentinel.helpers.fromJSON
 import org.koin.java.KoinJavaComponent.inject
 import java.text.DateFormat
 import java.util.Date
@@ -58,7 +60,6 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
 
     private val prefsUtil: PrefsUtil by inject(PrefsUtil::class.java)
 
-    private lateinit var customNotice: TextView
     private lateinit var recyclerView: RecyclerView
     private lateinit var progressBar: ProgressBar
     private lateinit var statusText: TextView
@@ -101,10 +102,14 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
      */
 
     private val adapter = CommunityDojoAdapter(
-        onSelect = { node ->
-            val json = node.pairingPayloadJson()
+        onSelect = { item ->
+            val node = item.node
+            // Only a listing signed by its owner's payment code pairs, and it
+            // pairs with the details from inside the signature, never the
+            // directory's unsigned copy.
+            val json = item.verified?.signedPayloadJson
             if (json == null) {
-                Toast.makeText(requireContext(), "Invalid pairing details for this Dojo", Toast.LENGTH_SHORT).show()
+                showUnverifiedNotice()
             } else {
                 // Snapshot directory display metadata now: past this callback
                 // only the pairing JSON travels, and the stored payload has no
@@ -113,7 +118,7 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
                 // The snapshot rides with the payload and is saved only when
                 // the pairing commits: DON'T PAIR leaves nothing behind.
                 val snapshot = DojoDisplaySnapshot(
-                    url = node.payload?.pairing?.url,
+                    url = fromJSON<DojoPairing>(json)?.pairing?.url,
                     name = node.name?.takeIf { it.isNotBlank() },
                     flag = node.flagEmoji,
                     // #256: jurisdiction rides the same snapshot - a directory
@@ -122,9 +127,10 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
                     jurisdiction = node.jurisdiction?.takeIf { it.isNotBlank() },
                     // #250: the network rides the same snapshot - the source
                     // the pre-pair dialog's guard reads. It comes from the
-                    // pairing URL only (communityDojoNetwork), never from the
-                    // directory's label, which any directory can set.
-                    network = communityDojoNetwork(node.payload?.pairing?.url).directoryName(),
+                    // signed URL only (CheckedDojo.network), never from the
+                    // directory's unsigned label, so a relabelled listing can
+                    // never bless a pairing for the wrong network.
+                    network = item.network.directoryName(),
                 )
                 // #221: the configure sheet is the parent. onScanPayload
                 // validates, stores the payload, and moves to the connect
@@ -134,7 +140,7 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
                 dismiss()
             }
         },
-        onCopy = { node -> copyPairingJson(node) }
+        onCopy = { item -> copyPairingJson(item) }
     )
 
     override fun onCreateView(
@@ -147,7 +153,6 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
         super.onViewCreated(view, savedInstanceState)
 
         val toolbar = view.findViewById<MaterialToolbar>(R.id.communityDojoToolbar)
-        customNotice = view.findViewById(R.id.communityDojoCustomNotice)
         recyclerView = view.findViewById(R.id.communityDojoRecyclerView)
         progressBar = view.findViewById(R.id.communityDojoProgress)
         statusText = view.findViewById(R.id.communityDojoStatusText)
@@ -180,27 +185,30 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
     /** Reads the saved list off the main thread, shows it if it has Dojos for this network, then fetches. */
     private fun loadCacheThenFetch() {
         source = DojoBaySource.effectiveBaseUrl(prefsUtil.dojoBayUrl)
-        // A custom directory's listings are used as it serves them; say so,
-        // on its own wrapping line (a toolbar subtitle is cut to one line).
-        if (DojoBaySource.isDefault(source)) {
-            customNotice.visibility = View.GONE
-        } else {
-            customNotice.text = getString(R.string.community_dojo_custom_unverified, DojoBaySource.label(source))
-            customNotice.visibility = View.VISIBLE
-        }
         val store = cacheStore()
         val forSource = source
         viewLifecycleOwner.lifecycleScope.launch {
+            val pinned = prefsUtil.dojoBayPinnedCode
             val network = currentNetwork()
             val saved = withContext(Dispatchers.IO) { store.read(forSource) }
-            val shown = withContext(Dispatchers.Default) {
-                saved?.let { CommunityDojoDisplay.forNetwork(it.nodes, network) }.orEmpty()
-            }
+            val shown = withContext(Dispatchers.Default) { checkCached(saved, forSource, pinned, network) }
             if (!isAdded) return@launch
             cached = saved
             cachedShown = shown
+            if (refusedWithoutCode()) return@launch
             connectTorThenFetch()
         }
+    }
+
+    /**
+     * A custom address saved without an operator code is refused before
+     * anything is requested: no Tor start, no operator.json, no list.
+     */
+    private fun refusedWithoutCode(): Boolean {
+        if (DojoBayTrust.expectedCode(source, prefsUtil.dojoBayPinnedCode) != null) return false
+        torWaitJob?.cancel()
+        render(CommunityDojoDisplay.Refused(DojoBayTrust.RefusalReason.NO_CODE, null))
+        return true
     }
 
     private fun showAddressDialog() {
@@ -224,10 +232,16 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
     }
 
     /** The saved list for this network, or empty. */
-    private fun cachedForNetwork(): List<CommunityDojoNode> = cachedShown
+    private fun cachedForNetwork(): List<CheckedDojo> = cachedShown
 
-    /** [cached] filtered once for this network, so the 1 s ticker does not redo it. */
-    private var cachedShown: List<CommunityDojoNode> = emptyList()
+    /** [cached], trust-checked and signature-checked once, so the 1 s ticker does not redo it. */
+    private var cachedShown: List<CheckedDojo> = emptyList()
+
+    private fun checkCached(saved: CommunityDojoCache.Entry?, base: String, pinned: String?, network: String): List<CheckedDojo> {
+        if (saved == null) return emptyList()
+        if (!DojoBayTrust.cachedListTrusted(base, saved.operatorCode, pinned)) return emptyList()
+        return CommunityDojoDisplay.forNetwork(saved.nodes, network)
+    }
 
     private fun formatDate(ms: Long): String =
         DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(ms))
@@ -311,6 +325,8 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
             CommunityDojoDisplay.afterFailure(
                 CommunityDojoRepository.Failure.TOR_UNAVAILABLE,
                 cached,
+                source,
+                prefsUtil.dojoBayPinnedCode,
                 currentNetwork(),
                 attempts = 0,
             )
@@ -319,6 +335,7 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
 
     private fun fetchDirectory() {
         if (fetchInFlight) return
+        if (refusedWithoutCode()) return
         fetchInFlight = true
         val forSource = source
         val gen = generation
@@ -332,18 +349,32 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
                 val socksGeneration = SentinelTorManager.socksGeneration()
                 val timeoutSeconds = CommunityDojoFetchPolicy.timeoutFor(attempt, socksGeneration)
                 try {
-                    val nodes = CommunityDojoRepository.fetchDirectory(forSource, timeoutSeconds = timeoutSeconds)
+                    val directory = CommunityDojoRepository.fetchDirectory(
+                        forSource,
+                        expectedCode = DojoBayTrust.expectedCode(forSource, prefsUtil.dojoBayPinnedCode),
+                        timeoutSeconds = timeoutSeconds,
+                    )
                     CommunityDojoFetchPolicy.settle(socksGeneration)
+                    val nodes = directory.nodes
                     val fetchedAt = System.currentTimeMillis()
-                    // Saved for this address only. The fetch runs in the
-                    // view's lifecycle scope, so closing the sheet cancels it
-                    // and nothing late is saved. An empty list is not saved:
-                    // the previous one stays as the offline fallback.
+                    val decision = DojoBayTrust.decide(forSource, directory.operator, prefsUtil.dojoBayPinnedCode)
+                    // Only a trusted directory's list is saved. The fetch runs
+                    // in the view's lifecycle scope, so closing the sheet
+                    // cancels it and nothing late is saved. A served
+                    // operator.json that proves a different or failed binding
+                    // drops the saved list (DojoBayTrust.dropsSavedList); a
+                    // refusal without such proof leaves it alone. An empty
+                    // list is not saved: the previous one stays as the
+                    // offline fallback.
                     val keepSaved = CommunityDojoDisplay.keepsSavedList(nodes)
-                    if (gen == generation && !keepSaved) {
+                    if (gen == generation) {
                         withContext(Dispatchers.IO) {
                             try {
-                                store.write(forSource, nodes, fetchedAt)
+                                if (decision is DojoBayTrust.Decision.Trusted) {
+                                    if (!keepSaved) store.write(forSource, nodes, fetchedAt, decision.operatorCode)
+                                } else if (DojoBayTrust.dropsSavedList(decision)) {
+                                    store.clear()
+                                }
                             } catch (e: Exception) {
                                 // A failed save only costs the offline fallback.
                             }
@@ -365,11 +396,14 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
                     }
                     val network = currentNetwork()
                     val display = withContext(Dispatchers.Default) {
-                        CommunityDojoDisplay.afterSuccess(nodes, network, cached)
+                        CommunityDojoDisplay.afterSuccess(directory, decision, network, cached)
                     }
-                    if (!keepSaved) {
-                        cached = CommunityDojoCache.Entry(forSource, fetchedAt, nodes)
+                    if (decision is DojoBayTrust.Decision.Trusted && !keepSaved) {
+                        cached = CommunityDojoCache.Entry(forSource, fetchedAt, nodes, decision.operatorCode)
                         cachedShown = (display as? CommunityDojoDisplay.Fresh)?.dojos.orEmpty()
+                    } else if (DojoBayTrust.dropsSavedList(decision)) {
+                        cached = null
+                        cachedShown = emptyList()
                     }
                     fetchInFlight = false
                     stopElapsedTicker()
@@ -406,7 +440,8 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
                     }
                     val display = withContext(Dispatchers.Default) {
                         CommunityDojoDisplay.afterFailure(
-                            failure, cached, currentNetwork(), attempts = attempt,
+                            failure, cached, forSource, prefsUtil.dojoBayPinnedCode, currentNetwork(),
+                            attempts = attempt,
                         )
                     }
                     render(display)
@@ -430,7 +465,11 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
             is CommunityDojoDisplay.Cached -> showList(
                 display.dojos,
                 bannerMessage = getString(
-                    R.string.community_dojo_cached_unreachable,
+                    if (display.failure == CommunityDojoRepository.Failure.NO_OPERATOR_STATEMENT) {
+                        R.string.community_dojo_cached_no_operator
+                    } else {
+                        R.string.community_dojo_cached_unreachable
+                    },
                     formatDate(display.fetchedAtMs),
                 ),
             )
@@ -438,12 +477,44 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
                 if (CommunityDojoFetchPolicy.failedAfterRetry(display.failure, display.attempts)) {
                     // The app already made its one automatic retry.
                     getString(R.string.community_dojo_failed_two_tries)
+                } else if (display.failure == CommunityDojoRepository.Failure.NO_OPERATOR_STATEMENT) {
+                    getString(R.string.community_dojo_refused_missing, DojoBaySource.label(source))
                 } else {
                     getString(R.string.community_dojo_unreachable_no_cache, display.failure.message)
                 },
                 canRetry = true,
                 canChangeAddress = true,
             )
+            is CommunityDojoDisplay.Refused -> showMessage(
+                refusalText(display),
+                canRetry = display.reason != DojoBayTrust.RefusalReason.NO_CODE,
+                canChangeAddress = true,
+            )
+        }
+    }
+
+    private fun refusalText(display: CommunityDojoDisplay.Refused): String {
+        val isDefault = DojoBaySource.isDefault(source)
+        val label = DojoBaySource.label(source)
+        return when (display.reason) {
+            DojoBayTrust.RefusalReason.NO_CODE ->
+                getString(R.string.community_dojo_refused_no_code, label)
+            DojoBayTrust.RefusalReason.OPERATOR_MISSING ->
+                getString(R.string.community_dojo_refused_missing, label)
+            DojoBayTrust.RefusalReason.OPERATOR_UNVERIFIED ->
+                getString(R.string.community_dojo_refused_unverified, label)
+            DojoBayTrust.RefusalReason.CODE_MISMATCH -> {
+                val found = DojoBaySignatures.shortCode(display.operatorCode.orEmpty())
+                if (isDefault) {
+                    getString(R.string.community_dojo_refused_default_pin, found)
+                } else {
+                    getString(
+                        R.string.community_dojo_refused_pin,
+                        found,
+                        DojoBaySignatures.shortCode(prefsUtil.dojoBayPinnedCode.orEmpty()),
+                    )
+                }
+            }
         }
     }
 
@@ -527,7 +598,7 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
     }
 
     /** [bannerMessage] null: a fresh list, no banner. Otherwise the unreachable indicator with Retry. */
-    private fun showList(nodes: List<CommunityDojoNode>, bannerMessage: String?) {
+    private fun showList(nodes: List<CheckedDojo>, bannerMessage: String?) {
         stopElapsedTicker()
         progressBar.visibility = View.GONE
         statusText.visibility = View.GONE
@@ -544,10 +615,24 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
         adapter.submitList(nodes)
     }
 
-    private fun copyPairingJson(node: CommunityDojoNode) {
-        val json = node.pairingPayloadJson()
+    /**
+     * Why a dimmed listing can't be paired. A Snackbar, not a toast: a toast
+     * is cut to two lines on many devices and this text needs three or four.
+     */
+    private fun showUnverifiedNotice() {
+        // Shown in the sheet's own CoordinatorLayout so it is drawn on top of
+        // the list; made on the sheet's root it would land in the dialog's
+        // coordinator, under the sheet.
+        val host = view?.findViewById<View>(R.id.communityDojoSnackbarHost) ?: return
+        Snackbar.make(host, R.string.community_dojo_unverified_toast, Snackbar.LENGTH_LONG)
+            .setTextMaxLines(6)
+            .show()
+    }
+
+    private fun copyPairingJson(item: CheckedDojo) {
+        val json = item.verified?.signedPayloadJson
         if (json == null) {
-            Toast.makeText(requireContext(), "No pairing JSON available for this Dojo", Toast.LENGTH_SHORT).show()
+            showUnverifiedNotice()
             return
         }
         val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager

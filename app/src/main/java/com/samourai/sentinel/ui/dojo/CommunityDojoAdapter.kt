@@ -12,15 +12,15 @@ import androidx.recyclerview.widget.RecyclerView
 import com.samourai.sentinel.R
 
 class CommunityDojoAdapter(
-    private val onSelect: (CommunityDojoNode) -> Unit,
-    private val onCopy: (CommunityDojoNode) -> Unit
-) : ListAdapter<CommunityDojoNode, CommunityDojoAdapter.ViewHolder>(DiffCallback) {
+    private val onSelect: (CheckedDojo) -> Unit,
+    private val onCopy: (CheckedDojo) -> Unit
+) : ListAdapter<CheckedDojo, CommunityDojoAdapter.ViewHolder>(DiffCallback) {
 
-    private object DiffCallback : DiffUtil.ItemCallback<CommunityDojoNode>() {
-        override fun areItemsTheSame(oldItem: CommunityDojoNode, newItem: CommunityDojoNode) =
-            oldItem.id == newItem.id
+    private object DiffCallback : DiffUtil.ItemCallback<CheckedDojo>() {
+        override fun areItemsTheSame(oldItem: CheckedDojo, newItem: CheckedDojo) =
+            oldItem.node.id == newItem.node.id
 
-        override fun areContentsTheSame(oldItem: CommunityDojoNode, newItem: CommunityDojoNode) =
+        override fun areContentsTheSame(oldItem: CheckedDojo, newItem: CheckedDojo) =
             oldItem == newItem
     }
 
@@ -39,7 +39,8 @@ class CommunityDojoAdapter(
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        val node = getItem(position)
+        val item = getItem(position)
+        val node = item.node
         val context = holder.itemView.context
 
         val dotColorRes = if (node.isOnline) R.color.success_green else R.color.grey_accent
@@ -60,9 +61,31 @@ class CommunityDojoAdapter(
         // That Dojo's block explorer onion only. A clearnet
         // explorer shows no address. Same formatter as the
         // Network Block Explorer row.
-        holder.subtitle.text = communityDojoSubtitle(node)
+        // Second line: who signed this listing (the code the signature
+        // proves, not the directory's label), or why it can't be paired.
+        val verified = item.verified
+        val signature = if (verified != null) {
+            context.getString(R.string.community_dojo_signed_by, DojoBaySignatures.shortCode(verified.paymentCode))
+        } else {
+            val failure = (item.check as DojoBaySignatures.NodeCheck.Unverified).failure
+            context.getString(R.string.community_dojo_unverified, context.getString(failureText(failure)))
+        }
+        holder.subtitle.text = communityDojoSubtitle(node) + "\n" + signature
+        holder.itemView.alpha = if (verified != null) 1f else 0.5f
+        holder.copyButton.isEnabled = verified != null
 
-        holder.itemView.setOnClickListener { onSelect(node) }
-        holder.copyButton.setOnClickListener { onCopy(node) }
+        holder.itemView.setOnClickListener { onSelect(item) }
+        holder.copyButton.setOnClickListener { onCopy(item) }
+    }
+
+    companion object {
+        fun failureText(failure: DojoBaySignatures.Failure): Int = when (failure) {
+            DojoBaySignatures.Failure.MISSING_SIGNATURE -> R.string.community_dojo_failure_missing
+            DojoBaySignatures.Failure.UNREADABLE_BLOCK -> R.string.community_dojo_failure_unreadable
+            DojoBaySignatures.Failure.BAD_SIGNATURE -> R.string.community_dojo_failure_bad_signature
+            DojoBaySignatures.Failure.SIGNER_NOT_CODE -> R.string.community_dojo_failure_signer
+            DojoBaySignatures.Failure.PAYLOAD_MISMATCH -> R.string.community_dojo_failure_mismatch
+            DojoBaySignatures.Failure.NOT_A_PAIRING -> R.string.community_dojo_failure_not_pairing
+        }
     }
 }

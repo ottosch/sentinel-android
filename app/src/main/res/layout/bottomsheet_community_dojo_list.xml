@@ -30,19 +30,6 @@
             android:textAppearance="?attr/textAppearanceHeadline6" />
     </com.google.android.material.appbar.MaterialToolbar>
 
-    <!-- Custom Dojo Bay only: its listings are used as served. Its own
-         line, not the toolbar subtitle, so it wraps instead of being cut. -->
-    <TextView
-        android:id="@+id/communityDojoCustomNotice"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginHorizontal="16dp"
-        android:textColor="@color/warning_yellow"
-        android:textSize="13sp"
-        android:visibility="gone"
-        tools:text="Custom Dojo Bay (yfua6lm…ueqd.onion) · listings not verified"
-        tools:visibility="visible" />
-
     <!-- Shown over a saved list: refreshing, or Dojo Bay unreachable. -->
     <LinearLayout
         android:id="@+id/communityDojoBanner"
@@ -126,15 +113,24 @@
         android:textColor="@color/white"
         android:visibility="gone" />
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/communityDojoRecyclerView"
+    <!-- Snackbars are shown in this CoordinatorLayout, inside the sheet. Without
+         it a Snackbar finds the dialog's own coordinator and is drawn under
+         the sheet (lower elevation), unreadable. -->
+    <androidx.coordinatorlayout.widget.CoordinatorLayout
+        android:id="@+id/communityDojoSnackbarHost"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:layout_marginTop="8dp"
-        android:clipToPadding="false"
-        android:paddingBottom="16dp"
-        android:visibility="gone"
-        tools:listitem="@layout/item_community_dojo" />
+        android:layout_marginTop="8dp">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/communityDojoRecyclerView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:paddingBottom="16dp"
+            android:visibility="gone"
+            tools:listitem="@layout/item_community_dojo" />
+    </androidx.coordinatorlayout.widget.CoordinatorLayout>
 
 </LinearLayout>

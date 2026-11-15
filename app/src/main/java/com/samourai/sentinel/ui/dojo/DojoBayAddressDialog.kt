@@ -19,9 +19,12 @@ import java.io.File
 
 /**
  * The Dojo Bay address editor, shared by the Community Dojos sheet and the
- * Network screen. The address is checked with [DojoBaySource]; only v3
- * onion addresses are accepted. Reset to default clears it. Any change
- * drops the saved list, which belongs to the old address.
+ * Network screen. A custom address is entered together with its operator's
+ * BIP47 payment code; both are checked with [DojoBaySource] and saved as a
+ * pair, and the code becomes the pin the instance's signed operator.json
+ * must verify against ([DojoBayTrust]). Only v3 onion addresses are
+ * accepted. Reset to default clears both. Any change drops the saved list,
+ * which belongs to the old address and code.
  */
 object DojoBayAddressDialog {
 
@@ -33,6 +36,7 @@ object DojoBayAddressDialog {
         onChanged: () -> Unit,
     ) {
         val current = DojoBaySource.effectiveBaseUrl(prefsUtil.dojoBayUrl)
+        val currentCode = if (DojoBaySource.isDefault(current)) "" else prefsUtil.dojoBayPinnedCode.orEmpty()
         val noSuggestions = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         val address = EditText(context).apply {
             inputType = noSuggestions or InputType.TYPE_TEXT_VARIATION_URI
@@ -40,6 +44,12 @@ object DojoBayAddressDialog {
             setText(current)
             setSelection(text.length)
             hint = context.getString(R.string.dojobay_address_hint)
+        }
+        val code = EditText(context).apply {
+            inputType = noSuggestions or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+            isSingleLine = true
+            setText(currentCode)
+            hint = context.getString(R.string.dojobay_code_hint)
         }
         val pad = (20 * context.resources.displayMetrics.density).toInt()
         fun label(@StringRes text: Int) = TextView(context).apply {
@@ -51,6 +61,8 @@ object DojoBayAddressDialog {
             setPadding(pad, pad / 2, pad, 0)
             addView(label(R.string.dojobay_address_label))
             addView(address)
+            addView(label(R.string.dojobay_code_label))
+            addView(code)
         }
         val dialog = MaterialAlertDialogBuilder(context)
             .setTitle(R.string.dojobay_address_title)
@@ -63,20 +75,29 @@ object DojoBayAddressDialog {
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 address.error = null
-                when (val v = DojoBaySource.validate(address.text?.toString())) {
-                    is DojoBaySource.Validation.Invalid -> {
-                        address.error = context.getString(reasonText(v.reason))
-                        address.requestFocus()
+                code.error = null
+                val v = DojoBaySource.validate(address.text?.toString())
+                if (v is DojoBaySource.Validation.Invalid) {
+                    address.error = context.getString(reasonText(v.reason))
+                    address.requestFocus()
+                    return@setOnClickListener
+                }
+                val baseUrl = (v as DojoBaySource.Validation.Valid).baseUrl
+                when (val c = DojoBaySource.validateOperatorCode(baseUrl, code.text?.toString())) {
+                    is DojoBaySource.CodeValidation.Invalid -> {
+                        code.error = context.getString(codeReasonText(c.reason))
+                        code.requestFocus()
                     }
-                    is DojoBaySource.Validation.Valid -> {
-                        save(context, prefsUtil, noBackupFilesDir, scope, v.baseUrl, onChanged)
+                    is DojoBaySource.CodeValidation.Valid -> {
+                        save(context, prefsUtil, noBackupFilesDir, scope, baseUrl, c.paymentCode, onChanged)
                         dialog.dismiss()
                     }
                 }
             }
             dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
-                val changed = !prefsUtil.dojoBayUrl.isNullOrBlank()
+                val changed = !prefsUtil.dojoBayUrl.isNullOrBlank() || !prefsUtil.dojoBayPinnedCode.isNullOrBlank()
                 prefsUtil.dojoBayUrl = null
+                prefsUtil.dojoBayPinnedCode = null
                 Toast.makeText(context, R.string.dojobay_address_reset_done, Toast.LENGTH_SHORT).show()
                 dialog.dismiss()
                 if (changed) clearCacheThen(scope, noBackupFilesDir, onChanged)
@@ -91,14 +112,19 @@ object DojoBayAddressDialog {
         noBackupFilesDir: File,
         scope: CoroutineScope,
         baseUrl: String,
+        operatorCode: String,
         onChanged: () -> Unit,
     ) {
-        val before = DojoBaySource.effectiveBaseUrl(prefsUtil.dojoBayUrl)
+        val beforeUrl = DojoBaySource.effectiveBaseUrl(prefsUtil.dojoBayUrl)
+        val beforeCode = DojoBayTrust.expectedCode(beforeUrl, prefsUtil.dojoBayPinnedCode)
+        val isDefault = DojoBaySource.isDefault(baseUrl)
         // The default is stored as "no custom value", so a later change of
-        // the built-in default still reaches users who never customized it.
-        prefsUtil.dojoBayUrl = if (DojoBaySource.isDefault(baseUrl)) null else baseUrl
+        // the built-in default (and its built-in code) still reaches users
+        // who never customized it.
+        prefsUtil.dojoBayUrl = if (isDefault) null else baseUrl
+        prefsUtil.dojoBayPinnedCode = if (isDefault) null else operatorCode
         Toast.makeText(context, R.string.dojobay_address_saved, Toast.LENGTH_SHORT).show()
-        if (before != baseUrl) {
+        if (beforeUrl != baseUrl || beforeCode != operatorCode) {
             clearCacheThen(scope, noBackupFilesDir, onChanged)
         }
     }
@@ -114,7 +140,7 @@ object DojoBayAddressDialog {
                 try {
                     CommunityDojoCache.forDirectory(noBackupFilesDir).clear()
                 } catch (e: Exception) {
-                    // The saved list is also keyed to its address.
+                    // The saved list is also checked against the pinned code before use.
                 }
             }
             onChanged()
@@ -130,5 +156,12 @@ object DojoBayAddressDialog {
         DojoBaySource.Reason.BAD_PORT -> R.string.dojobay_address_invalid_port
         DojoBaySource.Reason.NOT_HTTP -> R.string.dojobay_address_invalid_not_http
         DojoBaySource.Reason.HAS_EXTRAS -> R.string.dojobay_address_invalid_extras
+    }
+
+    @StringRes
+    fun codeReasonText(reason: DojoBaySource.CodeReason): Int = when (reason) {
+        DojoBaySource.CodeReason.EMPTY -> R.string.dojobay_code_invalid_empty
+        DojoBaySource.CodeReason.INVALID -> R.string.dojobay_code_invalid
+        DojoBaySource.CodeReason.NOT_DEFAULT_CODE -> R.string.dojobay_code_not_default
     }
 }

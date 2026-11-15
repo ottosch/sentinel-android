@@ -18,9 +18,11 @@ import java.io.File
  * - Stored in the app's no-backup files directory, and deleted by Erase
  *   wallet along with the rest of the app data.
  * - Only directory data is stored: the same public entries Dojo Bay
- *   publishes. Nothing about the user's own pairing or wallet.
- * - A saved list is exactly as trustworthy as the directory it came from
- *   was when it was fetched; it is never shown under another address.
+ *   publishes, with their signed blocks, so every listing is re-checked
+ *   when the saved list is shown. Nothing about the user's own pairing or
+ *   wallet.
+ * - Written only after the directory's operator binding verified and
+ *   matched the pin; the operator code is saved with it.
  */
 class CommunityDojoCache(private val file: File) {
 
@@ -31,6 +33,9 @@ class CommunityDojoCache(private val file: File) {
         val fetchedAtMs: Long,
         @SerializedName("nodes")
         val nodes: List<CommunityDojoNode>,
+        /** The verified operator code of the directory this came from. */
+        @SerializedName("operator_code")
+        val operatorCode: String? = null,
     )
 
     /** The cached entry for [source], or null if none or it was saved for another address. */
@@ -44,9 +49,9 @@ class CommunityDojoCache(private val file: File) {
      * entry stays, so one empty publish of the directory can't erase the
      * offline fallback.
      */
-    fun write(source: String, nodes: List<CommunityDojoNode>, fetchedAtMs: Long) {
+    fun write(source: String, nodes: List<CommunityDojoNode>, fetchedAtMs: Long, operatorCode: String) {
         if (nodes.isEmpty()) return
-        val payload = Entry(source, fetchedAtMs, nodes).toJSON() ?: return
+        val payload = Entry(source, fetchedAtMs, nodes, operatorCode).toJSON() ?: return
         file.parentFile?.mkdirs()
         // Write-then-rename so a crash mid-write never leaves a half file
         // that would read as "no cache".

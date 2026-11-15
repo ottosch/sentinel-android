@@ -1,5 +1,6 @@
 package com.samourai.sentinel.ui.dojo
 
+import com.samourai.sentinel.ui.dojo.DojoBayTestVectors.ThrowawayPayNym
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -47,6 +48,35 @@ class DojoBaySourceTest {
     }
 
     @Test
+    fun `operator code is required for a custom address and must be a payment code`() {
+        val custom = "http://" + "d".repeat(56) + ".onion/"
+        val code = DojoBayConstants.DEFAULT_OPERATOR_CODE
+        assertEquals(DojoBaySource.CodeValidation.Invalid(DojoBaySource.CodeReason.EMPTY),
+            DojoBaySource.validateOperatorCode(custom, "  "))
+        assertEquals(DojoBaySource.CodeValidation.Invalid(DojoBaySource.CodeReason.EMPTY),
+            DojoBaySource.validateOperatorCode(custom, null))
+        assertEquals(DojoBaySource.CodeValidation.Invalid(DojoBaySource.CodeReason.INVALID),
+            DojoBaySource.validateOperatorCode(custom, "PM8Tnotacode"))
+        assertEquals(DojoBaySource.CodeValidation.Invalid(DojoBaySource.CodeReason.INVALID),
+            DojoBaySource.validateOperatorCode(custom, code.dropLast(1) + "X"))
+        // Pasted with stray whitespace or a line break.
+        assertEquals(DojoBaySource.CodeValidation.Valid(code),
+            DojoBaySource.validateOperatorCode(custom, " " + code.substring(0, 50) + "\n" + code.substring(50) + " "))
+        val other = ThrowawayPayNym(11).code
+        assertEquals(DojoBaySource.CodeValidation.Valid(other), DojoBaySource.validateOperatorCode(custom, other))
+    }
+
+    @Test
+    fun `default address keeps its built-in code`() {
+        val def = DojoBayConstants.BASE_URL
+        val builtIn = DojoBaySource.CodeValidation.Valid(DojoBayConstants.DEFAULT_OPERATOR_CODE)
+        assertEquals(builtIn, DojoBaySource.validateOperatorCode(def, ""))
+        assertEquals(builtIn, DojoBaySource.validateOperatorCode(def, DojoBayConstants.DEFAULT_OPERATOR_CODE))
+        assertEquals(DojoBaySource.CodeValidation.Invalid(DojoBaySource.CodeReason.NOT_DEFAULT_CODE),
+            DojoBaySource.validateOperatorCode(def, ThrowawayPayNym(11).code))
+    }
+
+    @Test
     fun `malformed and unsafe inputs are refused`() {
         assertEquals(DojoBaySource.Reason.EMPTY, reason(null))
         assertEquals(DojoBaySource.Reason.EMPTY, reason("   "))
@@ -68,8 +98,9 @@ class DojoBaySourceTest {
     }
 
     @Test
-    fun `directory url sits under the root`() {
+    fun `directory and operator urls sit under the root`() {
         assertEquals("http://$onion/data/dojos.json", DojoBaySource.directoryUrl(DojoBayConstants.BASE_URL))
+        assertEquals("http://$onion/data/operator.json", DojoBaySource.operatorUrl(DojoBayConstants.BASE_URL))
         assertEquals("http://$onion/bay/data/dojos.json", DojoBaySource.directoryUrl("http://$onion/bay/"))
     }
 

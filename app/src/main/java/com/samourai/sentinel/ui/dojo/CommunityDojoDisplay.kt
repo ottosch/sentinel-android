@@ -2,6 +2,7 @@ package com.samourai.sentinel.ui.dojo
 
 import com.samourai.sentinel.core.DerivedNetwork
 import com.samourai.sentinel.core.NetworkClassifier
+import com.samourai.sentinel.helpers.fromJSON
 
 /**
  * A directory listing's network, from its pairing URL only: a `/test/`
@@ -15,70 +16,122 @@ fun communityDojoNetwork(pairingUrl: String?): DerivedNetwork =
 
 fun DerivedNetwork.directoryName(): String = if (this == DerivedNetwork.TESTNET) "testnet" else "mainnet"
 
+/** A listing with the result of checking its owner's signature. */
+data class CheckedDojo(
+    val node: CommunityDojoNode,
+    val check: DojoBaySignatures.NodeCheck,
+) {
+    val verified: DojoBaySignatures.NodeCheck.Verified?
+        get() = check as? DojoBaySignatures.NodeCheck.Verified
+
+    /**
+     * The listing's network ([communityDojoNetwork]): from the URL only,
+     * taken from inside the signature for a verified listing. Dojo Bay signs
+     * only `{pairing, explorer}`, so the directory's `network` label is
+     * unsigned and ignored.
+     */
+    val network: DerivedNetwork
+        get() {
+            val url = verified?.let { fromJSON<DojoPairing>(it.signedPayloadJson)?.pairing?.url }
+                ?: node.payload?.pairing?.url
+            return communityDojoNetwork(url)
+        }
+}
+
 /**
  * What the Community Dojos sheet shows after a fetch attempt, kept out of the
  * fragment so the rules are unit-tested:
- *  - a successful fetch shows the fresh list (or the empty message when the
+ *  - a fetch from a directory whose operator binding fails, or whose operator
+ *    is not the pinned one, is refused: nothing from it is shown;
+ *  - a custom directory is checked against the operator code the user
+ *    entered with its address; there is no trust on first use;
+ *  - a trusted fetch shows the fresh list (or the empty message when the
  *    current network has no Dojos), and replaces the saved list;
- *  - a successful fetch that lists no Dojos at all does not replace the
- *    saved list: it stays up with a "lists no Dojos" indicator, so one
- *    empty publish can't erase the offline fallback;
- *  - a failed fetch with a saved list for this address shows that list with
- *    the "unreachable" indicator and its date;
+ *  - a trusted fetch that lists no Dojos at all does not replace the saved
+ *    list: a saved list from the same operator stays up with a "lists no
+ *    Dojos" indicator, so one empty publish can't erase the offline
+ *    fallback;
+ *  - a failed fetch with a saved list, from the operator still trusted for
+ *    this address, shows that list with the "unreachable" indicator and its
+ *    date;
  *  - otherwise the failure message, Retry, and Change Dojo Bay address.
+ * Every listing carries its own signature check; only verified ones pair.
  */
 sealed class CommunityDojoDisplay {
-    data class Fresh(val dojos: List<CommunityDojoNode>) : CommunityDojoDisplay()
+    data class Fresh(val dojos: List<CheckedDojo>, val operatorCode: String) : CommunityDojoDisplay()
     data class Empty(val network: String) : CommunityDojoDisplay()
     data class Cached(
-        val dojos: List<CommunityDojoNode>,
+        val dojos: List<CheckedDojo>,
         val fetchedAtMs: Long,
         val failure: CommunityDojoRepository.Failure,
     ) : CommunityDojoDisplay()
     /** [attempts]: fetch attempts made before this failure (0 when none was made, e.g. Tor unavailable). */
     data class Failed(val failure: CommunityDojoRepository.Failure, val attempts: Int = 1) : CommunityDojoDisplay()
     /** Dojo Bay answered but lists no Dojos at all: the saved list is kept and shown. */
-    data class ListedNone(val dojos: List<CommunityDojoNode>, val fetchedAtMs: Long) : CommunityDojoDisplay()
+    data class ListedNone(val dojos: List<CheckedDojo>, val fetchedAtMs: Long) : CommunityDojoDisplay()
     /** Dojo Bay answered but lists no Dojos at all, and there is no saved list for this network. */
     object DirectoryEmpty : CommunityDojoDisplay()
+    data class Refused(val reason: DojoBayTrust.RefusalReason, val operatorCode: String?) : CommunityDojoDisplay()
 
     companion object {
         fun networkName(testnet: Boolean): String = if (testnet) "testnet" else "mainnet"
 
-        /** Current network only ([communityDojoNetwork], never the label); online first, then by name. */
-        fun forNetwork(nodes: List<CommunityDojoNode>, network: String): List<CommunityDojoNode> =
-            nodes
-                .filter { communityDojoNetwork(it.payload?.pairing?.url).directoryName().equals(network, ignoreCase = true) }
+        /**
+         * Current network only ([CheckedDojo.network]: from the signed URL,
+         * never the directory's label); verified first, then
+         * online, then by name. Each listing checked.
+         */
+        fun forNetwork(nodes: List<CommunityDojoNode>, network: String): List<CheckedDojo> {
+            val wanted = normalizeDeclaredNetwork(network)
+            return nodes
+                .map { CheckedDojo(it, DojoBaySignatures.checkNode(it)) }
+                .filter { wanted != null && it.network == wanted }
                 .sortedWith(
-                    compareByDescending<CommunityDojoNode> { it.isOnline }
-                        .thenBy { it.name.orEmpty().lowercase() }
+                    compareByDescending<CheckedDojo> { it.verified != null }
+                        .thenByDescending { it.node.isOnline }
+                        .thenBy { it.node.name.orEmpty().lowercase() }
                 )
+        }
 
         /** An empty directory never replaces the saved list (on disk or on screen). */
         fun keepsSavedList(nodes: List<CommunityDojoNode>): Boolean = nodes.isEmpty()
 
-        /** [cached] must already be the entry for the current address ([CommunityDojoCache.read]). */
+        /**
+         * [cached] must already be the entry for the current address
+         * ([CommunityDojoCache.read]); it is shown only when an empty trusted
+         * directory comes from the operator it was verified under.
+         */
         fun afterSuccess(
-            nodes: List<CommunityDojoNode>,
+            directory: CommunityDojoRepository.Directory,
+            decision: DojoBayTrust.Decision,
             network: String,
             cached: CommunityDojoCache.Entry? = null,
-        ): CommunityDojoDisplay {
-            if (keepsSavedList(nodes)) {
-                val saved = if (cached != null) forNetwork(cached.nodes, network) else emptyList()
-                return if (saved.isNotEmpty()) ListedNone(saved, cached!!.fetchedAtMs) else DirectoryEmpty
+        ): CommunityDojoDisplay = when (decision) {
+            is DojoBayTrust.Decision.Refused -> Refused(decision.reason, decision.operatorCode)
+            is DojoBayTrust.Decision.Trusted -> if (keepsSavedList(directory.nodes)) {
+                val saved = if (cached != null && cached.operatorCode == decision.operatorCode) {
+                    forNetwork(cached.nodes, network)
+                } else {
+                    emptyList()
+                }
+                if (saved.isNotEmpty()) ListedNone(saved, cached!!.fetchedAtMs) else DirectoryEmpty
+            } else {
+                val shown = forNetwork(directory.nodes, network)
+                if (shown.isEmpty()) Empty(network) else Fresh(shown, decision.operatorCode)
             }
-            val shown = forNetwork(nodes, network)
-            return if (shown.isEmpty()) Empty(network) else Fresh(shown)
         }
 
-        /** [cached] must already be the entry for the current address ([CommunityDojoCache.read]). */
         fun afterFailure(
             failure: CommunityDojoRepository.Failure,
             cached: CommunityDojoCache.Entry?,
+            baseUrl: String,
+            pinnedCode: String?,
             network: String,
             attempts: Int = 1,
         ): CommunityDojoDisplay {
-            val shown = if (cached != null) forNetwork(cached.nodes, network) else emptyList()
+            val trusted = cached != null &&
+                DojoBayTrust.cachedListTrusted(baseUrl, cached.operatorCode, pinnedCode)
+            val shown = if (trusted) forNetwork(cached!!.nodes, network) else emptyList()
             return if (shown.isNotEmpty()) Cached(shown, cached!!.fetchedAtMs, failure) else Failed(failure, attempts)
         }
     }

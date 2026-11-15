@@ -1,5 +1,7 @@
 package com.samourai.sentinel.ui.dojo
 
+import com.google.gson.Gson
+import com.google.gson.JsonObject
 import com.samourai.sentinel.api.okHttp.await
 import com.samourai.sentinel.util.ImportTooLargeException
 import com.samourai.sentinel.util.OkHttpLogRedaction
@@ -9,6 +11,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
@@ -30,6 +33,7 @@ object CommunityDojoRepository {
      * it not to stream until the app runs out of memory.
      */
     const val MAX_DIRECTORY_BYTES = 2 * 1024 * 1024
+    const val MAX_OPERATOR_BYTES = 16 * 1024
 
     /** Dojo Bay probes every listed node before answering - see #135. */
     const val TIMEOUT_SECONDS = CommunityDojoFetchPolicy.NORMAL_TIMEOUT_SECONDS
@@ -46,15 +50,34 @@ object CommunityDojoRepository {
         HTTP_ERROR("The directory returned an error"),
         BAD_RESPONSE("The directory sent a list the app could not read"),
         TOO_LARGE("The directory sent more data than a directory should"),
+        /** The list came back but data/operator.json answered 404. */
+        NO_OPERATOR_STATEMENT("The directory has no signed operator statement"),
     }
 
     class FetchException(val failure: Failure, val httpCode: Int? = null) : IOException(failure.message)
 
+    /**
+     * One fetch: the check of the instance's own operator binding, and the
+     * listings. [listFetched] is false when the operator check already made
+     * a refusal certain, so the list was never requested ([nodes] empty).
+     */
+    data class Directory(
+        val nodes: List<CommunityDojoNode>,
+        val operator: DojoBaySignatures.OperatorCheck,
+        val listFetched: Boolean = true,
+    )
+
+    /**
+     * [expectedCode] is the operator code this address is pinned to
+     * ([DojoBayTrust.expectedCode]). The caller refuses an address without
+     * one before calling (no request at all).
+     */
     suspend fun fetchDirectory(
         baseUrl: String = DojoBayConstants.BASE_URL,
+        expectedCode: String? = null,
         maxWaitMs: Long = 120_000L,
         timeoutSeconds: Long = TIMEOUT_SECONDS,
-    ): List<CommunityDojoNode> = withContext(Dispatchers.IO) {
+    ): Directory = withContext(Dispatchers.IO) {
         // Tor's STATE observer can report ON slightly before its LISTENERS
         // observer delivers the SOCKS proxy. On a cold bootstrap that window
         // surfaced as an instant "Tor is not connected" error on fresh
@@ -63,7 +86,7 @@ object CommunityDojoRepository {
             ?: throw FetchException(Failure.TOR_UNAVAILABLE)
         val client = buildClient(proxy, timeoutSeconds)
         try {
-            fetchWith(client, DojoBaySource.directoryUrl(baseUrl))
+            fetchBothWithin(client, baseUrl, expectedCode, timeoutSeconds * 1000)
         } finally {
             release(client)
         }
@@ -78,6 +101,97 @@ object CommunityDojoRepository {
     internal fun release(client: OkHttpClient) {
         client.connectionPool.evictAll()
         client.dispatcher.executorService.shutdown()
+    }
+
+    /**
+     * [fetchBoth] with one limit for the whole attempt: the two requests run
+     * one after the other, and each client call has its own timeout, so
+     * without this an attempt could take up to twice the limit.
+     */
+    internal suspend fun fetchBothWithin(
+        client: OkHttpClient,
+        baseUrl: String,
+        expectedCode: String?,
+        timeoutMs: Long,
+    ): Directory = withTimeoutOrNull(timeoutMs) { fetchBoth(client, baseUrl, expectedCode) }
+        ?: throw FetchException(Failure.TIMEOUT)
+
+    /**
+     * True when [check] already decides a refusal, whatever the list says:
+     * the binding failed, or it verifies for a code other than [expectedCode].
+     */
+    internal fun refusalCertain(check: DojoBaySignatures.OperatorCheck, expectedCode: String?): Boolean =
+        when (check) {
+            is DojoBaySignatures.OperatorCheck.Failed -> true
+            is DojoBaySignatures.OperatorCheck.Verified -> expectedCode != null && check.paymentCode != expectedCode
+        }
+
+    /**
+     * data/operator.json first, then the listings, from the same instance.
+     * The list is not requested when the operator check already refuses the
+     * instance ([refusalCertain]), or when operator.json could not be
+     * fetched (a failed fetch either way: the saved list stays up). The one
+     * exception is a 404: the list is still requested, so an address that
+     * isn't a Dojo Bay at all (its list 404s too) reports the list's own
+     * error, and a Dojo Bay that answers its list but has no operator
+     * statement gets [Failure.NO_OPERATOR_STATEMENT]. operator.json is a
+     * small static file, so asking for it first costs one short request on
+     * the circuit the list then reuses.
+     */
+    internal suspend fun fetchBoth(
+        client: OkHttpClient,
+        baseUrl: String,
+        expectedCode: String? = null,
+    ): Directory {
+        val check = try {
+            fetchOperatorWith(client, baseUrl)
+        } catch (e: FetchException) {
+            if (e.failure == Failure.HTTP_ERROR && e.httpCode == 404) {
+                // Throws the list's own failure if it fails too.
+                fetchWith(client, DojoBaySource.directoryUrl(baseUrl))
+                // Dojo Bay answered, it just has no operator statement: say
+                // so rather than "unreachable". Still a failed fetch, so a
+                // saved list from the trusted operator stays up (no age limit).
+                throw FetchException(Failure.NO_OPERATOR_STATEMENT, 404)
+            }
+            throw e
+        }
+        if (refusalCertain(check, expectedCode)) return Directory(emptyList(), check, listFetched = false)
+        val nodes = fetchWith(client, DojoBaySource.directoryUrl(baseUrl))
+        return Directory(nodes, check)
+    }
+
+    /**
+     * data/operator.json, checked against the address it came from. Only a
+     * document the instance actually serves is checked: a non-2xx answer is
+     * [Failure.HTTP_ERROR] and a blank or unreadable body (not one strict
+     * JSON object) is [Failure.BAD_RESPONSE], failed fetches like the
+     * directory's own, so a proxy hiccup or deploy window leaves the saved
+     * list up instead of refusing the instance. Transport failures are
+     * classified the same way.
+     */
+    internal suspend fun fetchOperatorWith(client: OkHttpClient, baseUrl: String): DojoBaySignatures.OperatorCheck {
+        val body = try {
+            val request = Request.Builder().url(DojoBaySource.operatorUrl(baseUrl)).build()
+            val response = client.newCall(request).await(maxBodyBytes = MAX_OPERATOR_BYTES)
+            response.use {
+                if (!it.isSuccessful) throw FetchException(Failure.HTTP_ERROR, it.code)
+                it.body?.string()
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw classify(e)
+        }
+        if (body.isNullOrBlank()) throw FetchException(Failure.BAD_RESPONSE)
+        val tree = DojoBaySignatures.parseStrictJson(body) as? JsonObject
+            ?: throw FetchException(Failure.BAD_RESPONSE)
+        val doc = try {
+            Gson().fromJson(tree, DojoBaySignatures.OperatorDoc::class.java)
+        } catch (e: Exception) {
+            throw FetchException(Failure.BAD_RESPONSE)
+        }
+        return DojoBaySignatures.checkOperator(doc, baseUrl)
     }
 
     /**

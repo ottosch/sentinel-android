@@ -16,8 +16,14 @@ import java.net.URI
  * never leaves the Tor network through an exit relay. No user info, query or
  * fragment either, so nothing extra rides the request.
  *
- * The address is the instance's root; [DojoBayConstants.DIRECTORY_PATH] is
- * read under it.
+ * A custom address is only accepted together with its operator's BIP47
+ * payment code, entered by the user. The instance's signed
+ * data/operator.json must then verify against that code before its list is
+ * shown (see [DojoBayTrust]).
+ *
+ * The address is the instance's root, the URL its operator signed in
+ * data/operator.json. [DojoBayConstants.DIRECTORY_PATH] and
+ * [DojoBayConstants.OPERATOR_PATH] are read under it.
  */
 object DojoBaySource {
 
@@ -28,6 +34,13 @@ object DojoBaySource {
     }
 
     enum class Reason { EMPTY, MALFORMED, NOT_ONION, NOT_HTTP, BAD_ONION, BAD_PORT, HAS_EXTRAS }
+
+    sealed class CodeValidation {
+        data class Valid(val paymentCode: String) : CodeValidation()
+        data class Invalid(val reason: CodeReason) : CodeValidation()
+    }
+
+    enum class CodeReason { EMPTY, INVALID, NOT_DEFAULT_CODE }
 
     private val V3_ONION_LABEL = Regex("^[a-z2-7]{56}$")
 
@@ -57,7 +70,7 @@ object DojoBaySource {
         // :80 is http's own port; dropping it keeps one spelling per address.
         val port = if (uri.port != -1 && uri.port != 80) ":${uri.port}" else ""
         var path = uri.rawPath.orEmpty()
-        // A file is not an instance root.
+        // A file is not an instance root (operator.json would not sit beside it).
         if (path.lowercase().endsWith(".json")) return Validation.Invalid(Reason.MALFORMED)
         if (!path.endsWith("/")) path += "/"
         return Validation.Valid("http://$host$port$path")
@@ -101,6 +114,27 @@ object DojoBaySource {
         return out.toByteArray()
     }
 
+    /**
+     * Checks the operator payment code entered with an address. For the
+     * default address the code is built in, so the field may be left empty
+     * or hold exactly that code.
+     */
+    fun validateOperatorCode(baseUrl: String, input: String?): CodeValidation {
+        val code = input?.trim()?.replace(Regex("\\s+"), "").orEmpty()
+        if (isDefault(baseUrl)) {
+            return if (code.isEmpty() || code == DojoBayConstants.DEFAULT_OPERATOR_CODE) {
+                CodeValidation.Valid(DojoBayConstants.DEFAULT_OPERATOR_CODE)
+            } else {
+                CodeValidation.Invalid(CodeReason.NOT_DEFAULT_CODE)
+            }
+        }
+        if (code.isEmpty()) return CodeValidation.Invalid(CodeReason.EMPTY)
+        if (DojoBaySignatures.notificationAddresses(code).isEmpty()) {
+            return CodeValidation.Invalid(CodeReason.INVALID)
+        }
+        return CodeValidation.Valid(code)
+    }
+
     /** The stored custom base, or the default when none is stored or it no longer validates. */
     fun effectiveBaseUrl(stored: String?): String {
         if (stored.isNullOrBlank()) return DojoBayConstants.BASE_URL
@@ -116,6 +150,10 @@ object DojoBaySource {
     /** The file the app actually requests for [baseUrl]. */
     fun directoryUrl(baseUrl: String): String =
         baseUrl.trimEnd('/') + "/" + DojoBayConstants.DIRECTORY_PATH
+
+    /** The instance's signed binding of its address to its operator's payment code. */
+    fun operatorUrl(baseUrl: String): String =
+        baseUrl.trimEnd('/') + "/" + DojoBayConstants.OPERATOR_PATH
 
     /** Short form for the screen and for log lines: `dojoba…u2yd.onion`. Never the full onion. */
     fun label(baseUrl: String): String {

@@ -2,6 +2,8 @@ package com.samourai.sentinel.ui.dojo
 
 import com.samourai.sentinel.ui.dojo.CommunityDojoRepository.Failure
 import com.samourai.sentinel.ui.dojo.CommunityDojoRepository.FetchException
+import com.samourai.sentinel.ui.dojo.DojoBaySignatures.OperatorCheck
+import com.samourai.sentinel.ui.dojo.DojoBaySignatures.OperatorFailure
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.Dispatcher
@@ -59,10 +61,10 @@ class CommunityDojoRepositoryTest {
 
     @Test
     fun `ok directory parses`() = runBlocking {
-        server.enqueue(MockResponse().setBody("""{"generated_at":"x","nodes":[{"id":"a","network":"testnet","status":"active"}]}"""))
+        server.enqueue(MockResponse().setBody("""{"generated_at":"x","nodes":[{"id":"a","network":"testnet","status":"active","signed":"s"}]}"""))
         val nodes = CommunityDojoRepository.fetchWith(client(), url())
         assertEquals(1, nodes.size)
-        assertEquals("a", nodes[0].id)
+        assertEquals("s", nodes[0].signed)
     }
 
     @Test
@@ -152,5 +154,183 @@ class CommunityDojoRepositoryTest {
         assertEquals(Failure.UNREACHABLE, CommunityDojoRepository.classify(java.net.SocketException("SOCKS: TTL expired")).failure)
         assertEquals(Failure.UNREACHABLE, CommunityDojoRepository.classify(java.net.SocketException("SOCKS: Host unreachable")).failure)
         assertEquals(Failure.UNREACHABLE, CommunityDojoRepository.classify(java.net.ConnectException("Connection refused")).failure)
+    }
+
+    // ---- operator binding, fetched before the directory -------------------
+
+    private fun serve(dojos: MockResponse, operator: MockResponse) {
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse = when (request.path) {
+                "/data/dojos.json" -> dojos
+                "/data/operator.json" -> operator
+                else -> MockResponse().setResponseCode(404)
+            }
+        }
+    }
+
+    @Test
+    fun `operator json is fetched from the same root and checked against it`() = runBlocking {
+        val base = server.url("/").toString()
+        val alice = DojoBayTestVectors.ThrowawayPayNym(7)
+        val doc = alice.operatorDoc(base)
+        serve(
+            MockResponse().setBody("""{"nodes":[]}"""),
+            MockResponse().setBody(com.google.gson.Gson().toJson(doc)),
+        )
+        val dir = CommunityDojoRepository.fetchBoth(client(), base)
+        assertEquals(OperatorCheck.Verified(alice.code), dir.operator)
+    }
+
+    @Test
+    fun `operator json http error is a failed fetch, not a refusal`() {
+        val base = server.url("/").toString()
+        for (code in listOf(408, 429, 500, 502, 503)) {
+            serve(MockResponse().setBody("""{"nodes":[]}"""), MockResponse().setResponseCode(code))
+            val e = failureOf { CommunityDojoRepository.fetchBoth(client(), base) }
+            assertEquals("HTTP $code", Failure.HTTP_ERROR, e.failure)
+            assertEquals(code, e.httpCode)
+        }
+    }
+
+    @Test
+    fun `operator json 404 after the list answered is its own failure, not unreachable`() {
+        val base = server.url("/").toString()
+        serve(MockResponse().setBody("""{"nodes":[]}"""), MockResponse().setResponseCode(404))
+        val e = failureOf { CommunityDojoRepository.fetchBoth(client(), base) }
+        assertEquals(Failure.NO_OPERATOR_STATEMENT, e.failure)
+        assertEquals(404, e.httpCode)
+        // The directory's own 404 is still an HTTP error.
+        serve(MockResponse().setResponseCode(404), MockResponse().setResponseCode(404))
+        assertEquals(Failure.HTTP_ERROR, failureOf { CommunityDojoRepository.fetchBoth(client(), base) }.failure)
+    }
+
+    @Test
+    fun `blank or unreadable operator json is a failed fetch, not a refusal`() {
+        val base = server.url("/").toString()
+        for (body in listOf("", "   ", "<html>not json</html>", "[1,2]", "{'onion':'x'}", """{"onion":"x"} trailing""")) {
+            serve(MockResponse().setBody("""{"nodes":[]}"""), MockResponse().setBody(body))
+            val e = failureOf { CommunityDojoRepository.fetchBoth(client(), base) }
+            assertEquals("body <$body>", Failure.BAD_RESPONSE, e.failure)
+        }
+    }
+
+    @Test
+    fun `served operator json without code or block is a failed check`() = runBlocking {
+        val base = server.url("/").toString()
+        serve(MockResponse().setBody("""{"nodes":[]}"""), MockResponse().setBody("""{"onion":"$base"}"""))
+        assertEquals(OperatorCheck.Failed(OperatorFailure.MISSING), CommunityDojoRepository.fetchBoth(client(), base).operator)
+    }
+
+    @Test
+    fun `operator json that cannot be reached is a failed fetch, not a refusal`() {
+        val base = server.url("/").toString()
+        serve(MockResponse().setBody("""{"nodes":[]}"""), MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AFTER_REQUEST))
+        val e = failureOf { CommunityDojoRepository.fetchBoth(client(), base) }
+        assertEquals(Failure.UNREACHABLE, e.failure)
+    }
+
+    @Test
+    fun `operator json that never answers times out like the directory`() {
+        val base = server.url("/").toString()
+        serve(MockResponse().setBody("""{"nodes":[]}"""), MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
+        val e = failureOf { CommunityDojoRepository.fetchBoth(client(timeoutMs = 500), base) }
+        assertEquals(Failure.TIMEOUT, e.failure)
+    }
+
+    @Test
+    fun `operator 503 with a saved list - the fetch fails and the saved list is shown`() {
+        val base = server.url("/").toString()
+        val code = DojoBayConstants.DEFAULT_OPERATOR_CODE
+        val saved = CommunityDojoCache.Entry(base, 7L, listOf(DojoBayTestVectors.realSeedNode()), code)
+        serve(MockResponse().setBody("""{"nodes":[]}"""), MockResponse().setResponseCode(503))
+        val e = failureOf { CommunityDojoRepository.fetchBoth(client(), base) }
+        assertEquals(Failure.HTTP_ERROR, e.failure)
+        // The sheet's failure path: nothing refused, nothing cleared.
+        val d = CommunityDojoDisplay.afterFailure(e.failure, saved, base, code, "mainnet")
+        assertTrue(d is CommunityDojoDisplay.Cached)
+        assertEquals(7L, (d as CommunityDojoDisplay.Cached).fetchedAtMs)
+    }
+
+    /** Paths requested since the last call, in order. */
+    private fun requestedPaths(): List<String?> {
+        val paths = mutableListOf<String?>()
+        while (true) {
+            val r = server.takeRequest(10, TimeUnit.MILLISECONDS) ?: break
+            paths += r.path
+        }
+        return paths
+    }
+
+    @Test
+    fun `operator json is asked for first, then the list from the same instance`() = runBlocking {
+        val base = server.url("/").toString()
+        val alice = DojoBayTestVectors.ThrowawayPayNym(7)
+        serve(
+            MockResponse().setBody("""{"nodes":[]}"""),
+            MockResponse().setBody(com.google.gson.Gson().toJson(alice.operatorDoc(base))),
+        )
+        val dir = CommunityDojoRepository.fetchBoth(client(), base, alice.code)
+        assertTrue(dir.listFetched)
+        assertEquals(listOf("/data/operator.json", "/data/dojos.json"), requestedPaths())
+    }
+
+    @Test
+    fun `a refusal the operator check already decides never requests the list`() = runBlocking {
+        val base = server.url("/").toString()
+        val alice = DojoBayTestVectors.ThrowawayPayNym(7)
+        val bob = DojoBayTestVectors.ThrowawayPayNym(8)
+        // Signed by a different code from the one this address is pinned to.
+        serve(
+            MockResponse().setBody("""{"nodes":[]}"""),
+            MockResponse().setBody(com.google.gson.Gson().toJson(alice.operatorDoc(base))),
+        )
+        val mismatch = CommunityDojoRepository.fetchBoth(client(), base, bob.code)
+        assertFalse(mismatch.listFetched)
+        assertTrue(mismatch.nodes.isEmpty())
+        assertEquals(listOf("/data/operator.json"), requestedPaths())
+        val decision = DojoBayTrust.decide(base, mismatch.operator, bob.code)
+        assertEquals(DojoBayTrust.RefusalReason.CODE_MISMATCH, (decision as DojoBayTrust.Decision.Refused).reason)
+        // Refused, not "lists no Dojos": the list was never asked for.
+        assertTrue(CommunityDojoDisplay.afterSuccess(mismatch, decision, "testnet") is CommunityDojoDisplay.Refused)
+
+        // A served document without code or block.
+        serve(MockResponse().setBody("""{"nodes":[]}"""), MockResponse().setBody("""{"onion":"$base"}"""))
+        val missing = CommunityDojoRepository.fetchBoth(client(), base, bob.code)
+        assertFalse(missing.listFetched)
+        assertEquals(listOf("/data/operator.json"), requestedPaths())
+    }
+
+    @Test
+    fun `operator json that cannot be fetched does not request the list, except a 404`() {
+        val base = server.url("/").toString()
+        serve(MockResponse().setBody("""{"nodes":[]}"""), MockResponse().setResponseCode(503))
+        assertEquals(Failure.HTTP_ERROR, failureOf { CommunityDojoRepository.fetchBoth(client(), base) }.failure)
+        assertEquals(listOf("/data/operator.json"), requestedPaths())
+        serve(MockResponse().setBody("""{"nodes":[]}"""), MockResponse().setResponseCode(404))
+        assertEquals(Failure.NO_OPERATOR_STATEMENT, failureOf { CommunityDojoRepository.fetchBoth(client(), base) }.failure)
+        assertEquals(listOf("/data/operator.json", "/data/dojos.json"), requestedPaths())
+    }
+
+    @Test
+    fun `a custom address without an operator code is refused with no code to fetch for`() {
+        val custom = "http://" + "a".repeat(56) + ".onion/"
+        assertEquals(null, DojoBayTrust.expectedCode(custom, null))
+        assertEquals(null, DojoBayTrust.expectedCode(custom, "  "))
+    }
+
+    @Test
+    fun `one limit covers both requests of an attempt`() {
+        val base = server.url("/").toString()
+        val alice = DojoBayTestVectors.ThrowawayPayNym(7)
+        // Each request alone is well inside the client's 2 s; together they pass the 700 ms attempt limit.
+        serve(
+            MockResponse().setBody("""{"nodes":[]}""").setBodyDelay(500, TimeUnit.MILLISECONDS),
+            MockResponse().setBody(com.google.gson.Gson().toJson(alice.operatorDoc(base))).setBodyDelay(500, TimeUnit.MILLISECONDS),
+        )
+        val e = failureOf { CommunityDojoRepository.fetchBothWithin(client(), base, alice.code, 700) }
+        assertEquals(Failure.TIMEOUT, e.failure)
+        // With room for both, the same attempt succeeds.
+        val dir = runBlocking { CommunityDojoRepository.fetchBothWithin(client(), base, alice.code, 1_800) }
+        assertTrue(dir.listFetched)
     }
 }

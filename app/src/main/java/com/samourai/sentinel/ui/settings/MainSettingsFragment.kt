@@ -499,7 +499,7 @@ class MainSettingsFragment : PreferenceFragmentCompat() {
                                     // first, so a later step that throws
                                     // cannot leave it behind;
                                     // prefs.clearAll() below resets the Dojo
-                                    // Bay address.
+                                    // Bay address and its code.
                                     try {
                                         CommunityDojoCache.forDirectory(noBackupDir).clear()
                                     } catch (e: Exception) {
