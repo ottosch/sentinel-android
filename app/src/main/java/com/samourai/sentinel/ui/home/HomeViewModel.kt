@@ -2,6 +2,8 @@ package com.samourai.sentinel.ui.home
 
 import androidx.lifecycle.*
 import com.samourai.sentinel.core.ConnectionIndicator
+import com.samourai.sentinel.core.DojoContact
+import com.samourai.sentinel.core.DojoReachability
 import com.samourai.sentinel.core.SentinelState
 import com.samourai.sentinel.core.SyncState
 import com.samourai.sentinel.data.PubKeyCollection
@@ -9,7 +11,10 @@ import com.samourai.sentinel.data.repository.CollectionRepository
 import com.samourai.sentinel.data.repository.ExchangeRateRepository
 import com.samourai.sentinel.data.repository.FeeRepository
 import com.samourai.sentinel.data.repository.CollectionTxSyncResult
+import com.samourai.sentinel.data.repository.PubSyncHealth
+import com.samourai.sentinel.data.repository.SyncFailureKind
 import com.samourai.sentinel.data.repository.TransactionsRepository
+import com.samourai.sentinel.data.repository.syncFailureKind
 import com.samourai.sentinel.tor.EnumTorState
 import com.samourai.sentinel.tor.SentinelTorManager
 import com.samourai.sentinel.tor.TorState
@@ -251,7 +256,7 @@ class HomeViewModel : ViewModel() {
      * endpointPoke dispatch so the pref write has landed before reads.
      *
      * #411: the retryable flavor is just as obsolete once an endpoint
-     * write lands. Pairing over a standing "Could not reach the server."
+     * write lands. Pairing over a standing "Could not reach Dojo."
      * matched no arm before - the poke fired and the stale banner stood
      * until a manual pull-to-refresh cleared it. Any standing Failed is
      * now spent on a quiet round: the poke only fires on an endpoint pref
@@ -317,7 +322,41 @@ class HomeViewModel : ViewModel() {
         endpointPoke.removeObserver(endpointKick)
         UtxoMetaUtil.blockedChanges.removeObserver(blockedMarksObserver)
         prefsUtil.removeListener(prefsListener)
+        DojoReachability.unsubscribe(reachabilityListener)
         super.onCleared()
+    }
+
+    /**
+     * Home came back with a standing transport failure and Tor ready.
+     * One quiet round. [QuietResync] refuses a round already in flight,
+     * and this is not called from the failure post, so it cannot loop.
+     */
+    fun onHomeResumed() {
+        maybeQuietResync()
+    }
+
+    private var lastReachability: DojoContact = DojoContact.Unknown
+
+    private val reachabilityListener: (DojoContact) -> Unit = { next ->
+        val previous = lastReachability
+        lastReachability = next
+        reachabilityPoke.postValue(next)
+        if (becameReachable(previous, next)) {
+            viewModelScope.launch { maybeQuietResync() }
+        }
+    }
+
+    private val reachabilityPoke = MutableLiveData(DojoReachability.current)
+
+    init {
+        // After the listener exists. The first callback replays Unknown.
+        DojoReachability.subscribe(reachabilityListener)
+    }
+
+    private fun maybeQuietResync() {
+        val torReady = !SentinelState.isTorRequired() || SentinelTorManager.isTorReady()
+        if (!QuietResync.shouldStart(syncState.value, torReady, syncRound?.isActive == true)) return
+        fetchBalance(userInitiated = false)
     }
 
     private fun load() {
@@ -525,8 +564,13 @@ class HomeViewModel : ViewModel() {
         }
 
         try {
+            var dojoDown = false
             inRound.forEach { collection ->
-                try {
+                if (dojoDown) {
+                    // The onion already failed. Another wallet call would
+                    // wait out the same connect. Count it and hide its coins.
+                    markDojoDown(collection, ledger)
+                } else try {
                     // #475: fetchFromServer, not fetchUTXOS - the auto
                     // round must land history, not just spendable coin.
                     // The /wallet body already carries the newest tx page
@@ -539,11 +583,13 @@ class HomeViewModel : ViewModel() {
                         Timber.e(
                             "sync round: tx history indeterminate for ${collection.id}"
                         )
+                        if (result.kind == SyncFailureKind.TRANSPORT) dojoDown = true
                     }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    ledger.recordThrown(collection.id)
+                    ledger.recordThrown(collection.id, e)
+                    if (syncFailureKind(e) == SyncFailureKind.TRANSPORT) dojoDown = true
                     Timber.e(e, "Failed to sync collection ${collection.id}")
                 }
                 completed++
@@ -583,6 +629,7 @@ class HomeViewModel : ViewModel() {
                 autoRetryBudget = autoRetryBudget,
                 autoRetryLimit = AUTO_SYNC_RETRIES,
                 standingFailed = syncState.value is SyncState.Failed,
+                tally = ledger.tally(),
             )
             // Own writes must not use a cleared signature as a fresh arm.
             if (decision.clearLastRoundSignature) {
@@ -688,6 +735,7 @@ class HomeViewModel : ViewModel() {
             // #184: pairing/unpairing and the Tor toggle arrive as pokes;
             // recompute reads the prefs fresh at dispatch time.
             mediator.addSource(endpointPoke) { recompute(null) }
+            mediator.addSource(reachabilityPoke) { recompute(null) }
         }
     }
 
@@ -698,7 +746,9 @@ class HomeViewModel : ViewModel() {
      * endpoint configuration. The precedence lives in
      * [homeConnectionIndicator]; the controller's dedupe is untouched.
      *
-     * GREEN only when Tor is connected AND the last sync succeeded.
+     * The connection color is [DojoReachability]. A local sync failure
+     * leaves the dot green once the Dojo has answered; the banner
+     * keeps the sync result.
      */
     private fun computeIndicator(torEmission: TorState?): ConnectionIndicator {
         val torRequired = SentinelState.isTorRequired()
@@ -713,7 +763,16 @@ class HomeViewModel : ViewModel() {
             torState = tor.state,
             torProgress = tor.progressIndicator,
             endpointEnabled = prefsUtil.isAPIEndpointEnabled(),
+            reachability = DojoReachability.current,
         )
+    }
+
+    /** Remaining collections after the Dojo onion failed this round. */
+    private fun markDojoDown(collection: PubKeyCollection, ledger: SyncRoundLedger) {
+        ledger.recordKind(collection.id, SyncFailureKind.TRANSPORT)
+        collection.pubs.forEach { pub ->
+            PubSyncHealth.markFailed(pub.pubKey, SyncFailureKind.TRANSPORT)
+        }
     }
 
     fun fetchBalance(userInitiated: Boolean = false) {
@@ -843,8 +902,11 @@ class HomeViewModel : ViewModel() {
             }
 
             try {
+                var dojoDown = false
                 inRound.forEach { collection ->
-                    try {
+                    if (dojoDown) {
+                        markDojoDown(collection, ledger)
+                    } else try {
                         // #475: same outcome accounting as the auto
                         // round - feeds the completion gate below.
                         val result = transactionsRepository.fetchFromServer(collection)
@@ -853,11 +915,13 @@ class HomeViewModel : ViewModel() {
                             Timber.e(
                                 "sync round: tx history indeterminate for ${collection.id}"
                             )
+                            if (result.kind == SyncFailureKind.TRANSPORT) dojoDown = true
                         }
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        ledger.recordThrown(collection.id)
+                        ledger.recordThrown(collection.id, e)
+                        if (syncFailureKind(e) == SyncFailureKind.TRANSPORT) dojoDown = true
                         Timber.e(e)
                     }
                     completed++
@@ -896,6 +960,7 @@ class HomeViewModel : ViewModel() {
                     autoRetryBudget = autoRetryBudget,
                     autoRetryLimit = AUTO_SYNC_RETRIES,
                     standingFailed = syncState.value is SyncState.Failed,
+                    tally = ledger.tally(),
                 )
                 autoRetryBudget = decision.autoRetryBudget
                 if (decision.clearLastRoundSignature) {

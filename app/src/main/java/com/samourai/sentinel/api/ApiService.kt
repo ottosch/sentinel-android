@@ -4,7 +4,9 @@ package com.samourai.sentinel.api
 
 import com.samourai.sentinel.BuildConfig
 import com.samourai.sentinel.api.okHttp.await
+import com.samourai.sentinel.core.DojoReachability
 import com.samourai.sentinel.core.SentinelState
+import com.samourai.sentinel.core.dojoErrorEnvelope
 import com.samourai.sentinel.data.AddressTypes
 import com.samourai.sentinel.helpers.fromJSON
 import com.samourai.sentinel.tor.EnumTorState
@@ -114,7 +116,35 @@ open class ApiService {
         maxBodyBytes: Int? = null,
     ): Response {
         beforeNewCall?.invoke(captured, request)
-        return captured.newCall(request).await(maxBodyBytes = maxBodyBytes)
+        val dojoCall = isDojoCall(request)
+        return try {
+            val response = captured.newCall(request).await(maxBodyBytes = maxBodyBytes)
+            if (dojoCall) noteDojoResponse(response)
+            response
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: java.io.IOException) {
+            if (dojoCall) DojoReachability.recordTransport(e)
+            throw e
+        }
+    }
+
+    /**
+     * Exchange calls share [callOn]. Only a request aimed at the
+     * configured Dojo host updates reachability.
+     */
+    private fun isDojoCall(request: Request): Boolean {
+        val configured = runCatching { getAPIUrl() }.getOrNull() ?: return false
+        return TokenAuthenticator.isDojoTarget(configured, request.url)
+    }
+
+    private fun noteDojoResponse(response: Response) {
+        val envelope = try {
+            dojoErrorEnvelope(response.peekBody(DOJO_STATUS_PEEK_BYTES).string())
+        } catch (_: Exception) {
+            false
+        }
+        DojoReachability.recordHttp(response.code, envelope)
     }
 
 
@@ -594,6 +624,16 @@ open class ApiService {
 
     companion object {
 
+        /** Head of a Dojo body, enough to see `"status":"error"` and nothing else. */
+        private const val DOJO_STATUS_PEEK_BYTES = 80L
+
+        /** Tor SOCKS handshake. A dead onion fails here, once. */
+        internal const val TOR_CONNECT_SECONDS = 45L
+
+        /** After the circuit exists, a slow Dojo may still be writing. */
+        internal const val TOR_READ_SECONDS = 180L
+        internal const val TOR_WRITE_SECONDS = 180L
+
         /**
          * The current Dojo access token, read fresh from prefs.
          *
@@ -666,15 +706,21 @@ open class ApiService {
             }
 
             if (SentinelTorManager.getTorState().state == EnumTorState.ON) {
-                // Over Tor, building a circuit to an onion service can take several
-                // minutes on a poor connection. A 90s callTimeout was aborting
-                // healthy requests, which surfaced to the user as a sync failure.
-                // callTimeout(0) disables the overall ceiling; the read/connect
-                // timeouts below still catch a genuinely dead connection.
+                // A dead Dojo onion fails in the SOCKS handshake (often
+                // "TTL expired") or by sitting until the connect timeout.
+                // OkHttp's default connection retry repeated that wait, so
+                // one collection took about two minutes. Retry is off.
+                // Connect is 45s: long enough for a slow circuit that is
+                // going to complete, short enough that a hung handshake
+                // surfaces inside a minute. callTimeout stays 0 and the
+                // read stays 180s, so a circuit that does connect is not
+                // cut off while a slow Dojo writes the wallet. A 90s
+                // callTimeout used to abort those healthy reads.
+                builder.retryOnConnectionFailure(false)
                 builder.callTimeout(0, TimeUnit.MILLISECONDS)
-                builder.readTimeout(180, TimeUnit.SECONDS)
-                builder.writeTimeout(180, TimeUnit.SECONDS)
-                builder.connectTimeout(180, TimeUnit.SECONDS)
+                builder.readTimeout(TOR_READ_SECONDS, TimeUnit.SECONDS)
+                builder.writeTimeout(TOR_WRITE_SECONDS, TimeUnit.SECONDS)
+                builder.connectTimeout(TOR_CONNECT_SECONDS, TimeUnit.SECONDS)
                 // #229: the SOCKS proxy is only live once bootstrap completes.
                 // builder.proxy(null) would have meant a DIRECT connection - a
                 // de-anonymization leak for a user who asked for Tor. Fail

@@ -122,6 +122,7 @@ class SendFragment : Fragment() {
             setBalance(mCollection!!.pubs[indexPubSelector-1])
         else
             setBalance(mCollection!!.pubs[findFirstNonAddressPubkey()-1])
+        viewModel.refreshUnsyncedPubs()
         super.onResume()
     }
 
@@ -242,6 +243,12 @@ class SendFragment : Fragment() {
 
         // #294: say why the button is disabled, on the field responsible.
         viewModel.spendBlocker.observe(viewLifecycleOwner) { showSpendBlocker(it) }
+        viewModel.unsyncedXpubNote.observe(viewLifecycleOwner) { note ->
+            val label = fragmentSpendBinding.fragmentComposeTx.unsyncedXpubNote
+            label.text = note.orEmpty()
+            label.visibility = if (note.isNullOrEmpty()) View.GONE else View.VISIBLE
+        }
+        viewModel.selectableSpendable.observe(viewLifecycleOwner) { showAvailable() }
 
         setUpCoinControl()
 
@@ -544,7 +551,12 @@ class SendFragment : Fragment() {
     private fun showAvailable() {
         val pinnedTotal = viewModel.pinnedTotal.value
         val pinned = !viewModel.pinnedOutpoints.value.isNullOrEmpty()
-        availableBalance = if (pinned && pinnedTotal != null) pinnedTotal else accountSpendable
+        val capped = viewModel.selectableSpendable.value
+        availableBalance = if (pinned && pinnedTotal != null) {
+            pinnedTotal
+        } else {
+            capped ?: accountSpendable
+        }
         fragmentSpendBinding.fragmentComposeTx.totalBTC.text =
             decimalFormatBTC.format(availableBalance.div(1e8)).toString() + " BTC"
     }

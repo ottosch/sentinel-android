@@ -12,6 +12,8 @@ import android.widget.Toast
 import androidx.core.content.ContextCompat
 import com.samourai.sentinel.R
 import com.samourai.sentinel.api.ApiService
+import com.samourai.sentinel.core.DojoContact
+import com.samourai.sentinel.core.DojoReachability
 import com.samourai.sentinel.core.SentinelState
 import com.samourai.sentinel.data.repository.CollectionRepository
 import com.samourai.sentinel.tor.EnumTorState
@@ -173,6 +175,9 @@ class NetworkActivity : SentinelActivity() {
         setTorConnectionState(SentinelTorManager.getTorState())
         SentinelTorManager.getTorStateLiveData().observe(this, {
             setTorConnectionState(it)
+            // Tor becoming ready is when an unknown Dojo row may probe.
+            setDojoStatus()
+            maybeProbeDojo()
         })
         // boot=100 can be published before the SOCKS port exists, and
         // that STATE stream does not fire again when the port appears
@@ -367,14 +372,35 @@ class NetworkActivity : SentinelActivity() {
         }
     }
 
+    private var dojoProbe: Job? = null
+
+    private val dojoReachabilityListener: (DojoContact) -> Unit = {
+        runOnUiThread {
+            if (isFinishing || isDestroyed) return@runOnUiThread
+            setDojoStatus()
+        }
+    }
+
     fun setDojoStatus() {
         if (dojoUtility.isDojoEnabled()) {
-            // #158: render from burst state - in-flight shows the re-entry
-            // marker, a partial last round shows its residue, a clean
-            // slate shows the plain rest label.
-            dojoConnectionStatus?.text = KeyRegistrationBurst.statusText(getString(R.string.Enabled))
+            // #158: a burst in flight or a partial registration still
+            // owns the text. The color and the rest label come from the
+            // last real Dojo contact, not from the pairing existing.
+            val torReady = !SentinelState.isTorRequired() || SentinelTorManager.isTorReady()
+            val row = DojoStatusRow.present(
+                contact = DojoReachability.current,
+                now = System.currentTimeMillis(),
+                torReady = torReady,
+                checking = dojoProbe?.isActive == true,
+            )
+            dojoConnectionStatus?.text = KeyRegistrationBurst.statusText(row.text)
             dojoButton?.text = getString(R.string.disable_dojo)
-            dojoConnectionIcon!!.setColorFilter(activeColor)
+            val color = when (row.tone) {
+                DojoRowTone.GREEN -> activeColor
+                DojoRowTone.AMBER -> waiting
+                DojoRowTone.RED -> disabledColor
+            }
+            dojoConnectionIcon!!.setColorFilter(color)
             // Only offer pairing details when a payload actually exists.
             dojoDetailsButton?.visibility = View.VISIBLE
         } else {
@@ -382,6 +408,33 @@ class NetworkActivity : SentinelActivity() {
             dojoButton?.text = getString(R.string.enable)
             dojoConnectionIcon!!.setColorFilter(disabledColor)
             dojoDetailsButton?.visibility = View.GONE
+        }
+    }
+
+    /**
+     * One fees read while this screen is open and the row has no fresh
+     * contact. Cancelled when the screen leaves. Tor-only: [ApiService]
+     * refuses a client until Tor is ready, and this does not start when
+     * it is not.
+     */
+    private fun maybeProbeDojo() {
+        if (isFinishing || isDestroyed) return
+        if (!dojoUtility.isDojoEnabled()) return
+        if (dojoProbe?.isActive == true) return
+        val torReady = !SentinelState.isTorRequired() || SentinelTorManager.isTorReady()
+        if (!DojoStatusRow.shouldProbe(DojoReachability.current, System.currentTimeMillis(), torReady)) {
+            return
+        }
+        dojoProbe = lifecycleScope.launch {
+            try {
+                apiService.getFees().close()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // callOn already recorded Unreachable or DojoError.
+            } finally {
+                if (!isFinishing && !isDestroyed) setDojoStatus()
+            }
         }
     }
 
@@ -763,13 +816,17 @@ class NetworkActivity : SentinelActivity() {
         // the subscribe and the snapshot below; a mid-burst arrival gets
         // the current count immediately from subscribe's snapshot event.
         KeyRegistrationBurst.subscribe(burstListener)
+        DojoReachability.subscribe(dojoReachabilityListener)
         setNetworkStatus()
+        maybeProbeDojo()
         setDojoStatus()
         refreshExplorerRow()
     }
 
     override fun onStop() {
         screenStarted = false
+        dojoProbe?.cancel()
+        dojoProbe = null
         stopCheckingTicker()
         explorerProbes.onScreenStop()
         super.onStop()
@@ -781,6 +838,8 @@ class NetworkActivity : SentinelActivity() {
         // the clean exit). The burst itself keeps running on apiScope by
         // design (#85).
         KeyRegistrationBurst.unsubscribe(burstListener)
+        DojoReachability.unsubscribe(dojoReachabilityListener)
+        dojoProbe?.cancel()
         prefsUtil.removeListener(explorerPrefListener)
         explorerProbes.onScreenStop()
         super.onDestroy()

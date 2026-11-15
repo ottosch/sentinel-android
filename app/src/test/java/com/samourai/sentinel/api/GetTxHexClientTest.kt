@@ -18,6 +18,7 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.fail
@@ -112,7 +113,8 @@ class GetTxHexClientTest {
         assertEquals(0, client.callTimeoutMillis)
         assertEquals(180_000, client.readTimeoutMillis)
         assertEquals(180_000, client.writeTimeoutMillis)
-        assertEquals(180_000, client.connectTimeoutMillis)
+        assertEquals(45_000, client.connectTimeoutMillis)
+        assertFalse(client.retryOnConnectionFailure)
     }
 
     private fun captureClient(stop: Boolean = false): () -> OkHttpClient {

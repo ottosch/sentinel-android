@@ -2,7 +2,9 @@ package com.samourai.sentinel.ui.dojo
 
 import com.samourai.sentinel.api.ApiService
 import com.samourai.sentinel.api.TlsPolicy
+import com.samourai.sentinel.core.DojoReachability
 import com.samourai.sentinel.data.db.SentinelCollectionStore
+import com.samourai.sentinel.data.repository.PubSyncHealth
 import com.samourai.sentinel.data.db.PayloadRecord
 import com.samourai.sentinel.helpers.fromJSON
 import com.samourai.sentinel.helpers.toJSON
@@ -47,6 +49,7 @@ class DojoUtility {
         prefsUtil.dojoExplorerUrl = payload.explorer?.url
         prefsUtil.dojoExplorerType = payload.explorer?.type
         writePayload(dojoPayload!!);
+        notePairingChanged()
         return apiService.authenticateDojo(dojoPayload!!.pairing!!.apikey!!);
     }
 
@@ -79,6 +82,7 @@ class DojoUtility {
     }
 
     fun clearDojo() {
+        notePairingChanged()
         // #208: deleteAll covers the primary payload AND its rotated .bak
         // (which still contains the node API key) under the writers' lock.
         CoroutineScope(Dispatchers.IO).launch {
@@ -181,6 +185,7 @@ class DojoUtility {
         // it is left null here, token refresh silently no-ops and balances stop
         // loading 15 minutes after pairing.
         this.apiKey = payload.pairing?.apikey
+        notePairingChanged()
     }
 
     fun import(dojoPairing: JSONObject) {
@@ -188,6 +193,16 @@ class DojoUtility {
         dojoPayload = fromJSON(dojoPairing.toString())
         // See setDojoPayload: apiKey must track dojoPayload.
         apiKey = dojoPayload?.pairing?.apikey
+        notePairingChanged()
+    }
+
+    /**
+     * A new pairing, or none. The last contact belonged to the previous
+     * payload, and a failed XPUB's hide-from-send mark did too.
+     */
+    private fun notePairingChanged() {
+        DojoReachability.reset()
+        PubSyncHealth.clearAll()
     }
 
     companion object {

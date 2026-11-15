@@ -185,9 +185,10 @@ class PubSyncIsolationTest {
             autoRetryBudget = 0,
             autoRetryLimit = 2,
             standingFailed = false,
+            tally = ledger.tally(),
         )
         assertEquals(
-            SyncState.Failed("1 of 2 collections failed to sync.", retryable = true),
+            SyncState.Failed(SyncRoundTerminal.dojoErrorReason(1, 2), retryable = true),
             decision.toSyncState(1L),
         )
     }

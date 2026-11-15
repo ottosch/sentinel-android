@@ -98,7 +98,7 @@ class PairingTorGateTest {
     }
 
     //
-    // Leg 3: Tor-mode timeouts mirrored from ApiService's ON arm -
+    // Leg 3: pairing keeps a 180s connect for a cold one-shot login.
     // OkHttp's default 10 s callTimeout kills an onion circuit build.
     // OkHttp 4.12's client exposes these as *Millis Int vals
     // (callTimeoutMillis etc. - verified against the pinned 4.12

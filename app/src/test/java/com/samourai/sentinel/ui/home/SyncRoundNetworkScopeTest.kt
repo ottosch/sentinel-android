@@ -1,6 +1,7 @@
 package com.samourai.sentinel.ui.home
 
 import com.samourai.sentinel.core.ConnectionIndicator
+import com.samourai.sentinel.core.DojoContact
 import com.samourai.sentinel.core.SyncState
 import com.samourai.sentinel.data.AddressTypes
 import com.samourai.sentinel.data.PubKeyCollection
@@ -120,7 +121,7 @@ class SyncRoundNetworkScopeTest {
         assertEquals(storedBalance, balanceOf(mainnet.collections, "m2"))
         assertEquals(storedBalance, balanceOf(mainnet.collections, "t1"))
         assertEquals(storedBalance, balanceOf(mainnet.collections, "t2"))
-        assertEquals(ConnectionIndicator.RED, homeIndicator(mainnet.state!!))
+        assertEquals(ConnectionIndicator.YELLOW, homeIndicator(mainnet.state!!))
 
         val testnet = finish(
             kind = SyncRoundTerminal.Kind.COLLECTIONS,
@@ -140,7 +141,7 @@ class SyncRoundNetworkScopeTest {
         assertEquals(syncedBalance, balanceOf(testnet.collections, "t1"))
         assertEquals(storedBalance, balanceOf(testnet.collections, "m1"))
         assertEquals(storedBalance, balanceOf(testnet.collections, "m2"))
-        assertEquals(ConnectionIndicator.RED, homeIndicator(testnet.state!!))
+        assertEquals(ConnectionIndicator.YELLOW, homeIndicator(testnet.state!!))
     }
 
     @Test
@@ -184,12 +185,13 @@ class SyncRoundNetworkScopeTest {
     }
 
     /**
-     * Home's dot and a healthy Network screen (Tor up, bootstrap
-     * finished, endpoint set) agree. Off-network rows do not turn
-     * the dot red. A real on-network failure still does.
+     * Home's dot and the Network Dojo row share [DojoContact].
+     * Off-network rows do not turn the dot red. A local sync miss
+     * stays yellow until a contact is recorded. Unreachable is red.
+     * A real contact stays green; the banner keeps the sync result.
      */
     @Test
-    fun homeIndicator_staysGreenUnlessAnOnNetworkCollectionFails() {
+    fun homeIndicator_followsDojoContactNotEverySyncFailure() {
         val skippedOnMainnet = finish(
             kind = SyncRoundTerminal.Kind.BALANCE,
             collections = mixedWallets(),
@@ -213,11 +215,10 @@ class SyncRoundNetworkScopeTest {
         assertEquals(ConnectionIndicator.GREEN, homeIndicator(skippedOnMainnet.state!!))
         assertEquals(ConnectionIndicator.GREEN, homeIndicator(skippedOnTestnet.state!!))
         assertEquals(
-            SyncState.Failed("1 of 2 collections failed to sync.", retryable = true),
+            SyncState.Failed(SyncRoundTerminal.syncIncompleteReason(1, 2), retryable = true),
             onNetworkFailure.state,
         )
-        assertEquals(ConnectionIndicator.RED, homeIndicator(onNetworkFailure.state!!))
-        // Same inputs that leave the Network screen green.
+        assertEquals(ConnectionIndicator.YELLOW, homeIndicator(onNetworkFailure.state!!))
         assertEquals(
             ConnectionIndicator.GREEN,
             homeConnectionIndicator(
@@ -231,7 +232,40 @@ class SyncRoundNetworkScopeTest {
         assertEquals(
             ConnectionIndicator.RED,
             homeConnectionIndicator(
-                sync = SyncState.Failed("1 of 2 collections failed to sync.", retryable = true),
+                sync = SyncState.Failed(SyncRoundTerminal.DOJO_UNREACHABLE, retryable = true),
+                torRequired = true,
+                torState = EnumTorState.ON,
+                torProgress = 100,
+                endpointEnabled = true,
+                reachability = DojoContact.Unreachable(now, "socks"),
+            ),
+        )
+        assertEquals(
+            ConnectionIndicator.GREEN,
+            homeConnectionIndicator(
+                sync = onNetworkFailure.state!!,
+                torRequired = true,
+                torState = EnumTorState.ON,
+                torProgress = 100,
+                endpointEnabled = true,
+                reachability = DojoContact.Reachable(now),
+            ),
+        )
+        assertEquals(
+            ConnectionIndicator.YELLOW,
+            homeConnectionIndicator(
+                sync = onNetworkFailure.state!!,
+                torRequired = true,
+                torState = EnumTorState.ON,
+                torProgress = 100,
+                endpointEnabled = true,
+                reachability = DojoContact.DojoError(now, 500, "http"),
+            ),
+        )
+        assertEquals(
+            ConnectionIndicator.RED,
+            homeConnectionIndicator(
+                sync = SyncState.Failed(SyncRoundTerminal.DOJO_UNREACHABLE, retryable = true),
                 torRequired = true,
                 torState = EnumTorState.ON,
                 torProgress = 100,
@@ -333,7 +367,7 @@ class SyncRoundNetworkScopeTest {
     private fun assertPartial(effect: Effect, attempted: List<String>) {
         assertEquals(attempted, effect.attempted)
         assertEquals(
-            SyncState.Failed("1 of 2 collections failed to sync.", retryable = true),
+            SyncState.Failed(SyncRoundTerminal.syncIncompleteReason(1, 2), retryable = true),
             effect.state,
         )
         assertEquals(1, effect.failed)
@@ -416,6 +450,7 @@ class SyncRoundNetworkScopeTest {
             autoRetryBudget = autoRetryBudget,
             autoRetryLimit = retryLimit,
             standingFailed = false,
+            tally = ledger.tally(),
         )
         val signature = SyncRerunPolicy.signatureOf(collections)
         var synced = previousSync
@@ -435,7 +470,7 @@ class SyncRoundNetworkScopeTest {
     }
 
     private fun fetched() = Input.Result(CollectionTxSyncResult.Fetched(1))
-    private fun indeterminate() = Input.Result(CollectionTxSyncResult.Indeterminate)
+    private fun indeterminate() = Input.Result(CollectionTxSyncResult.Indeterminate())
 
     /** Two mainnet, two testnet. The device repro's shape. */
     private fun mixedWallets(): List<PubKeyCollection> = listOf(

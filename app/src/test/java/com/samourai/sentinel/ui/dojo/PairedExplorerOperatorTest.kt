@@ -59,14 +59,16 @@ class PairedExplorerOperatorTest {
     }
 
     @Test
-    fun `the dojo row stays enabled and bound to names the explorer`() {
+    fun `the dojo row follows reachability and the explorer names the onion`() {
         val network = source(
             "src/main/java/com/samourai/sentinel/ui/settings/NetworkActivity.kt",
             "app/src/main/java/com/samourai/sentinel/ui/settings/NetworkActivity.kt",
         )
         val status = network.substringAfter("fun setDojoStatus()")
             .substringBefore("private fun setNetworkStatus")
-        assertTrue(status.contains("R.string.Enabled"))
+        assertTrue(status.contains("DojoStatusRow.present"))
+        assertTrue(status.contains("R.string.disabled"))
+        assertFalse(status.contains("R.string.Enabled"))
         assertFalse(status.contains("pairedExplorerOperator"))
         assertFalse(status.contains("truncateExplorerLabel"))
         assertFalse(network.contains("network_dojo_detail"))

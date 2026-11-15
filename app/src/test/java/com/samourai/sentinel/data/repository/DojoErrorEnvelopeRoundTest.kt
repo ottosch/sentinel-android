@@ -57,8 +57,8 @@ import org.robolectric.annotation.Config
  *     The server's error text is not in the message or toString.
  *  2. round accounting, BOTH round orders - ledger + SyncRoundTerminal over
  *     two collections, faulted first and faulted last (the device leg's two
- *     cases): failed=1 of total=2 posts Failed("1 of 2 collections failed
- *     to sync.", retryable=true) and clears the external-arm signature.
+ *     cases): failed=1 of total=2 posts the Dojo-error banner and clears
+ *     the external-arm signature.
  *  3. the healthy sibling still lands - its row reaches the real (in-memory)
  *     tx table while the faulted collection writes nothing.
  *  4. source gates (EmptyReconcileTest / TxHistoryPagingTest style) - the
@@ -256,7 +256,7 @@ class DojoErrorEnvelopeRoundTest {
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    ledger.recordThrown(collection.id)
+                    ledger.recordThrown(collection.id, e)
                     thrownTypes.add(e.javaClass.simpleName)
                 }
             }
@@ -280,6 +280,7 @@ class DojoErrorEnvelopeRoundTest {
             autoRetryBudget = 0,
             autoRetryLimit = AUTO_SYNC_RETRIES,
             standingFailed = false,
+            tally = ledger.tally(),
         )
         val posted = decision.toSyncState(System.currentTimeMillis())
 
@@ -294,7 +295,7 @@ class DojoErrorEnvelopeRoundTest {
         assertEquals(0, faultedRows)
         // The #506 partial banner, never "Sync interrupted."
         assertEquals(
-            SyncState.Failed("1 of 2 collections failed to sync.", retryable = true),
+            SyncState.Failed(SyncRoundTerminal.dojoErrorReason(1, 2), retryable = true),
             posted,
         )
         // A partial failure clears the external-arm signature, and the
@@ -351,7 +352,7 @@ class DojoErrorEnvelopeRoundTest {
         assertTrue("syncCollections CE arm missing", ceArm >= 0)
         assertTrue("syncCollections Exception arm missing", exArm >= 0)
         assertTrue("CE arm must precede the Exception arm", ceArm < exArm)
-        assertTrue(loopCode.contains("ledger.recordThrown(collection.id)"))
+        assertTrue(loopCode.contains("ledger.recordThrown(collection.id, e)"))
     }
 
     private fun walletHits(pub: String): Int =

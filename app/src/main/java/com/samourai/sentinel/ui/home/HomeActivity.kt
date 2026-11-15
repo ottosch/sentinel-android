@@ -539,6 +539,8 @@ class HomeActivity : SentinelActivity() {
 
     override fun onResume() {
         super.onResume()
+        // A standing "Could not reach Dojo." is retried once, quietly.
+        model.onHomeResumed()
         applyBalanceDisplayMode()
         collectionsAdapter.notifyDataSetChanged()
         // #404: per-device, one-shot notification ask for setups that

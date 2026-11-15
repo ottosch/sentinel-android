@@ -70,6 +70,21 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@+id/textView12" />
 
+        <TextView
+            android:id="@+id/unsyncedXpubNote"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginEnd="16dp"
+            android:gravity="center"
+            android:textColor="@color/warning_yellow"
+            android:textSize="12sp"
+            android:visibility="gone"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/totalBTC" />
+
         <!-- #190: coin control - which inputs this spend uses (auto vs pinned). -->
         <LinearLayout
             android:id="@+id/coinControlRow"
@@ -82,7 +97,7 @@
             android:orientation="horizontal"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@+id/totalBTC">
+            app:layout_constraintTop_toBottomOf="@+id/unsyncedXpubNote">
 
             <LinearLayout
                 android:layout_width="0dp"

@@ -3,6 +3,8 @@ package com.samourai.sentinel.ui.home
 import com.samourai.sentinel.core.SyncState
 import com.samourai.sentinel.data.PubKeyCollection
 import com.samourai.sentinel.data.repository.CollectionTxSyncResult
+import com.samourai.sentinel.data.repository.SyncFailureKind
+import com.samourai.sentinel.data.repository.syncFailureKind
 import com.samourai.sentinel.ui.adapters.CollectionRowNetworkState
 import com.samourai.sentinel.ui.adapters.collectionRowNetworkState
 
@@ -42,10 +44,42 @@ internal fun collectionsForSyncRound(
  */
 internal object SyncRoundTerminal {
 
-    const val SERVER_UNREACHABLE = "Could not reach the server."
+    const val DOJO_UNREACHABLE = "Could not reach Dojo."
 
     fun partialReason(failed: Int, total: Int): String =
         "$failed of $total collections failed to sync."
+
+    fun dojoErrorReason(failed: Int, total: Int): String =
+        "Dojo returned an error for $failed of $total collections."
+
+    fun syncIncompleteReason(failed: Int, total: Int): String =
+        "Sync incomplete for $failed of $total collections."
+
+    /**
+     * Transport total failure is the only "Could not reach Dojo."
+     * Dojo answers name themselves. Local misses say the sync is
+     * incomplete. A mix keeps the partial N-of-M sentence.
+     */
+    fun failureReason(failed: Int, total: Int, tally: SyncFailureTally): String {
+        val counted = if (tally.failed == 0 && failed > 0) {
+            SyncFailureTally(local = failed)
+        } else {
+            tally
+        }
+        val everyTransport = counted.transport == failed &&
+            counted.dojo == 0 &&
+            counted.local == 0 &&
+            failed == total &&
+            total > 0
+        if (everyTransport) return DOJO_UNREACHABLE
+        if (counted.dojo > 0 && counted.transport == 0 && counted.local == 0) {
+            return dojoErrorReason(counted.dojo, total)
+        }
+        if (counted.local == failed && counted.transport == 0 && counted.dojo == 0) {
+            return syncIncompleteReason(counted.local, total)
+        }
+        return partialReason(failed, total)
+    }
 
     enum class Kind {
         /** launchSyncRound -> syncCollections. No auto-retry, no lastSynced write. */
@@ -97,12 +131,20 @@ internal object SyncRoundTerminal {
         autoRetryBudget: Int,
         autoRetryLimit: Int,
         standingFailed: Boolean,
+        tally: SyncFailureTally = SyncFailureTally(),
     ): Decision {
-        // fetchBalance total failure: bounded retry, then the server
-        // message. The signature stays stamped (#47 coalescing during
-        // the retry window).
+        val reason = failureReason(failed, total, tally)
+        val allTransport = tally.transport == failed &&
+            tally.dojo == 0 &&
+            tally.local == 0 &&
+            failed > 0
+        // fetchBalance total failure: bounded retry, then the cause.
+        // A dead Dojo (every failure is transport) does not spend the
+        // retries: each one would wait out another connect. The
+        // signature stays stamped (#47 coalescing during the retry
+        // window) for the failures that still retry.
         if (kind == Kind.BALANCE && total > 0 && failed == total) {
-            if (!userInitiated && autoRetryBudget < autoRetryLimit) {
+            if (!allTransport && !userInitiated && autoRetryBudget < autoRetryLimit) {
                 return Decision(
                     post = null,
                     clearLastRoundSignature = false,
@@ -113,7 +155,7 @@ internal object SyncRoundTerminal {
                 )
             }
             return Decision(
-                post = Post.Failed(SERVER_UNREACHABLE),
+                post = Post.Failed(reason),
                 clearLastRoundSignature = false,
                 writeLastSynced = false,
                 armAutoRetry = false,
@@ -123,11 +165,6 @@ internal object SyncRoundTerminal {
         }
 
         if (failed > 0) {
-            val reason = if (total > 0 && failed == total) {
-                SERVER_UNREACHABLE
-            } else {
-                partialReason(failed, total)
-            }
             return Decision(
                 post = Post.Failed(reason),
                 clearLastRoundSignature = true,
@@ -172,23 +209,52 @@ internal object SyncRoundTerminal {
  * count once. Proven-empty is not a failure, even when the tx table
  * has no row for it.
  */
+internal data class SyncFailureTally(
+    val transport: Int = 0,
+    val dojo: Int = 0,
+    val local: Int = 0,
+) {
+    val failed: Int get() = transport + dojo + local
+}
+
 internal class SyncRoundLedger {
     var failed: Int = 0
         private set
 
     private val failedIds = mutableSetOf<String>()
+    private val kinds = LinkedHashMap<String, SyncFailureKind>()
     private val provenEmptyIds = mutableSetOf<String>()
 
     fun record(id: String, result: CollectionTxSyncResult) {
         when (result) {
             is CollectionTxSyncResult.Fetched -> Unit
             CollectionTxSyncResult.ProvenEmpty -> provenEmptyIds.add(id)
-            CollectionTxSyncResult.Indeterminate -> countFailure(id)
+            is CollectionTxSyncResult.Indeterminate -> countFailure(id, result.kind)
         }
     }
 
-    fun recordThrown(id: String) {
-        countFailure(id)
+    /** A thrown fetch. No throwable means transport: the call never returned. */
+    fun recordThrown(id: String, error: Throwable? = null) {
+        val kind = if (error == null) SyncFailureKind.TRANSPORT else syncFailureKind(error)
+        countFailure(id, kind)
+    }
+
+    fun recordKind(id: String, kind: SyncFailureKind) {
+        countFailure(id, kind)
+    }
+
+    fun tally(): SyncFailureTally {
+        var transport = 0
+        var dojo = 0
+        var local = 0
+        kinds.values.forEach { kind ->
+            when (kind) {
+                SyncFailureKind.TRANSPORT -> transport++
+                SyncFailureKind.DOJO -> dojo++
+                SyncFailureKind.LOCAL -> local++
+            }
+        }
+        return SyncFailureTally(transport, dojo, local)
     }
 
     /**
@@ -203,14 +269,17 @@ internal class SyncRoundLedger {
                 id !in provenEmptyIds &&
                 (txCounts[id] ?: 0) == 0
             ) {
-                countFailure(id)
+                countFailure(id, SyncFailureKind.LOCAL)
                 misses.add(id)
             }
         }
         return misses
     }
 
-    private fun countFailure(id: String) {
-        if (failedIds.add(id)) failed++
+    private fun countFailure(id: String, kind: SyncFailureKind) {
+        if (failedIds.add(id)) {
+            failed++
+            kinds[id] = kind
+        }
     }
 }

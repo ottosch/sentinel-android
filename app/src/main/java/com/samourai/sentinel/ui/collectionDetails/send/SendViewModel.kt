@@ -89,6 +89,18 @@ class SendViewModel : ViewModel() {
     private val _spendBlocker = MutableLiveData(SpendBlocker.NO_ADDRESS)
     val spendBlocker: LiveData<SpendBlocker> = _spendBlocker
 
+    /**
+     * Set while at least one XPUB in this account failed its last sync.
+     * Null when every XPUB here synced, so the screen keeps its own figure.
+     */
+    private val _selectableSpendable = MutableLiveData<Long?>(null)
+    val selectableSpendable: LiveData<Long?> = _selectableSpendable
+
+    private val _unsyncedXpubNote = MutableLiveData<String?>(null)
+    val unsyncedXpubNote: LiveData<String?> = _unsyncedXpubNote
+
+    private var lastRawUtxos: List<Utxo> = emptyList()
+
     private fun block(reason: SpendBlocker): Boolean {
         _spendBlocker.postValue(reason)
         _validSpend.postValue(false)
@@ -300,7 +312,8 @@ class SendViewModel : ViewModel() {
                         inputAmount = amount,
                         inputFee = selectedFee,
                         inputUtxos = ArrayList<Utxo>(
-                            (explicitInputs ?: utxos).filter { utxo -> !UtxoMetaUtil.has(utxo) }
+                            utxosSelectableForSend(explicitInputs ?: utxos)
+                                .filter { utxo -> !UtxoMetaUtil.has(utxo) }
                         ),
                         explicitSelection = explicitInputs != null
                     )
@@ -375,10 +388,29 @@ class SendViewModel : ViewModel() {
         prepareSpend()
     }
 
-    private val utxoObserver: Observer<List<Utxo>> = Observer<List<Utxo>> {
+    private val utxoObserver: Observer<List<Utxo>> = Observer { raw ->
+        applySelectableUtxos(raw)
+    }
+
+    /** Re-apply the hide after a sync that did not rewrite the UTXO rows. */
+    fun refreshUnsyncedPubs() {
+        if (lastRawUtxos.isEmpty()) return
+        applySelectableUtxos(lastRawUtxos)
+    }
+
+    private fun applySelectableUtxos(raw: List<Utxo>) {
+        lastRawUtxos = raw
+        val hidden = hiddenXpubCount(raw)
+        _unsyncedXpubNote.value = unsyncedXpubNote(hidden)
+        val visible = utxosSelectableForSend(raw)
+        _selectableSpendable.value = if (hidden == 0) {
+            null
+        } else {
+            visible.filter { !UtxoMetaUtil.has(it) }.sumOf { it.value ?: 0L }
+        }
         utxos.clear()
-        utxos.addAll(it)
-        _utxoPool.value = it
+        utxos.addAll(visible)
+        _utxoPool.value = visible
         if (utxos.isEmpty()) {
             block(SpendBlocker.NO_FUNDS)
         } else {

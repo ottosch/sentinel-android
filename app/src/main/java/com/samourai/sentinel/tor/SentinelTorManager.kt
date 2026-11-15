@@ -1,6 +1,7 @@
 package com.samourai.sentinel.tor
 
 import android.app.Application
+import com.samourai.sentinel.core.DojoReachability
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -349,6 +350,12 @@ object SentinelTorManager {
     private fun publish(state: EnumTorState, progress: Int) {
         if (progress > 0 || state == EnumTorState.ON) {
             lastBootstrapProgressAt = SystemClock.elapsedRealtime()
+        }
+        // Tor stop drops the last Dojo contact. The next climb has not
+        // reached the onion, so a green row from the previous circuit
+        // would be a lie.
+        if (state == EnumTorState.OFF) {
+            DojoReachability.reset()
         }
         torStateLiveDataPrivate.postValue(makeState(state, progress))
     }

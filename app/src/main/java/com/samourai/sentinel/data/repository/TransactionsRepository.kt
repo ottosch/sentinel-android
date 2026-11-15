@@ -81,8 +81,21 @@ sealed interface CollectionTxSyncResult {
      * collection where some pubs failed and the rest were written
      * (#530). Counts as a failure in the round's accounting, so the
      * banner shows instead of Success.
+     *
+     * [kind] says why. Bookkeeping and a gate miss are [SyncFailureKind.LOCAL].
+     * A pub the Dojo answered for is [SyncFailureKind.DOJO]. A pub whose
+     * call never got a response is [SyncFailureKind.TRANSPORT].
      */
-    data object Indeterminate : CollectionTxSyncResult
+    data class Indeterminate internal constructor(
+        internal val kind: SyncFailureKind = SyncFailureKind.LOCAL,
+    ) : CollectionTxSyncResult
+}
+
+internal fun syncFailureKind(error: Throwable): SyncFailureKind = when {
+    error is java.io.IOException -> SyncFailureKind.TRANSPORT
+    error is ApiService.DojoApiError -> SyncFailureKind.DOJO
+    error is UnusableWalletResponse -> SyncFailureKind.DOJO
+    else -> SyncFailureKind.LOCAL
 }
 
 /**
@@ -158,7 +171,7 @@ class TransactionsRepository {
         // #475: the round's proof for the caller's completion gate.
         // Indeterminate until the tx reconcile below proves better;
         // every early return and the ApiNotConfigured arm keep it.
-        var txOutcome: CollectionTxSyncResult = CollectionTxSyncResult.Indeterminate
+        var txOutcome: CollectionTxSyncResult = CollectionTxSyncResult.Indeterminate()
         try {
             logThreadInfo("fetchFromServer")
             val collection = collectionRepository.findById(collectionId)
@@ -170,7 +183,7 @@ class TransactionsRepository {
                     "fetchFromServer: tx history indeterminate for $collectionId: " +
                         "collection not in repository"
                 )
-                return@withContext CollectionTxSyncResult.Indeterminate
+                return@withContext CollectionTxSyncResult.Indeterminate()
             }
             var newTransactions: ArrayList<Tx> = arrayListOf();
             val utxos: ArrayList<Utxo> = arrayListOf();
@@ -207,6 +220,7 @@ class TransactionsRepository {
             // keep-set so the collection-wide delete cannot drop them.
             val pubFailures = ArrayList<Exception>(collection.pubs.size)
             val failedPubKeys = ArrayList<String>(collection.pubs.size)
+            val failedPubKinds = ArrayList<SyncFailureKind>(collection.pubs.size)
             jobs.forEach { job ->
                 val index = jobs.indexOf(job)
                 loadingCollectionId = collectionId
@@ -354,6 +368,8 @@ class TransactionsRepository {
                             utxos.addAll(list)
                         }
                         collection.pubs[index].balance = response.wallet.final_balance
+                        // This pub's wallet applied. Its kept coins may be spent again.
+                        PubSyncHealth.clear(pubKeyAssociated.pubKey)
                         if (collection.pubs[index].type != AddressTypes.ADDRESS) {
                             val address =
                                 response.addresses?.find { address -> address.address == collection.pubs[index].pubKey }
@@ -422,7 +438,7 @@ class TransactionsRepository {
                                 "fetchFromServer: tx history indeterminate for $collectionId: " +
                                     "missing from snapshot during pub update"
                             )
-                            return@withContext CollectionTxSyncResult.Indeterminate
+                            return@withContext CollectionTxSyncResult.Indeterminate()
                         }
                         collectionRepository.update(
                             collection,
@@ -435,8 +451,12 @@ class TransactionsRepository {
                     // the round would keep going.
                     throw e
                 } catch (e: Exception) {
+                    val kind = syncFailureKind(e)
                     pubFailures.add(e)
                     failedPubKeys.add(collection.pubs[index].pubKey)
+                    failedPubKinds.add(kind)
+                    // Kept UTXOs for this pub stay out of send until it syncs.
+                    PubSyncHealth.markFailed(collection.pubs[index].pubKey, kind)
                     // Class name only: the throwable's message can carry
                     // the wallet query, and that query contains the key.
                     Timber.e(
@@ -525,12 +545,12 @@ class TransactionsRepository {
                         "fetchFromServer: tx history indeterminate for $collectionId: " +
                             "saveTx found no collection"
                     )
-                    CollectionTxSyncResult.Indeterminate
+                    CollectionTxSyncResult.Indeterminate()
                 } else if (partialPubs) {
                     // Healthy pubs were written and the failed pubs' rows
                     // were kept. Indeterminate counts this collection
                     // failed, so the round's banner shows.
-                    CollectionTxSyncResult.Indeterminate
+                    CollectionTxSyncResult.Indeterminate(combineSyncFailures(failedPubKinds))
                 } else if (newTransactions.isEmpty()) {
                     CollectionTxSyncResult.ProvenEmpty
                 } else {
@@ -546,6 +566,12 @@ class TransactionsRepository {
                         "empty tx round without a fee table; not wiping " +
                         "(pubs=${collection.pubs.size}, txs=0)"
                 )
+                // Dojo answered with a body that is not a wallet round.
+                txOutcome = if (partialPubs) {
+                    CollectionTxSyncResult.Indeterminate(combineSyncFailures(failedPubKinds))
+                } else {
+                    CollectionTxSyncResult.Indeterminate(SyncFailureKind.DOJO)
+                }
             }
             if (emptyReconcileAllowed(utxos.size, sawFeeTable)) {
                 if (utxos.isEmpty()) {

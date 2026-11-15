@@ -116,9 +116,11 @@ fun pairingTorDecision(
  * signature - the direct-POST route is gone from the type; only a
  * POST_NOW decision can reach this. Installs the #229 host-scoped TLS
  * policy (https-onion Dojos with self-signed certs were structurally
- * unpairable through the old one-off client) and mirrors the Tor-mode
- * timeouts of ApiService's ON arm: OkHttp's default 10 s callTimeout
- * kills an onion circuit build that can legitimately take minutes.
+ * unpairable through the old one-off client). Pairing keeps a 180s
+ * connect: a cold one-shot login can spend that on the first circuit.
+ * The steady Dojo client fails a dead onion faster. OkHttp's default
+ * 10 s callTimeout kills an onion circuit build that can legitimately
+ * take minutes, so this client still sets callTimeout to 0.
  */
 fun buildPairingClient(torProxy: Proxy): OkHttpClient {
     // #304: this client does not go through ApiService.buildClient.

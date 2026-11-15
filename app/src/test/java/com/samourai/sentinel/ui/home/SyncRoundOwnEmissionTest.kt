@@ -119,7 +119,7 @@ class SyncRoundOwnEmissionTest {
             val effect = finish(
                 kind = SyncRoundTerminal.Kind.COLLECTIONS,
                 inRound = inRound,
-                fetch = { CollectionTxSyncResult.Indeterminate },
+                fetch = { CollectionTxSyncResult.Indeterminate() },
             )
             assertEquals(
                 if (activeIsTestnet) listOf("t1", "t2") else listOf("m1", "m2"),
@@ -128,7 +128,7 @@ class SyncRoundOwnEmissionTest {
             assertEquals(2, effect.failed)
             assertEquals(2, effect.total)
             assertEquals(
-                SyncState.Failed(SyncRoundTerminal.SERVER_UNREACHABLE, retryable = true),
+                SyncState.Failed(SyncRoundTerminal.syncIncompleteReason(2, 2), retryable = true),
                 effect.state,
             )
             assertTrue(effect.decision.clearLastRoundSignature)
@@ -142,7 +142,7 @@ class SyncRoundOwnEmissionTest {
             val balance = finish(
                 kind = SyncRoundTerminal.Kind.BALANCE,
                 inRound = inRound,
-                fetch = { CollectionTxSyncResult.Indeterminate },
+                fetch = { CollectionTxSyncResult.Indeterminate() },
             )
             assertTrue(balance.decision.armAutoRetry)
             assertFalse(balance.decision.clearLastRoundSignature)
@@ -275,6 +275,7 @@ class SyncRoundOwnEmissionTest {
             autoRetryBudget = 0,
             autoRetryLimit = retryLimit,
             standingFailed = false,
+            tally = ledger.tally(),
         )
         return Effect(
             decision = decision,

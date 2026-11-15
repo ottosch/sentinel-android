@@ -129,7 +129,7 @@ class SyncRoundTerminalTest {
     @Test
     fun indeterminateWithAnEmptyTableIsNotCountedTwice() {
         val ledger = SyncRoundLedger()
-        ledger.record("b", CollectionTxSyncResult.Indeterminate)
+        ledger.record("b", CollectionTxSyncResult.Indeterminate())
         val misses = ledger.applyGate(listOf("b"), mapOf("b" to 0))
         assertTrue(misses.isEmpty())
         assertEquals(1, ledger.failed)
@@ -144,7 +144,7 @@ class SyncRoundTerminalTest {
             txCounts = mapOf("a" to 0, "b" to 0),
         )
         assertEquals(
-            SyncState.Failed("Could not reach the server.", retryable = true),
+            SyncState.Failed(SyncRoundTerminal.syncIncompleteReason(2, 2), retryable = true),
             effect.state
         )
         assertEquals(previousSync, effect.lastSynced)
@@ -154,11 +154,29 @@ class SyncRoundTerminalTest {
     }
 
     @Test
-    fun fetchBalance_totalFailure_retriesWhileBudgetRemains() {
+    fun fetchBalance_totalTransportFailure_doesNotAutoRetry() {
+        val list = wallets()
+        val effect = finish(
+            kind = SyncRoundTerminal.Kind.BALANCE,
+            results = listOf(thrown("a"), thrown("b")),
+            autoRetryBudget = 0,
+        )
+        assertEquals(
+            SyncState.Failed(SyncRoundTerminal.DOJO_UNREACHABLE, retryable = true),
+            effect.state
+        )
+        assertFalse(effect.armAutoRetry)
+        assertEquals(0, effect.budget)
+        assertEquals(SyncRerunPolicy.signatureOf(list), effect.signature)
+        assertNoTrailingLoop(list)
+    }
+
+    @Test
+    fun fetchBalance_totalLocalFailure_retriesWhileBudgetRemains() {
         val list = wallets()
         val first = finish(
             kind = SyncRoundTerminal.Kind.BALANCE,
-            results = listOf(thrown("a"), thrown("b")),
+            results = listOf(indeterminate("a"), indeterminate("b")),
             autoRetryBudget = 0,
         )
         assertNull(first.state)
@@ -170,7 +188,7 @@ class SyncRoundTerminalTest {
 
         val second = finish(
             kind = SyncRoundTerminal.Kind.BALANCE,
-            results = listOf(thrown("a"), thrown("b")),
+            results = listOf(indeterminate("a"), indeterminate("b")),
             autoRetryBudget = first.budget,
         )
         assertNull(second.state)
@@ -190,7 +208,7 @@ class SyncRoundTerminalTest {
             autoRetryBudget = retryLimit,
         )
         assertEquals(
-            SyncState.Failed("Could not reach the server.", retryable = true),
+            SyncState.Failed(SyncRoundTerminal.syncIncompleteReason(2, 2), retryable = true),
             effect.state
         )
         assertFalse(effect.armAutoRetry)
@@ -211,7 +229,7 @@ class SyncRoundTerminalTest {
             autoRetryBudget = 0,
         )
         assertEquals(
-            SyncState.Failed("Could not reach the server.", retryable = true),
+            SyncState.Failed(SyncRoundTerminal.DOJO_UNREACHABLE, retryable = true),
             effect.state
         )
         assertFalse(effect.armAutoRetry)
@@ -231,7 +249,7 @@ class SyncRoundTerminalTest {
             )
             assertEquals(
                 kind.name,
-                SyncState.Failed("1 of 2 collections failed to sync.", retryable = true),
+                SyncState.Failed(SyncRoundTerminal.syncIncompleteReason(1, 2), retryable = true),
                 effect.state
             )
             assertEquals(previousSync, effect.lastSynced)
@@ -279,6 +297,47 @@ class SyncRoundTerminalTest {
     }
 
     @Test
+    fun failureReason_namesTransportDojoAndLocalSeparately() {
+        assertEquals(
+            SyncRoundTerminal.DOJO_UNREACHABLE,
+            SyncRoundTerminal.failureReason(2, 2, SyncFailureTally(transport = 2)),
+        )
+        assertEquals(
+            SyncRoundTerminal.partialReason(1, 2),
+            SyncRoundTerminal.failureReason(1, 2, SyncFailureTally(transport = 1)),
+        )
+        assertEquals(
+            SyncRoundTerminal.dojoErrorReason(2, 2),
+            SyncRoundTerminal.failureReason(2, 2, SyncFailureTally(dojo = 2)),
+        )
+        assertEquals(
+            SyncRoundTerminal.dojoErrorReason(1, 2),
+            SyncRoundTerminal.failureReason(1, 2, SyncFailureTally(dojo = 1)),
+        )
+        assertEquals(
+            SyncRoundTerminal.syncIncompleteReason(2, 2),
+            SyncRoundTerminal.failureReason(2, 2, SyncFailureTally(local = 2)),
+        )
+        assertEquals(
+            SyncRoundTerminal.syncIncompleteReason(1, 2),
+            SyncRoundTerminal.failureReason(1, 2, SyncFailureTally(local = 1)),
+        )
+        assertEquals(
+            SyncRoundTerminal.partialReason(2, 2),
+            SyncRoundTerminal.failureReason(2, 2, SyncFailureTally(transport = 1, dojo = 1)),
+        )
+        assertEquals(
+            SyncRoundTerminal.partialReason(2, 3),
+            SyncRoundTerminal.failureReason(2, 3, SyncFailureTally(transport = 1, local = 1)),
+        )
+        // A caller that does not pass a tally must not claim the Dojo was unreachable.
+        assertEquals(
+            SyncRoundTerminal.syncIncompleteReason(2, 2),
+            SyncRoundTerminal.failureReason(2, 2, SyncFailureTally()),
+        )
+    }
+
+    @Test
     fun bothRoundsShareTheTerminalDecisionAndLeaveTheTrailingBaselineAlone() {
         val src = source("app/src/main/java/com/samourai/sentinel/ui/home/HomeViewModel.kt")
         val collections = between(src, "private suspend fun syncCollections", "private suspend fun gateTxHistory")
@@ -310,7 +369,7 @@ class SyncRoundTerminalTest {
     private fun assertPartial(effect: Effect, list: ArrayList<PubKeyCollection>) {
         val start = SyncRerunPolicy.signatureOf(list)
         assertEquals(
-            SyncState.Failed("1 of 2 collections failed to sync.", retryable = true),
+            SyncState.Failed(SyncRoundTerminal.syncIncompleteReason(1, 2), retryable = true),
             effect.state
         )
         assertEquals(previousSync, effect.lastSynced)
@@ -374,6 +433,7 @@ class SyncRoundTerminalTest {
             autoRetryBudget = autoRetryBudget,
             autoRetryLimit = retryLimit,
             standingFailed = standingFailed,
+            tally = ledger.tally(),
         )
         val signature = SyncRerunPolicy.signatureOf(wallets())
         var synced = previousSync
@@ -393,7 +453,7 @@ class SyncRoundTerminalTest {
 
     private fun fetched(id: String) = id to Input.Result(CollectionTxSyncResult.Fetched(1))
     private fun provenEmpty(id: String) = id to Input.Result(CollectionTxSyncResult.ProvenEmpty)
-    private fun indeterminate(id: String) = id to Input.Result(CollectionTxSyncResult.Indeterminate)
+    private fun indeterminate(id: String) = id to Input.Result(CollectionTxSyncResult.Indeterminate())
     private fun thrown(id: String) = id to Input.Thrown
 
     private fun wallets(): ArrayList<PubKeyCollection> = arrayListOf(
