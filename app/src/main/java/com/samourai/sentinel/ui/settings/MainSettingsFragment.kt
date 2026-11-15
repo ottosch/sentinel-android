@@ -42,6 +42,7 @@ import com.samourai.sentinel.ui.utils.startDocumentPickerForResult
 import com.samourai.sentinel.ui.views.KdfProgressOverlay
 import com.samourai.sentinel.ui.views.LockScreenDialog
 import com.samourai.sentinel.ui.views.alertWithInput
+import com.samourai.sentinel.ui.views.applyScreenshotPolicy
 import com.samourai.sentinel.ui.views.confirm
 import com.samourai.sentinel.ui.webview.ExplorerBinding
 import com.samourai.sentinel.ui.webview.ExplorerOpener
@@ -236,6 +237,21 @@ class MainSettingsFragment : PreferenceFragmentCompat() {
             true
         }
 
+        // #525: Disable Screenshots applies to this open window at the
+        // moment the switch flips, not only on the next resume. The
+        // Settings screen is where the value changes, so it was the
+        // one window left capturable until the user left and returned.
+        // applyScreenshotPolicy is both ways: on adds FLAG_SECURE, off
+        // clears it. A showing PIN pad keeps the flag whatever the
+        // setting says (SentinelActivity owns that on resume; a gate
+        // pad cannot be showing while this switch is on screen).
+        findPreference<CheckBoxPreference>("displaySecure")?.let { pref ->
+            pref.setOnPreferenceChangeListener { _, newValue ->
+                applyDisplaySecurePreference(newValue == true)
+                true
+            }
+        }
+
         // Whirlpool auto-labeling toggle (#6). PrefsUtil-backed, same
         // as haptic. Turning it on shows an advisory. The stored value
         // is the checkbox; dismissing the dialog leaves it on.
@@ -337,6 +353,17 @@ class MainSettingsFragment : PreferenceFragmentCompat() {
             .setMessage(getString(R.string.whirlpool_auto_labels_dialog_message))
             .setPositiveButton(android.R.string.ok, null)
             .show()
+    }
+
+    /**
+     * #525: the switch's own window. The checkbox already persists the
+     * value; this applies it to [activity]'s window right away so the
+     * screen the user is on is not left capturable (on) or blocked
+     * (off) until the next resume. [SentinelActivity.onResume] still
+     * owns the value at every other entry.
+     */
+    private fun applyDisplaySecurePreference(enabled: Boolean) {
+        activity?.window?.applyScreenshotPolicy(enabled)
     }
 
     private fun setExplorerSettings() {
