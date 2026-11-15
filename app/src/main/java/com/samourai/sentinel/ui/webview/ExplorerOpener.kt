@@ -12,6 +12,7 @@ import com.samourai.sentinel.data.txfacts.TxFactsResolver
 import com.samourai.sentinel.tor.EnumTorState
 import com.samourai.sentinel.tor.SentinelTorManager
 import org.koin.java.KoinJavaComponent.get
+import java.net.URI
 
 /**
  * Opens a tx or address on the bound explorer. A load to any party
@@ -85,7 +86,9 @@ class ExplorerOpener(
         val party = when (id) {
             ExplorerOptions.Id.MEMPOOL_ONION,
             ExplorerOptions.Id.MEMPOOL_SPACE -> TxFactsResolver.MEMPOOL_DISPLAY_NAME
-            else -> url.trim()
+            // #524: the raw Custom template carries a literal {txid}
+            // placeholder. Name the host of the page that will load.
+            else -> partyLabel(url)
         }
         confirmOption(id, url, party, onContinue)
     }
@@ -124,10 +127,27 @@ class ExplorerOpener(
             tor = tor,
             direct = context.getString(R.string.explorer_third_party_direct),
             unsent = context.getString(R.string.explorer_third_party_unsent),
-            guidance = context.getString(R.string.explorer_third_party_guidance),
+            guidance = thirdPartyGuidance(),
         )
         showAdvisory(message, key, decision, onContinue)
     }
+
+    /**
+     * #524: the guidance line names the private alternative. With a
+     * paired Dojo explorer bound, that alternative is one Settings
+     * switch away, not a pairing hunt.
+     */
+    private fun thirdPartyGuidance(): String {
+        val paired = (repository.resolution() as? ExplorerBinding.ExplorerResolution.Bound)
+            ?.kind == ExplorerBinding.ExplorerKind.PAIRED
+        return context.getString(
+            if (paired) R.string.explorer_third_party_guidance_paired
+            else R.string.explorer_third_party_guidance,
+        )
+    }
+
+    /** #524: see [partyLabelOf]. */
+    private fun partyLabel(url: String): String = partyLabelOf(url)
 
     private fun confirmAnalysis(url: String, onContinue: () -> Unit) {
         if (!canShowDialog()) return
@@ -250,6 +270,9 @@ class ExplorerOpener(
     }
 
     companion object {
+
+        /** #524: a host longer than this is truncated, never raw. */
+        private const val HOST_LABEL_MAX = 40
         fun startExplorer(context: Context, url: String, title: String?) {
             val intent = Intent(context, ExplorerWebViewActivity::class.java)
                 .putExtra(ExplorerWebViewActivity.EXTRA_URL, url)
@@ -260,6 +283,40 @@ class ExplorerOpener(
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)
+        }
+
+        /** #524: a long host shortens like an onion label does. */
+        private const val HOST_LABEL_KEEP = 14
+        private const val HOST_LABEL_TAIL = 6
+
+        /**
+         * #524: the third party a dialog names. The Custom template
+         * carries a literal {txid} placeholder that must never reach
+         * the user, so the host stands in. An onion host shortens
+         * the same way as the Network row. A URL without a parsable
+         * host falls back to the truncated label, never the raw
+         * template.
+         */
+        internal fun partyLabelOf(url: String): String {
+            val trimmed = url.trim()
+            // The substituted page URL parses; the saved template
+            // (a literal {txid} in the path) does not. Take the host
+            // from whatever sits between the scheme and the path
+            // either way, so the placeholder never reaches the user.
+            val noScheme = trimmed.substringAfter("://", trimmed)
+            val authority = noScheme
+                .substringBefore("/")
+                .substringBefore("?")
+                .substringBefore("#")
+            val host = runCatching { URI(trimmed).host }
+                .getOrNull()?.trim()?.takeIf { it.isNotEmpty() }
+                ?: authority.substringAfter('@').takeIf { it.isNotEmpty() }
+            if (!host.isNullOrEmpty()) {
+                ExplorerBinding.shortenOnion("http://$host/")?.let { return it }
+                if (host.length <= HOST_LABEL_MAX) return host
+                return host.take(HOST_LABEL_KEEP) + "…" + host.takeLast(HOST_LABEL_TAIL)
+            }
+            return ExplorerBinding.truncateExplorerLabel(trimmed)
         }
     }
 }
