@@ -8,12 +8,83 @@
     app:layout_behavior="com.google.android.material.bottomsheet.BottomSheetBehavior"
     tools:ignore="HardcodedText">
 
+    <!-- The title is its own TextView so it can wrap to two lines: the
+         toolbar's built-in title is one line and was cut off on narrow
+         screens. -->
     <com.google.android.material.appbar.MaterialToolbar
         android:id="@+id/communityDojoToolbar"
         android:layout_width="match_parent"
-        android:layout_height="?attr/actionBarSize"
+        android:layout_height="wrap_content"
+        android:minHeight="?attr/actionBarSize"
         app:navigationIcon="@drawable/ic_baseline_arrow_back_24"
-        app:title="@string/community_dojo_toolbar_title" />
+        app:menu="@menu/community_dojo_list_menu">
+
+        <TextView
+            android:id="@+id/communityDojoTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:paddingVertical="8dp"
+            android:text="@string/community_dojo_toolbar_title"
+            android:textAppearance="?attr/textAppearanceHeadline6" />
+    </com.google.android.material.appbar.MaterialToolbar>
+
+    <!-- Custom Dojo Bay only: its listings are used as served. Its own
+         line, not the toolbar subtitle, so it wraps instead of being cut. -->
+    <TextView
+        android:id="@+id/communityDojoCustomNotice"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:textColor="@color/warning_yellow"
+        android:textSize="13sp"
+        android:visibility="gone"
+        tools:text="Custom Dojo Bay (yfua6lm…ueqd.onion) · listings not verified"
+        tools:visibility="visible" />
+
+    <!-- Shown over a saved list: refreshing, or Dojo Bay unreachable. -->
+    <LinearLayout
+        android:id="@+id/communityDojoBanner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/community_dojo_banner_background"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="12dp"
+        android:paddingEnd="4dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/communityDojoBannerIcon"
+            android:layout_width="10dp"
+            android:layout_height="10dp"
+            android:layout_marginEnd="10dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/circle_shape"
+            app:tint="@color/warning_yellow" />
+
+        <TextView
+            android:id="@+id/communityDojoBannerText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:paddingVertical="10dp"
+            android:textColor="@color/white"
+            android:textSize="13sp"
+            tools:text="Dojo Bay unreachable · showing list from 15 Nov 2026, 13:40" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/communityDojoBannerRetry"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/community_dojo_retry"
+            android:textColor="@color/green_ui_2"
+            android:visibility="gone" />
+    </LinearLayout>
 
     <TextView
         android:id="@+id/communityDojoStatusText"
@@ -42,6 +113,17 @@
         android:layout_marginTop="12dp"
         android:text="@string/community_dojo_retry"
         android:textColor="@color/green_ui_2"
+        android:visibility="gone" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/communityDojoChangeAddressButton"
+        style="@style/Widget.MaterialComponents.Button.TextButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:text="@string/community_dojo_change_address"
+        android:textAllCaps="false"
+        android:textColor="@color/white"
         android:visibility="gone" />
 
     <androidx.recyclerview.widget.RecyclerView

@@ -30,6 +30,9 @@ const val PIN_HASH = "pinHash"
  * The one-shot notification-ask flag is device-local too: the OS
  * permission grant is per-device, so a restored install gets its
  * own single ask, never the donor device's answer.
+ * The custom Dojo Bay address decides which directory the Community Dojos
+ * list trusts, so a restored backup (possibly someone else's) must not
+ * change it silently; it stays on the device.
  */
 val PREFS_OMITTED_FROM_BACKUP = setOf(
     "pinHash",
@@ -39,6 +42,7 @@ val PREFS_OMITTED_FROM_BACKUP = setOf(
     "refreshToken",
     "autoOriginHandEditsMigrated",
     "notificationPromptDone",
+    "dojoBayUrl",
 )
 const val XPUB = "xpub"
 const val SCRAMBLE_PIN = "scramblePin"
@@ -113,6 +117,14 @@ class PrefsUtil(context: Context) : Preferences(context, "${context.packageName}
     // disclosure class is host-derived, never type-derived.
     var dojoExplorerUrl by stringPref(defaultValue = null)
     var dojoExplorerType by stringPref(defaultValue = null)
+    // Custom Dojo Bay directory base address for the Community Dojos list.
+    // Null means the built-in default (DojoBayConstants.BASE_URL), so a
+    // change of default reaches everyone who never customized it. Stored
+    // only after DojoBaySource.validate(); read through
+    // DojoBaySource.effectiveBaseUrl(), which falls back to the default if
+    // a stored value no longer validates. Not in backups (see
+    // PREFS_OMITTED_FROM_BACKUP); reset by clearAll() on Erase wallet.
+    var dojoBayUrl by stringPref(defaultValue = null)
     var testnet by booleanPref(defaultValue = false)
     var ricochetStaggeredDelivery by booleanPref(defaultValue = false)
     var useRicochet by booleanPref(defaultValue = false)

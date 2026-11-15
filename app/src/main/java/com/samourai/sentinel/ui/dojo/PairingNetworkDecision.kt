@@ -16,6 +16,11 @@ import com.samourai.sentinel.core.DerivedNetwork
  * (read-verified, #250 census; both observed fixtures agree
  * - testnet answers at .../test/v2, mainnet at .../v2/).
  *
+ * For a Community Dojos listing the declaration that reaches this
+ * function is communityDojoNetwork: from the pairing URL only
+ * (/test/ is testnet, anything else mainnet). The directory's
+ * label is ignored, so a directory can't relabel a Dojo.
+ *
  * The table (#250/#272 agreement):
  *   no evidence                -> PROCEED (the reverse-
  *                                direction gap is

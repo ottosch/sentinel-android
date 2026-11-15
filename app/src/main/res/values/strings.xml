@@ -223,11 +223,43 @@
          dominant latency is Dojo Bay probing every listed node, and a
          retry usually answers quickly once the probe cache is warm. -->
     <string name="community_dojo_probe_timeout" translatable="false">Probing timed out. A second try is sometimes needed and usually answers quickly.</string>
-    <string name="community_dojo_auto_retry" translatable="false">First probe timed out - retrying. Dojo Bay usually answers on the second try…</string>
+    <string name="community_dojo_auto_retry" translatable="false">The first try did not get an answer - retrying. Dojo Bay usually answers on the second try…</string>
     <string name="community_dojo_empty" translatable="false">No active %1$s Dojos were found on DojoBay.org right now.</string>
     <string name="community_dojo_error" translatable="false">Could not reach Dojo Bay: %1$s</string>
     <string name="community_dojo_retry" translatable="false">Retry</string>
     <string name="community_dojo_status_dot_description" translatable="false">Dojo online status</string>
+    <!-- Dojo Bay unreachable: the last list fetched is kept and shown with
+         its date, and the directory address can be changed. -->
+    <string name="community_dojo_cached_refreshing" translatable="false">Showing saved list from %1$s · checking Dojo Bay… (%2$d s)</string>
+    <string name="community_dojo_cached_unreachable" translatable="false">Dojo Bay unreachable · showing list from %1$s</string>
+    <string name="community_dojo_waiting_tor" translatable="false">Waiting for Tor…</string>
+    <string name="community_dojo_cached_waiting_tor" translatable="false">Showing saved list from %1$s · waiting for Tor…</string>
+    <!-- Dojo Bay answered with no Dojos at all: the saved list is kept. -->
+    <string name="community_dojo_cached_listed_none" translatable="false">Dojo Bay currently lists no Dojos · showing list from %1$s</string>
+    <string name="community_dojo_listed_none" translatable="false">Dojo Bay currently lists no Dojos, and there is no saved list. You can still pair with Connect to your Dojo by scanning or pasting a Dojo\'s pairing details, or change the Dojo Bay address.</string>
+    <string name="community_dojo_unreachable_no_cache" translatable="false">Could not reach Dojo Bay: %1$s. There is no saved list yet. You can still pair with Connect to your Dojo by scanning or pasting a Dojo\'s pairing details, or change the Dojo Bay address.</string>
+    <string name="community_dojo_failed_two_tries" translatable="false">Dojo Bay could not be reached after two tries. Tap Retry to try again. There is no saved list yet. You can still pair with Connect to your Dojo by scanning or pasting a Dojo\'s pairing details, or change the Dojo Bay address.</string>
+    <string name="community_dojo_change_address" translatable="false">Change Dojo Bay address</string>
+    <string name="dojobay_address_title" translatable="false">Dojo Bay address</string>
+    <string name="dojobay_address_message" translatable="false">The directory the Community Dojos list is read from. Anyone can run a Dojo Bay. Enter its onion address. Requests always go over Tor. Listings from a custom Dojo Bay are not verified: the app uses the pairing details it serves as they are, so only use one you trust.</string>
+    <string name="community_dojo_custom_unverified" translatable="false">Custom Dojo Bay (%1$s) · listings not verified</string>
+    <string name="dojobay_address_hint" translatable="false">http://….onion/</string>
+    <string name="dojobay_address_label" translatable="false">Onion address</string>
+    <string name="dojobay_address_invalid_not_onion" translatable="false">Only onion addresses can be used. Enter the Dojo Bay\'s v3 .onion address.</string>
+    <string name="dojobay_address_invalid_not_http" translatable="false">Use http:// with an onion address. Tor already encrypts the connection end to end.</string>
+    <string name="dojobay_address_save" translatable="false">Save</string>
+    <string name="dojobay_address_reset" translatable="false">Reset to default</string>
+    <string name="dojobay_address_cancel" translatable="false">Cancel</string>
+    <string name="dojobay_address_saved" translatable="false">Dojo Bay address saved</string>
+    <string name="dojobay_address_reset_done" translatable="false">Dojo Bay address reset to default</string>
+    <string name="dojobay_address_invalid_empty" translatable="false">Enter an address</string>
+    <string name="dojobay_address_invalid_malformed" translatable="false">That is not a valid address. Enter the Dojo Bay\'s address, for example http://….onion/</string>
+    <string name="dojobay_address_invalid_onion" translatable="false">That is not a valid v3 onion address. Check it for typos: it needs 56 characters (letters a–z and digits 2–7) before .onion.</string>
+    <string name="dojobay_address_invalid_port" translatable="false">The port must be between 1 and 65535.</string>
+    <string name="dojobay_address_invalid_extras" translatable="false">Remove the user name, query, or fragment from the address</string>
+    <string name="network_directory_row_title" translatable="false">Dojo Bay directory</string>
+    <string name="network_directory_default" translatable="false">Default · %1$s</string>
+    <string name="network_directory_custom" translatable="false">Custom · %1$s</string>
     <string name="copy_dojo_pairing_json" translatable="false">Copy Dojo pairing JSON</string>
 
     <string name="loading">loading…</string>

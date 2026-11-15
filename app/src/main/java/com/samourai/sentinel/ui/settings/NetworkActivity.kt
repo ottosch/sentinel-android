@@ -20,6 +20,8 @@ import com.samourai.sentinel.tor.EnumTorState
 import com.samourai.sentinel.tor.SentinelTorManager
 import com.samourai.sentinel.tor.TorState
 import com.samourai.sentinel.ui.SentinelActivity
+import com.samourai.sentinel.ui.dojo.DojoBayAddressDialog
+import com.samourai.sentinel.ui.dojo.DojoBaySource
 import com.samourai.sentinel.ui.dojo.DojoConfigureBottomSheet
 import com.samourai.sentinel.ui.dojo.DojoCredentialsBottomSheet
 import com.samourai.sentinel.ui.dojo.DojoDisplaySnapshot
@@ -156,6 +158,10 @@ class NetworkActivity : SentinelActivity() {
         // The row has no other tap action. Checking, unconfirmed, and unreachable retry.
         explorerRow = findViewById(R.id.network_explorer_layout)
         explorerRow?.setOnClickListener { onExplorerRowTapped() }
+        findViewById<View>(R.id.network_directory_layout)?.setOnClickListener {
+            DojoBayAddressDialog.show(this, prefsUtil, noBackupFilesDir, lifecycleScope) { refreshDirectoryRow() }
+        }
+        refreshDirectoryRow()
         prefsUtil.addListener(explorerPrefListener)
         // #220: re-registered every create. The sheet posts on pairing
         // success; this does not depend on the sheet instance.
@@ -231,6 +237,15 @@ class NetworkActivity : SentinelActivity() {
         setNetworkStatus()
         setDojoStatus()
         refreshExplorerRow()
+    }
+
+    /** Default or Custom, with the short directory address. Never the full onion. */
+    private fun refreshDirectoryRow() {
+        val base = DojoBaySource.effectiveBaseUrl(prefsUtil.dojoBayUrl)
+        findViewById<TextView>(R.id.network_directory_status)?.text = getString(
+            if (DojoBaySource.isDefault(base)) R.string.network_directory_default else R.string.network_directory_custom,
+            DojoBaySource.label(base),
+        )
     }
 
     private fun removeDojo() {

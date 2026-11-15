@@ -33,6 +33,7 @@ import com.samourai.sentinel.data.repository.CollectionRepository
 import com.samourai.sentinel.data.repository.ExchangeRateRepository
 import com.samourai.sentinel.tor.SentinelTorManager
 import com.samourai.sentinel.ui.SentinelActivity
+import com.samourai.sentinel.ui.dojo.CommunityDojoCache
 import com.samourai.sentinel.ui.dojo.DojoUtility
 import com.samourai.sentinel.ui.dojo.PubKeyRescanner
 import com.samourai.sentinel.ui.home.HomeActivity
@@ -489,10 +490,21 @@ class MainSettingsFragment : PreferenceFragmentCompat() {
                         // hop (#82 discipline) - requireContext() is a
                         // fragment call.
                         val payloadFilesDir = requireContext().filesDir
+                        val noBackupDir = requireContext().noBackupFilesDir
                         settingsScope.launch {
                             try {
                                 SentinelTorManager.stop()
                                 withContext(Dispatchers.IO) {
+                                    // The saved Community Dojos list goes
+                                    // first, so a later step that throws
+                                    // cannot leave it behind;
+                                    // prefs.clearAll() below resets the Dojo
+                                    // Bay address.
+                                    try {
+                                        CommunityDojoCache.forDirectory(noBackupDir).clear()
+                                    } catch (e: Exception) {
+                                        Timber.e(e, "Erase: could not delete the saved Community Dojos list")
+                                    }
                                     roomDb.eraseStoredRows()
                                     dojoUtility.clearDojo()
                                     prefsUtil.clearAll()

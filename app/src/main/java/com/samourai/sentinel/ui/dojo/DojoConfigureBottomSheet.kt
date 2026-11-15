@@ -220,8 +220,9 @@ class PairingAckGate {
 
 /**
  * #256: the directory display snapshot the pairing dialogs read -
- * written by the community list's select callback before the payload
- * reaches this sheet, cleared by clearDojo() with its siblings. A
+ * handed over by the community list's select callback with the
+ * payload, saved to prefs only when the pairing commits
+ * ([PendingDisplaySnapshot]), cleared by clearDojo() with its siblings. A
  * snapshot renders only under the url-match guards below, so a stale
  * directory label can never ride a manual QR pairing.
  */
@@ -377,6 +378,9 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
 
     private var payload: String = ""
 
+    /** The picked directory listing's display snapshot, saved only on commit. */
+    private val pendingSnapshot = PendingDisplaySnapshot()
+
     // #234/#261: the decision gate. #261 moved it before the first
     // network contact: selection arms the dialog, the taps spend it.
     // The pendingPairing/pendingAuthBody staging fields died with the
@@ -449,6 +453,7 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
         payloadPassed?.let {
             if (dojoUtil.validate(it)) {
                 payload = it
+                pendingSnapshot.select(null)
                 binding.pager.setCurrentItem(2, true)
             } else {
                 // #181: the old scanFragment.resetCamera() here no-op'd
@@ -493,6 +498,7 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
             dojoUtil.validate(jsonDojo)
         ) {
             payload = jsonDojo
+            pendingSnapshot.select(null)
             binding.pager.setCurrentItem(2, true)
         } else
             Toast.makeText(requireContext(), getString(R.string.invalid_pairing_payload), Toast.LENGTH_SHORT).show()
@@ -538,11 +544,14 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
      * Scan page decoded a QR. True = payload accepted and the sheet
      * advanced to the connect page; false = invalid payload (the toast
      * lands here, where getString lives) and the caller resets its own
-     * camera.
+     * camera. [snapshot] is the directory listing's display data when the
+     * payload comes from the Community Dojos list; it is held, not saved,
+     * until the pairing commits.
      */
-    fun onScanPayload(scanned: String): Boolean {
+    fun onScanPayload(scanned: String, snapshot: DojoDisplaySnapshot? = null): Boolean {
         if (!ImportLimits.exceedsSensitivePaste(scanned) && dojoUtil.validate(scanned)) {
             payload = scanned
+            pendingSnapshot.select(snapshot)
             binding.pager.setCurrentItem(2, true)
             return true
         }
@@ -835,7 +844,7 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
             }
             return
         }
-        val snapshot = readDisplaySnapshot()
+        val snapshot = pendingSnapshot.forDialog { readDisplaySnapshot() }
         val rows = pairingDetailRows(pairing, snapshot)
         val view = layoutInflater.inflate(R.layout.dialog_dojo_pairing_details, null)
         val header = directoryHeader(snapshot, pairing.pairing?.url)
@@ -923,11 +932,10 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
     }
 
     /**
-     * #256: the directory snapshot, read from the prefs the
-     * community list's select callback writes before the payload
-     * reaches this sheet (dojoDisplayUrl/Name/Flag and the new
-     * dojoDisplayJurisdiction); clearDojo() clears them with its
-     * siblings.
+     * #256: the saved directory snapshot (dojoDisplayUrl/Name/Flag,
+     * dojoDisplayJurisdiction, dojoDisplayNetwork), written by
+     * [saveDisplaySnapshot] when a directory pairing commits;
+     * clearDojo() clears them with its siblings.
      */
     private fun readDisplaySnapshot(): DojoDisplaySnapshot =
         DojoDisplaySnapshot(
@@ -937,6 +945,14 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
             prefsUtil.dojoDisplayJurisdiction,
             prefsUtil.dojoDisplayNetwork,
         )
+
+    private fun saveDisplaySnapshot(snapshot: DojoDisplaySnapshot) {
+        prefsUtil.dojoDisplayName = snapshot.name
+        prefsUtil.dojoDisplayFlag = snapshot.flag
+        prefsUtil.dojoDisplayUrl = snapshot.url
+        prefsUtil.dojoDisplayJurisdiction = snapshot.jurisdiction
+        prefsUtil.dojoDisplayNetwork = snapshot.network
+    }
 
     // #256: a detail row renders only when it carries real data -
     // absent means absent, never a placeholder.
@@ -1003,8 +1019,11 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
         prefsUtil.dojoExplorerUrl = pairing.explorer?.url
         prefsUtil.dojoExplorerType = pairing.explorer?.type
         // Operator name and flag were snapshotted from the community
-        // list at select time and stay in prefs. The Block Explorer
-        // row reads them. Nothing here fetches the directory.
+        // list at select time and are saved now, with the pairing (a
+        // scan or paste carries none and leaves the saved ones). The
+        // Block Explorer row reads them. Nothing here fetches the
+        // directory.
+        pendingSnapshot.takeForCommit()?.let { saveDisplaySnapshot(it) }
         dojoUtil.setAuthToken(authBody.toString())
         apiScope.launch {
             dojoUtil.writePayload(pairing);
@@ -1086,6 +1105,7 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
      */
     private fun onPairingDeclineTapped() {
         if (pairingAckGate.onUserDeclined() != PairingAckDecision.DISCARD_AND_DISMISS) return
+        pendingSnapshot.discard()
         mainHandler.post {
             dismiss()
             if (context != null)
