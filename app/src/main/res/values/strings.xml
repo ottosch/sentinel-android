@@ -530,7 +530,7 @@
     <string name="coin_picker_none_selected" translatable="false">No coins selected. Select the coins to spend, or keep automatic selection</string>
     <string name="coin_picker_confirm" translatable="false">Spend selected (%d)</string>
     <string name="coin_picker_use_auto" translatable="false">Use automatic selection</string>
-    <string name="coin_picker_do_not_spend" translatable="false">Do not spend</string>
+    <string name="coin_picker_do_not_spend" translatable="false">Do Not Spend</string>
     <string name="coin_picker_frozen_refused" translatable="false">This coin is marked do-not-spend. Unmark it in UTXOs before spending it</string>
     <string name="coin_picker_selection_refused" translatable="false">Your coins changed while picking. Review the selection and try again</string>
     <string name="coin_picker_cospend_warning" translatable="false">Warning: this selection spends Bad Bank coins together with other coins. The transaction links them on-chain</string>
