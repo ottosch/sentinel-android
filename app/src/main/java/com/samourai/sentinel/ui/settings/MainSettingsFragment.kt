@@ -34,6 +34,7 @@ import com.samourai.sentinel.data.repository.ExchangeRateRepository
 import com.samourai.sentinel.tor.SentinelTorManager
 import com.samourai.sentinel.ui.SentinelActivity
 import com.samourai.sentinel.ui.dojo.CommunityDojoCache
+import com.samourai.sentinel.ui.dojo.PayNymCache
 import com.samourai.sentinel.ui.dojo.DojoUtility
 import com.samourai.sentinel.ui.dojo.PubKeyRescanner
 import com.samourai.sentinel.ui.home.HomeActivity
@@ -531,6 +532,13 @@ class MainSettingsFragment : PreferenceFragmentCompat() {
                                         CommunityDojoCache.forDirectory(noBackupDir).clear()
                                     } catch (e: Exception) {
                                         Timber.e(e, "Erase: could not delete the saved Community Dojos list")
+                                    }
+                                    // The PayNym avatars and names looked up
+                                    // for pre-pair dialogs go with it.
+                                    try {
+                                        PayNymCache.forDirectory(noBackupDir).clear()
+                                    } catch (e: Exception) {
+                                        Timber.e(e, "Erase: could not delete the PayNym cache")
                                     }
                                     roomDb.eraseStoredRows()
                                     dojoUtility.clearDojo()

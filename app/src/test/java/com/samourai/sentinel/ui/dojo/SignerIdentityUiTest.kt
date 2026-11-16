@@ -151,4 +151,56 @@ class SignerIdentityUiTest {
         val sp = context.resources.displayMetrics.scaledDensity
         assertEquals(19f, androidx.core.widget.TextViewCompat.getAutoSizeMaxTextSize(title) / sp, 0.5f)
     }
+
+    // ---- the PayNym avatar and name ------------------------------------------------
+
+    private fun signerDialog(): Pair<View, PrePairDialogViews> {
+        val view = dialog()
+        val views = PrePairDialogViews(view)
+        views.bindSigner(prePairSigner(qa, null, null)) {}
+        views.showIdentityLoading()
+        return view to views
+    }
+
+    @Test
+    fun `while PayNym is asked the avatar slot is empty and no name shows`() {
+        val (view, views) = signerDialog()
+        assertTrue(view.shown(R.id.dojoPairingSignerIdentity))
+        assertFalse(view.shown(R.id.dojoPairingSignerMeta))
+        assertFalse(views.showsUnavailableAvatar)
+    }
+
+    @Test
+    fun `an avatar and a name show the avatar, the +name and the paynym rs caption`() {
+        val (view, views) = signerDialog()
+        val image = android.graphics.Bitmap.createBitmap(4, 4, android.graphics.Bitmap.Config.ARGB_8888)
+        views.showIdentity(image, "+examplenym")
+        assertTrue(view.shown(R.id.dojoPairingSignerMeta))
+        assertEquals("+examplenym", view.text(R.id.dojoPairingSignerNym))
+        assertFalse(views.showsUnavailableAvatar)
+        assertNull(view.findViewById<android.widget.ImageView>(R.id.dojoPairingSignerAvatar).colorFilter)
+        // An avatar without a name: the avatar alone.
+        views.showIdentity(image, null)
+        assertFalse(view.shown(R.id.dojoPairingSignerMeta))
+    }
+
+    @Test
+    fun `a failed avatar shows the greyed-out stand-in and hides the name and caption`() {
+        val (view, views) = signerDialog()
+        views.showIdentity(null, "+examplenym")
+        assertTrue(views.showsUnavailableAvatar)
+        assertFalse(view.shown(R.id.dojoPairingSignerMeta))
+        val avatar = view.findViewById<android.widget.ImageView>(R.id.dojoPairingSignerAvatar)
+        assertTrue(avatar.colorFilter is android.graphics.ColorMatrixColorFilter)
+        assertEquals("PayNym avatar unavailable", avatar.contentDescription)
+        // The code and link stay.
+        assertTrue(view.shown(R.id.dojoPairingSignerCode))
+        assertTrue(view.shown(R.id.dojoPairingSignerLink))
+    }
+
+    @Test
+    fun `bytes that are not a PNG decode to nothing`() {
+        assertNull(PayNymAvatarImage.decode(null))
+        assertNull(PayNymAvatarImage.decode("GIF89a".toByteArray()))
+    }
 }
