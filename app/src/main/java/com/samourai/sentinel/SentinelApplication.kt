@@ -166,9 +166,10 @@ class SentinelApplication : Application() {
 
     private class CrashReportingTree(val dir: File) : Timber.Tree() {
         override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
-            // #523: one redacted ExplorerProbe result per probe reaches
-            // logcat on a release build. The crash file stays throwables
-            // only, and this line is redacted again before it is written.
+            // #523: one ExplorerProbe result per finished probe reaches
+            // logcat on a release build (outcome, status, elapsed time;
+            // no host). The crash file stays throwables only, and this
+            // line is redacted again before it is written.
             if (releaseKeepsExplorerProbe(priority, tag, message, t)) {
                 Log.println(priority, tag, LogRedaction.redact(message))
                 return

@@ -118,8 +118,10 @@ If the Network screen's Block Explorer row stays on "Checking…" or shows
 "Unreachable over Tor" while Tor and the Dojo are green, tap that row to
 retry. If it persists, turn Tor off and on again on the Network screen.
 Re-pairing the Dojo is not normally needed. If it still persists, collect
-`adb logcat -s ExplorerProbe` (onion addresses in that log are shortened)
-and open an issue.
+`adb logcat -s ExplorerProbe` and open an issue. A release build logs one
+line per finished probe: outcome, HTTP status or failure name, and
+elapsed time, with no explorer address. A debug build also logs the
+shortened host.
 
 ## Releases
 

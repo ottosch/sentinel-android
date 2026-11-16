@@ -99,6 +99,18 @@ object LogRedaction {
      */
     private val BASE58_ADDR = Regex("\\b[13mn2][1-9A-HJ-NP-Za-km-z]{25,34}\\b")
 
+    /**
+     * BIP47 payment codes. Version byte 0x47 base58-encodes as PM8T.
+     * A real code is the 80-byte payload plus checksum, 116 characters
+     * for the donation code in SamouraiWalletConst. The 80-character
+     * floor after the prefix leaves the four letters themselves, and
+     * anything shorter, readable. The same rule covers the release
+     * crash file: CrashReportingTree redacts the stack with [redact].
+     */
+    private val PAYMENT_CODE = Regex("\\bPM8T[1-9A-HJ-NP-Za-km-z]{80,}")
+
+    internal fun containsPaymentCode(value: String): Boolean = PAYMENT_CODE.containsMatchIn(value)
+
     /** Applies every rule, in order, to one log line. */
     fun redact(message: String): String =
         message
@@ -112,6 +124,7 @@ object LogRedaction {
             .replace(JSON_ADDR_FIELD, "\"addr\":\"REDACTED\"")
             .replace(BECH32_ADDR, "ADDR_REDACTED")
             .replace(BASE58_ADDR, "ADDR_REDACTED")
+            .replace(PAYMENT_CODE, "PAYMENT_CODE_REDACTED")
 }
 
 /**

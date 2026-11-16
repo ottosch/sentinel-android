@@ -136,8 +136,8 @@ object ExplorerHealthProbe {
 }
 
 /**
- * One finished attempt. [detail] is an HTTP status or an exception
- * class name, never a message, a URL, or a query string.
+ * One finished attempt. [detail] is an HTTP status or a token from
+ * [probeFailureLabel], never a message, a URL, or a query string.
  */
 data class ProbeResult(
     val kind: Kind,
@@ -204,8 +204,7 @@ internal fun classifyFetches(verdicts: List<FetchVerdict>): ProbeResult.Kind {
 /**
  * Red only for a refused connection or a host the proxy reports
  * unreachable. OkHttp wraps a connect timeout as "Failed to connect"
- * with no refusal under it; that stays amber. The label that is
- * logged is the exception class, never [Throwable.message].
+ * with no refusal under it; that stays amber.
  */
 internal fun failureVerdict(error: Throwable): FetchVerdict {
     val chain = generateSequence(error) { it.cause }.take(8)
@@ -219,9 +218,10 @@ internal fun isDefinitiveTransport(error: Throwable): Boolean {
     return msg.contains("connection refused") || msg.contains("host unreachable")
 }
 
+/** Fixed token from [probeFailureLabel]. Never the message or the runtime class name. */
 private fun failureFetch(error: Throwable): UrlFetch = UrlFetch(
     successful = false,
-    label = error.javaClass.simpleName,
+    label = probeFailureLabel(error),
     verdict = failureVerdict(error),
 )
 

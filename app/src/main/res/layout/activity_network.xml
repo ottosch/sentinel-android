@@ -302,12 +302,16 @@
 
             </View>
 
+            <!-- #488: the status sits under the title+buttons, across the
+                 whole column, so a long progress label is not squeezed into
+                 the sliver beside Details and Disable. The counter's own
+                 line is progressText's newline. -->
             <LinearLayout
                 android:id="@+id/network_dojo_layout"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginVertical="12dp"
-                android:gravity="center_horizontal|center_vertical"
+                android:gravity="center_vertical"
                 android:orientation="horizontal"
                 android:visibility="visible">
 
@@ -324,42 +328,53 @@
                     android:layout_weight="1"
                     android:orientation="vertical">
 
-                    <TextView
-                        android:layout_width="wrap_content"
+                    <LinearLayout
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Dojo Full Node"
-                        android:textColor="@color/white"
-                        android:textStyle="bold" />
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Dojo Full Node"
+                            android:textColor="@color/white"
+                            android:textStyle="bold" />
+
+                        <!-- Only visible while a Dojo is actually paired. -->
+                        <Button
+                            android:id="@+id/networking_dojo_details_btn"
+                            style="@style/Base.Widget.AppCompat.Button.Borderless"
+                            android:layout_width="84dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="4dp"
+                            android:text="@string/dojo_pairing_details"
+                            android:textColor="#6eb8c5"
+                            android:visibility="gone"
+                            tools:visibility="visible" />
+
+                        <Button
+                            android:id="@+id/networking_dojo_btn"
+                            style="@style/Base.Widget.AppCompat.Button.Borderless"
+                            android:layout_width="116dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="4dp"
+                            android:gravity="center"
+                            android:maxLines="2"
+                            android:text="Disable"
+                            android:textColor="#6eb8c5" />
+                    </LinearLayout>
 
                     <TextView
                         android:id="@+id/network_dojo_status"
-                        android:layout_width="wrap_content"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:layout_marginEnd="4dp"
+                        android:breakStrategy="simple"
+                        android:hyphenationFrequency="none"
                         android:text="Disabled" />
                 </LinearLayout>
-
-                <!-- Only visible while a Dojo is actually paired. -->
-                <Button
-                    android:id="@+id/networking_dojo_details_btn"
-                    style="@style/Base.Widget.AppCompat.Button.Borderless"
-                    android:layout_width="84dp"
-                    android:layout_height="wrap_content"
-                    android:layout_marginEnd="4dp"
-                    android:text="@string/dojo_pairing_details"
-                    android:textColor="#6eb8c5"
-                    android:visibility="gone"
-                    tools:visibility="visible" />
-
-                <Button
-                    android:id="@+id/networking_dojo_btn"
-                    style="@style/Base.Widget.AppCompat.Button.Borderless"
-                    android:layout_width="116dp"
-                    android:layout_height="wrap_content"
-                    android:layout_marginEnd="4dp"
-                    android:gravity="center"
-                    android:maxLines="2"
-                    android:text="Disable"
-                    android:textColor="#6eb8c5" />
             </LinearLayout>
 
             <View

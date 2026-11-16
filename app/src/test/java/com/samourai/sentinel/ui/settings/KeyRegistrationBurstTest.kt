@@ -19,9 +19,16 @@ class KeyRegistrationBurstTest {
 
     @Test
     fun progress_counts_attempts_under_the_renamed_vocabulary() {
+        val text = KeyRegistrationBurst.progressText(14, 19)
         assertEquals(
-            "Registering derivation paths with Dojo\u2026 14 of 19",
-            KeyRegistrationBurst.progressText(14, 19)
+            "Registering derivation paths with Dojo\u2026\n14 of 19",
+            text
+        )
+        // #488: the counter is the whole of the last line, so a tick
+        // cannot reflow the label.
+        assertEquals(
+            listOf("Registering derivation paths with Dojo\u2026", "14 of 19"),
+            text.split('\n')
         )
     }
 
@@ -74,7 +81,7 @@ class KeyRegistrationBurstTest {
         KeyRegistrationBurst.begin(19)
         KeyRegistrationBurst.onItemStarted(14)
         assertEquals(
-            "Registering derivation paths with Dojo\u2026 14 of 19",
+            "Registering derivation paths with Dojo\u2026\n14 of 19",
             KeyRegistrationBurst.statusText("Enabled")
         )
     }

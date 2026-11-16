@@ -20,6 +20,10 @@
 -keep class com.sparrowwallet.** { *; }
 -keep class com.lambdaworks.** { *; }
 
+# Those keeps do not cover kotlinx.coroutines or OkHttp. R8 can rename
+# TimeoutCancellationException. Explorer probe status is a fixed token
+# from an is-check, never Class.simpleName (#523).
+
 -keepclassmembers,allowobfuscation class * {
     @com.google.gson.annotations.SerializedName <fields>;
 }
@@ -54,11 +58,14 @@
 -dontwarn org.codehaus.janino.ClassBodyEvaluator
 -dontwarn sun.reflect.Reflection
 
-# Gson (com.google.code.gson:gson:2.9.0) — broke v5.1.3-dojobay.5 at
+# Gson (com.google.code.gson:gson:2.15.0) — broke v5.1.3-dojobay.5 at
 # launch. R8 obfuscated TypeToken itself (crash trace showed
 # com.google.gson.reflect.a.getSuperclassTypeParameter), so every
 # anonymous TypeToken<T> subclass threw "Missing type parameter" once
 # minified. The header's "Gson ... kept" claim only becomes true here.
+# Gson's consumer rules, shipped since 2.11, keep TypeToken with
+# allowobfuscation — the rename that crashed .5 — so this
+# name-preserving keep stays.
 # Anonymous-TypeToken census at fix time, all one failure class:
 #   ui/dojo/DojoUtil.kt readPayload (witnessed on device, .5 launch)
 #   data/db/PayloadRecord.kt:103,125
