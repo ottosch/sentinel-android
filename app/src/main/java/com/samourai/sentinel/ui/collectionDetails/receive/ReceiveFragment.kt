@@ -66,6 +66,7 @@ import java.io.IOException
 import java.text.DecimalFormat
 import java.text.NumberFormat
 import java.text.ParseException
+import timber.log.Timber
 import java.util.Locale
 
 
@@ -347,7 +348,7 @@ class ReceiveFragment : Fragment() {
         try {
             bitmap = qrCodeEncoder.encodeAsBitmap()
         } catch (e: WriterException) {
-            e.printStackTrace()
+            Timber.e("receive-qr %s", e.javaClass.simpleName)
         }
         return bitmap
     }
@@ -373,7 +374,6 @@ class ReceiveFragment : Fragment() {
         path += "0/" //add change
         path += pubKey.account_index.toString() +"" // add index
 
-        println(path)
         return path
     }
 
@@ -543,7 +543,7 @@ class ReceiveFragment : Fragment() {
 
                 //
             } catch (e: java.lang.NumberFormatException) {
-                e.printStackTrace()
+                Timber.e("receive-amount %s", e.javaClass.simpleName)
             }
             satEditText.addTextChangedListener(satWatcher)
             btcEditText.addTextChangedListener(this)
@@ -584,7 +584,7 @@ class ReceiveFragment : Fragment() {
                     ).show()
                 }
             } catch (e: java.lang.NumberFormatException) {
-                e.printStackTrace()
+                Timber.e("receive-amount %s", e.javaClass.simpleName)
             }
             satEditText.addTextChangedListener(this)
             btcEditText.addTextChangedListener(BTCWatcher)

@@ -411,7 +411,7 @@ public class TxosLinker {
     int lenOut = txos.getOutputs().size();
     int maxCard = Math.max(lenIn, lenOut);
     if (maxTxos != null && maxCard > maxTxos) {
-      System.out.println("maxTxos limit reached!");
+      log.info("maxTxos limit reached");
       return false;
     }
     return true;

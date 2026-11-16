@@ -32,6 +32,7 @@ import com.samourai.sentinel.data.PubKeyCollection
 import com.samourai.sentinel.data.PubKeyModel
 import com.samourai.sentinel.ui.views.GenericBottomSheet
 import com.samourai.sentinel.util.AppUtil
+import timber.log.Timber
 import java.io.File
 import java.io.FileOutputStream
 
@@ -218,7 +219,7 @@ class QRBottomSheetDialog() : GenericBottomSheet() {
         try {
             bitmap = qrCodeEncoder.encodeAsBitmap()
         } catch (e: WriterException) {
-            e.printStackTrace()
+            Timber.e("qr-sheet %s", e.javaClass.simpleName)
         }
 
         qRImage.shapeAppearanceModel = qRImage.shapeAppearanceModel

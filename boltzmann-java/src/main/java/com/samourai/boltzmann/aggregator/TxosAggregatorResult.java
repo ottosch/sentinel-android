@@ -55,7 +55,6 @@ public class TxosAggregatorResult {
         DoubleBigList line = new DoubleBigArrayBigList(0);
         matLnkProbabilities.add(line);
       }*/
-      System.err.println("nbCmbn=0");
     }
     return matLnkProbabilities;
   }

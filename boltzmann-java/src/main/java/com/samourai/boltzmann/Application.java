@@ -1,5 +1,6 @@
 package com.samourai.boltzmann;
 
+import com.samourai.boltzmann.beans.BoltzmannResult;
 import com.samourai.boltzmann.beans.BoltzmannSettings;
 import com.samourai.boltzmann.beans.NoLimitSettings;
 import com.samourai.boltzmann.utils.LogbackUtils;
@@ -27,6 +28,7 @@ public class Application {
     // run
     BoltzmannSettings settings = new NoLimitSettings();
     settings.setMaxCjIntrafeesRatio(maxCjIntrafeesRatio);
-    new Boltzmann(settings).process(txid);
+    BoltzmannResult result = new Boltzmann(settings).process(txid);
+    result.print();
   }
 }

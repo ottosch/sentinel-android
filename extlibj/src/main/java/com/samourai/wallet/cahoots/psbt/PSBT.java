@@ -372,8 +372,7 @@ public class PSBT {
 
         }
         catch(Exception e) {
-            Log("Exception:" + e.getMessage(), true);
-            e.printStackTrace();
+            Log("psbt-entry " + e.getClass().getSimpleName(), true);
             return null;
         }
 

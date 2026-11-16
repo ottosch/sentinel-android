@@ -7,8 +7,6 @@ import com.samourai.boltzmann.fetch.OxtFetch;
 import com.samourai.boltzmann.linker.TxosLinkerOptionEnum;
 import com.samourai.boltzmann.processor.TxProcessor;
 import com.samourai.boltzmann.processor.TxProcessorResult;
-import com.samourai.boltzmann.utils.ListsUtils;
-import java.util.Arrays;
 
 public class Boltzmann {
   private BoltzmannSettings settings;
@@ -36,17 +34,12 @@ public class Boltzmann {
       Txos txos, float maxCjIntrafeesRatio, TxosLinkerOptionEnum... linkerOptions) {
     long t1 = System.currentTimeMillis();
 
-    long sumInputs = Arrays.stream(ListsUtils.toPrimitiveArray(txos.getInputs().values())).sum();
-    long sumOutputs = Arrays.stream(ListsUtils.toPrimitiveArray(txos.getOutputs().values())).sum();
-    long fees = sumInputs - sumOutputs;
-    System.out.println("fees = " + fees);
-
     TxProcessorResult txProcessorResult =
         txProcessor.processTx(txos, maxCjIntrafeesRatio, linkerOptions);
 
     long duration = (System.currentTimeMillis() - t1) / 1000;
-    BoltzmannResult result = new BoltzmannResult(duration, txProcessorResult);
-    result.print();
-    return result;
+    // Silent on purpose (#564). BoltzmannResult.print() dumps inputs, outputs,
+    // fees and the export JSON. The CLI main is the only caller of print().
+    return new BoltzmannResult(duration, txProcessorResult);
   }
 }

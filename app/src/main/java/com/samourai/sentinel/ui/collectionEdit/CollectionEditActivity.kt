@@ -410,7 +410,7 @@ class CollectionEditActivity : SentinelActivity() {
                         }
                         try {
                         } catch (e: Exception) {
-                            e.printStackTrace()
+                            Timber.e("collection-edit %s", e.javaClass.simpleName)
                         }
                     }
                 }
@@ -616,7 +616,7 @@ class CollectionEditActivity : SentinelActivity() {
                                     })
                                     finish()
                                 } else {
-                                    it.printStackTrace()
+                                    Timber.e("collection-delete %s", it.javaClass.simpleName)
                                 }
                             }
                         }

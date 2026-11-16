@@ -56,6 +56,7 @@ jobs:
             curl
             unzip
             zip
+            python3
           )
 
           missing=()
@@ -75,6 +76,10 @@ jobs:
           else
             echo "All required system packages are already installed."
           fi
+
+      - name: Guard - release logcat calls
+        shell: bash
+        run: python3 scripts/check-release-logcat.py
 
       - name: Set up JDK 21
         uses: actions/setup-java@v5
@@ -155,6 +160,21 @@ jobs:
           java -version
           ./gradlew --version
           sdkmanager --list_installed
+
+      - name: Guard - no logback on the staging release runtime classpath
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/staging-release-runtime.txt"
+          ./gradlew :app:dependencies --configuration stagingReleaseRuntimeClasspath --console=plain > "$out"
+          if grep -E 'ch\.qos\.logback' "$out"; then
+            echo "::error::ch.qos.logback is on stagingReleaseRuntimeClasspath (#564)"
+            exit 1
+          fi
+          if ! grep -E 'org\.slf4j:slf4j-nop:' "$out"; then
+            echo "::error::slf4j-nop is not on stagingReleaseRuntimeClasspath (#564)"
+            exit 1
+          fi
 
       - name: Build staging debug APK
         run: ./gradlew --stacktrace :app:assembleStagingDebug
