@@ -88,9 +88,8 @@ class PendingSignerPin {
 
 /**
  * How a fetched list relates to the paired Dojo's [DojoBaySignerPin].
- * The sheet shows [Status.SignerChanged] as a banner and on the rows it
- * concerns ([signerChangedRows]); its Review action opens the full
- * pre-pair flow for [repairTarget].
+ * Nothing on screen reads it yet: showing a changed signer needs a way to
+ * open Community Dojos while paired, so that is left for later.
  */
 object DojoBayPairedCheck {
 
@@ -156,24 +155,6 @@ object DojoBayPairedCheck {
         is CommunityDojoDisplay.Cached -> status(display.dojos, pin)
         is CommunityDojoDisplay.ListedNone -> status(display.dojos, pin)
         else -> if (pin == null) Status.NoPin else Status.NotListed
-    }
-
-    /** The rows that look like the paired Dojo under another code, while no row is signed by the trusted one. */
-    fun signerChangedRows(items: List<CheckedDojo>, pin: DojoBaySignerPin?): List<CheckedDojo> {
-        if (status(items, pin) !is Status.SignerChanged) return emptyList()
-        return items.filter { looksLikePairedUnderAnotherCode(it, pin!!) }
-    }
-
-    /**
-     * The listing the signer-changed banner's Review opens in the full
-     * pre-pair flow: the first one with the paired onion, else the first
-     * with the paired name. Pairing it saves its code as the new pin.
-     */
-    fun repairTarget(items: List<CheckedDojo>, pin: DojoBaySignerPin?): CheckedDojo? {
-        val rows = signerChangedRows(items, pin)
-        if (rows.isEmpty()) return null
-        val pinnedHost = host(pin!!.url)
-        return rows.firstOrNull { pinnedHost != null && host(signedUrl(it)) == pinnedHost } ?: rows.first()
     }
 
     fun status(items: List<CheckedDojo>, pin: DojoBaySignerPin?): Status {

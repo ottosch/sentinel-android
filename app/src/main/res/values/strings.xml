@@ -276,10 +276,6 @@
     <string name="community_dojo_signer_collision" translatable="false">Another listing uses this name with a different signer</string>
     <string name="community_dojo_signed_by_expanded" translatable="false">Signed by</string>
     <string name="community_dojo_signer_expand_description" translatable="false">Show the full signer code</string>
-    <string name="community_dojo_signer_changed_banner" translatable="false">The signer of %1$s changed. Check with the owner before you pair it again.</string>
-    <string name="community_dojo_signer_changed_unnamed" translatable="false">your paired Dojo</string>
-    <string name="community_dojo_signer_changed_action" translatable="false">Review</string>
-    <string name="community_dojo_signer_changed_row" translatable="false">The signer changed since you paired · check with the owner</string>
     <string name="paynym_view_link" translatable="false">View on PayNym</string>
     <string name="paynym_from_caption" translatable="false">from paynym.rs</string>
     <string name="paynym_avatar_description" translatable="false">PayNym avatar</string>

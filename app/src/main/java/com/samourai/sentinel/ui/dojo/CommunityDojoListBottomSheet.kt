@@ -107,9 +107,8 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
     )
 
     /**
-     * A listing picked (a row, or the signer-changed banner's Review): a
-     * verified one goes to the full pre-pair flow, an unverified one gets
-     * the notice.
+     * A listing picked: a verified one goes to the full pre-pair flow, an
+     * unverified one gets the notice.
      */
     private fun selectListing(item: CheckedDojo) {
         val node = item.node
@@ -610,41 +609,19 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
         recyclerView.visibility = View.GONE
     }
 
-    /**
-     * [bannerMessage] null: a fresh list, no banner, unless the paired Dojo's
-     * signer changed (below). Otherwise the saved-list banner with Retry.
-     */
+    /** [bannerMessage] null: a fresh list, no banner. Otherwise the saved-list banner with Retry. */
     private fun showList(nodes: List<CheckedDojo>, bannerMessage: String?) {
         stopElapsedTicker()
         progressBar.visibility = View.GONE
         statusText.visibility = View.GONE
         retryButton.visibility = View.GONE
         changeAddressButton.visibility = View.GONE
-        // The paired Dojo's listing is now signed by a different code
-        // (DojoBayPairedCheck.SignerChanged): its rows say so, and over a
-        // fresh list the banner does too. Review opens the full pre-pair
-        // flow for that listing; pairing it replaces the trusted code.
-        val pin = DojoBaySignerPin.read(prefsUtil)
-        val changed = DojoBayPairedCheck.signerChangedRows(nodes, pin)
-        adapter.setSignerChanged(changed)
-        val repair = DojoBayPairedCheck.repairTarget(nodes, pin)
-        bannerRetry.setText(R.string.community_dojo_retry)
-        bannerRetry.setOnClickListener { connectTorThenFetch() }
-        if (bannerMessage != null) {
+        if (bannerMessage == null) {
+            banner.visibility = View.GONE
+        } else {
             banner.visibility = View.VISIBLE
             bannerText.text = bannerMessage
             bannerRetry.visibility = View.VISIBLE
-        } else if (repair != null) {
-            banner.visibility = View.VISIBLE
-            bannerText.text = getString(
-                R.string.community_dojo_signer_changed_banner,
-                pin?.name?.takeIf { it.isNotBlank() } ?: getString(R.string.community_dojo_signer_changed_unnamed),
-            )
-            bannerRetry.setText(R.string.community_dojo_signer_changed_action)
-            bannerRetry.setOnClickListener { selectListing(repair) }
-            bannerRetry.visibility = View.VISIBLE
-        } else {
-            banner.visibility = View.GONE
         }
         recyclerView.visibility = View.VISIBLE
         adapter.submitList(nodes)
