@@ -1,6 +1,7 @@
 package com.samourai.sentinel.tor
 
 import android.app.Application
+import com.samourai.sentinel.BuildConfig
 import com.samourai.sentinel.core.DojoReachability
 import android.os.Handler
 import android.os.Looper
@@ -15,6 +16,7 @@ import io.matthewnelson.kmp.tor.runtime.Action.Companion.startDaemonAsync
 import io.matthewnelson.kmp.tor.runtime.Action.Companion.stopDaemonAsync
 import io.matthewnelson.kmp.tor.runtime.TorRuntime
 import io.matthewnelson.kmp.tor.runtime.core.OnEvent
+import io.matthewnelson.kmp.tor.runtime.core.TorEvent
 import io.matthewnelson.kmp.tor.runtime.core.config.IntervalUnit
 import io.matthewnelson.kmp.tor.runtime.core.config.TorOption
 import io.matthewnelson.kmp.tor.runtime.core.ctrl.TorCmd
@@ -41,6 +43,9 @@ import timber.log.Timber
 object SentinelTorManager {
 
     private const val TAG = "SentinelTorManager"
+
+    /** Debug builds only: logcat tag for Tor's own notice and warning lines. */
+    internal const val TOR_LOG_TAG = "TorDaemon"
 
     // ---- #11/#172 watchdog: tiered zero-progress stall recovery ----
     private const val CHEAP_RESTART_MS = 15_000L    // tier 1: restart, data dirs KEPT
@@ -117,6 +122,23 @@ object SentinelTorManager {
                 }
                 Timber.i("state -> $st boot=${s.daemon.bootstrap.toInt()}")
                 publish(st, s.daemon.bootstrap.toInt())
+            }
+
+            // Debug builds only: Tor's own log at notice level and above
+            // (NOTICE, WARN) goes to logcat under TOR_LOG_TAG, so a slow
+            // bootstrap or onion connection can be read from a capture
+            // (#581). It goes through Timber, so the debug masking Tree
+            // redacts onion hosts, xpubs and txids on top of Tor's own
+            // SafeLogging scrubbing. Release builds register nothing here:
+            // no extra Tor event subscription, no new log lines.
+            if (BuildConfig.DEBUG) {
+                required(TorEvent.WARN)
+                observerStatic(TorEvent.NOTICE, OnEvent.Executor.Immediate) { line ->
+                    Timber.tag(TOR_LOG_TAG).i(line)
+                }
+                observerStatic(TorEvent.WARN, OnEvent.Executor.Immediate) { line ->
+                    Timber.tag(TOR_LOG_TAG).w(line)
+                }
             }
 
             observerStatic(RuntimeEvent.LISTENERS, OnEvent.Executor.Immediate) { l ->
