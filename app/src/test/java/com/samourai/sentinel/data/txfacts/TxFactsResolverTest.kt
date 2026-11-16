@@ -64,6 +64,23 @@ class TxFactsResolverTest {
             TxFactsResolver.Destination.PUBLIC,
             TxFactsResolver.classify("https://evil.example/onion.onion"),
         )
+        // Percent-decoding and IDN mapping run before the .onion test.
+        assertEquals(
+            TxFactsResolver.Destination.SELF,
+            TxFactsResolver.classify("http://x.oni%6fn"),
+        )
+        assertEquals(
+            TxFactsResolver.Destination.SELF,
+            TxFactsResolver.classify("http://\uFF58.\uFF4F\uFF4E\uFF49\uFF4F\uFF4E"),
+        )
+        assertEquals(
+            TxFactsResolver.Destination.SELF,
+            TxFactsResolver.classify("https://x.onion\u3002/tx"),
+        )
+        assertEquals(
+            TxFactsResolver.Destination.PUBLIC,
+            TxFactsResolver.classify("https://evil.example/x.oni%6fn"),
+        )
     }
 
     @Test

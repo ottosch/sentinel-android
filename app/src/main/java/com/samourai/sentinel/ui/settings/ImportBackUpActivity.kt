@@ -906,6 +906,7 @@ class ImportBackUpActivity : SentinelActivity() {
         // outside that scope and must close over these (#48).
         var xpubImport: Pair<Int, Int>? = null
         var dojoPairingFailed = false
+        var customExplorerRejected = false
         // #420: captured before protectFreshImport. A legacy verifier on
         // a keyless install enables during the import, and reading PIN
         // state again at the end would hide the "already had a PIN" case
@@ -949,7 +950,7 @@ class ImportBackUpActivity : SentinelActivity() {
                 }
 
                 if (binding.importPrefs.isChecked) {
-                    payload.second.let { ExportImportUtil().importPrefs(it) }
+                    customExplorerRejected = ExportImportUtil().importPrefs(payload.second)
                 }
 
                 if (binding.importCollections.isChecked) {
@@ -1010,6 +1011,9 @@ class ImportBackUpActivity : SentinelActivity() {
                     val note = "$xpubNote" +
                         (if (dojoPairingFailed)
                             " Dojo pairing failed - retry from Network screen."
+                        else "") +
+                        (if (customExplorerRejected)
+                            " The custom block explorer was not used. Choose one in Settings."
                         else "") +
                         networkNote
                     // #460: the restart snackbar is anchored to the bottom

@@ -238,8 +238,10 @@ class ExportImportUtil {
         dojoUtility.setDojo(dojo.toString())
     }
 
-    fun importPrefs(it: JSONObject) {
+    /** True when the backup's custom explorer was rejected and the lookup is unbound. */
+    fun importPrefs(it: JSONObject): Boolean {
         prefsUtil.import(it)
+        return prefsUtil.importRejectedCustomExplorer
     }
 
 
