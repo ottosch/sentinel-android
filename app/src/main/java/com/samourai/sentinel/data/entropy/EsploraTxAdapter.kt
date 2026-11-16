@@ -1,11 +1,11 @@
 package com.samourai.sentinel.data.entropy
 
+import com.samourai.sentinel.helpers.SafeJson
 import com.samourai.sentinel.data.Inputs
 import com.samourai.sentinel.data.Out
 import com.samourai.sentinel.data.Tx
 import com.samourai.sentinel.data.prevOut
 import org.json.JSONArray
-import org.json.JSONObject
 
 /**
  * Esplora-shaped /tx JSON -> app Tx, for the #72 entropy
@@ -43,7 +43,7 @@ object EsploraTxAdapter {
 
     fun fromJson(body: String): Tx? {
         return try {
-            val root = JSONObject(body)
+            val root = SafeJson.parseObject(body)
             val txid = root.optString("txid", "")
             if (txid.isEmpty()) return null
 

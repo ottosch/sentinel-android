@@ -35,7 +35,9 @@ import com.samourai.sentinel.core.DerivedNetwork
 import com.samourai.sentinel.core.NetworkClassifier
 import com.samourai.sentinel.core.SentinelState
 import com.samourai.sentinel.databinding.FragmentBottomsheetViewPagerBinding
+import com.samourai.sentinel.helpers.SafeJson
 import com.samourai.sentinel.helpers.fromJSON
+import com.samourai.sentinel.helpers.readUtf8Capped
 import com.samourai.sentinel.tor.EnumTorState
 import com.samourai.sentinel.tor.SentinelTorManager
 import com.samourai.sentinel.ui.utils.AndroidUtil
@@ -735,11 +737,12 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
             client.newCall(request).enqueue(object : Callback {
 
                 override fun onResponse(call: Call, response: Response) {
-                    // #293: this callback does not use Call.await. string()
-                    // closes on the success path; the finally covers a
+                    // #293: this callback does not use Call.await. The capped
+                    // read closes on the success path; the finally covers a
                     // throw before that, and a null body (close is a no-op).
+                    // #567: the cap is applied while the socket is read.
                     try {
-                        val body = response.body?.string() ?: "{}"
+                        val body = response.body?.readUtf8Capped() ?: "{}"
                         if (response.code == 401 || (response.isSuccessful && !body.contains("authorizations"))) {
                             Timber.d("Unauthorized: wrong API key")
                             // #261: newly reachable AFTER consent - the
@@ -755,7 +758,7 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
                             // body ride the mainHandler closure into
                             // commitPairing(), the exact commit body #234
                             // gated and #256 receipted.
-                            mainHandler.post { commitPairing(pairing, JSONObject(body)) }
+                            mainHandler.post { commitPairing(pairing, SafeJson.parseObject(body)) }
                         }  else {
                             dismissAllOrToast(false)
                         }

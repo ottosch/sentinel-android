@@ -13,7 +13,7 @@ import com.samourai.sentinel.R
 import com.samourai.sentinel.api.ApiService
 import com.samourai.sentinel.util.LogRedaction
 import kotlinx.coroutines.*
-import org.json.JSONObject
+import com.samourai.sentinel.helpers.SafeJson
 import org.koin.java.KoinJavaComponent
 import timber.log.Timber
 
@@ -87,7 +87,7 @@ class ImportSegWitService : Service() {
                     if (response.isSuccessful) {
                         val json = withContext(Dispatchers.Default) {
 
-                            JSONObject(response.body?.string())
+                            SafeJson.parseObject(response.body?.string()!!)
 
                         }
                         if (json.getString("status") == "ok") {

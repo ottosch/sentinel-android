@@ -16,6 +16,7 @@ import com.samourai.sentinel.core.SentinelState
 import com.samourai.sentinel.data.Tx
 import com.samourai.sentinel.data.repository.CollectionRepository
 import com.samourai.sentinel.data.repository.TransactionsRepository
+import com.samourai.sentinel.helpers.SafeJson
 import com.samourai.sentinel.helpers.fromJSON
 import com.samourai.sentinel.tor.EnumTorState
 import com.samourai.sentinel.tor.SentinelTorManager
@@ -352,7 +353,7 @@ class WebSocketHandler : WebSocketListener() {
     }
 
     override fun onMessage(webSocket: WebSocket, text: String) {
-        val payload = runCatching { JSONObject(text) }.getOrElse {
+        val payload = runCatching { SafeJson.parseObject(text) }.getOrElse {
             Timber.e(it, "Non-JSON websocket message, dropping")
             return
         }

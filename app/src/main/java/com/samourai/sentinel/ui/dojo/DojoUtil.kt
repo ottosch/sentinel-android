@@ -6,6 +6,7 @@ import com.samourai.sentinel.core.DojoReachability
 import com.samourai.sentinel.data.db.SentinelCollectionStore
 import com.samourai.sentinel.data.repository.PubSyncHealth
 import com.samourai.sentinel.data.db.PayloadRecord
+import com.samourai.sentinel.helpers.SafeJson
 import com.samourai.sentinel.helpers.fromJSON
 import com.samourai.sentinel.helpers.toJSON
 import com.samourai.sentinel.ui.utils.PrefsUtil
@@ -120,7 +121,7 @@ class DojoUtility {
      * The existing refresh token is preserved when the response omits it.
      */
     fun setAuthToken(body: String) {
-        val payload = JSONObject(body).getJSONObject("authorizations")
+        val payload = SafeJson.parseObject(body).getJSONObject("authorizations")
         prefsUtil.authorization = payload.getString("access_token")
         val refreshToken = payload.optString("refresh_token", "")
         if (refreshToken.isNotEmpty()) {
