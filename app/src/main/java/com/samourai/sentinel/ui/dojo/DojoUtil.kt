@@ -110,6 +110,8 @@ class DojoUtility {
         // #250: the directory network label dies with the pairing,
         // with its snapshot siblings.
         prefsUtil.dojoDisplayNetwork = null
+        // The paired Dojo's trusted signer dies with the pairing too.
+        DojoBaySignerPin.clear(prefsUtil)
         prefsUtil.dojoExplorerUrl = null
         prefsUtil.dojoExplorerType = null
     }

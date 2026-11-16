@@ -31,6 +31,9 @@ const val PIN_HASH = "pinHash"
  * The one-shot notification-ask flag is device-local too: the OS
  * permission grant is per-device, so a restored install gets its
  * own single ask, never the donor device's answer.
+ * The custom Dojo Bay address and its operator code decide which directory
+ * the app trusts, so a restored backup (possibly someone else's) must not
+ * change them silently; they stay on the device.
  */
 val PREFS_OMITTED_FROM_BACKUP = setOf(
     "pinHash",
@@ -40,6 +43,8 @@ val PREFS_OMITTED_FROM_BACKUP = setOf(
     "refreshToken",
     "autoOriginHandEditsMigrated",
     "notificationPromptDone",
+    "dojoBayUrl",
+    "dojoBayPinnedCode",
 )
 const val XPUB = "xpub"
 const val SCRAMBLE_PIN = "scramblePin"
@@ -122,6 +127,29 @@ class PrefsUtil(context: Context) : Preferences(context, "${context.packageName}
     // disclosure class is host-derived, never type-derived.
     var dojoExplorerUrl by stringPref(defaultValue = null)
     var dojoExplorerType by stringPref(defaultValue = null)
+    // The trusted signer of the paired Dojo (DojoBaySignerPin): the full
+    // BIP47 payment code that signed the Dojo Bay listing the user paired
+    // with, and the pairing URL it was saved for. Written only when a
+    // directory pairing commits, cleared by a scan/paste pairing and with
+    // the pairing (DojoUtility.clearDojo). Null for manual pairings and for
+    // pairings made before it existed. Rides export()/import() like the
+    // dojoDisplay* snapshot; it applies only while its URL is the paired one.
+    var dojoTrustedSignerCode by stringPref(defaultValue = null)
+    var dojoTrustedSignerUrl by stringPref(defaultValue = null)
+    // Custom Dojo Bay directory base address for the Community Dojos list.
+    // Null means the built-in default (DojoBayConstants.BASE_URL), so a
+    // change of default reaches everyone who never customized it. Stored
+    // only after DojoBaySource.validate(); read through
+    // DojoBaySource.effectiveBaseUrl(), which falls back to the default if
+    // a stored value no longer validates. Not in backups (see
+    // PREFS_OMITTED_FROM_BACKUP); reset by clearAll() on Erase wallet.
+    var dojoBayUrl by stringPref(defaultValue = null)
+    // The operator payment code the user entered together with the custom
+    // Dojo Bay address above (DojoBayAddressDialog); the instance's signed
+    // operator.json must verify against it (DojoBayTrust). Saved and reset
+    // together with the address. The default address has a built-in pin.
+    // Not in backups (see PREFS_OMITTED_FROM_BACKUP).
+    var dojoBayPinnedCode by stringPref(defaultValue = null)
     var testnet by booleanPref(defaultValue = false)
     var ricochetStaggeredDelivery by booleanPref(defaultValue = false)
     var useRicochet by booleanPref(defaultValue = false)

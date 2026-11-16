@@ -5,7 +5,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:background="?attr/selectableItemBackground"
-    android:gravity="center_vertical"
+    android:gravity="top"
     android:orientation="horizontal"
     android:paddingHorizontal="16dp"
     android:paddingVertical="12dp"
@@ -15,6 +15,7 @@
         android:id="@+id/communityDojoStatusDot"
         android:layout_width="10dp"
         android:layout_height="10dp"
+        android:layout_marginTop="5dp"
         android:layout_marginEnd="12dp"
         android:contentDescription="@string/community_dojo_status_dot_description" />
 
@@ -49,6 +50,24 @@
                 tools:text="🇸🇬"
                 tools:visibility="visible" />
 
+            <!-- Signed rows: the name and flag still come from the directory, unsigned. -->
+            <TextView
+                android:id="@+id/communityDojoUnverifiedChip"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/signer_unverified_chip_small"
+                android:fontFamily="sans-serif-medium"
+                android:letterSpacing="0.04"
+                android:paddingHorizontal="5dp"
+                android:paddingVertical="1dp"
+                android:text="@string/signer_unverified_chip"
+                android:textAllCaps="true"
+                android:textColor="#9A9A9A"
+                android:textSize="9sp"
+                android:visibility="gone"
+                tools:visibility="visible" />
+
         </LinearLayout>
 
         <TextView
@@ -59,6 +78,52 @@
             android:textColor="#9A9A9A"
             android:textSize="12sp"
             tools:text="v1.29.2 • Singapore • online" />
+
+        <!-- Who signed it: collapsed (first 8 … last 8) until tapped. -->
+        <TextView
+            android:id="@+id/communityDojoSigner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#9A9A9A"
+            android:textSize="12sp"
+            android:visibility="gone"
+            tools:text="Signed by PM8TJUJH…eNoCEoum"
+            tools:visibility="visible" />
+
+        <TextView
+            android:id="@+id/communityDojoSignerCode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:breakStrategy="simple"
+            android:fontFamily="@font/roboto_mono"
+            android:lineSpacingExtra="2dp"
+            android:textColor="#CFCFCF"
+            android:textIsSelectable="false"
+            android:textSize="11sp"
+            android:visibility="gone"
+            tools:text="PM8T JUJH kfdj kb5g 5XaJ uvnC 63rU z7LX" />
+
+        <TextView
+            android:id="@+id/communityDojoSignerLink"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:fontFamily="sans-serif-medium"
+            android:text="@string/paynym_view_link"
+            android:textColor="@color/green_ui_2"
+            android:textSize="12sp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/communityDojoSignerWarning"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:textColor="@color/warning_yellow"
+            android:textSize="11sp"
+            android:visibility="gone"
+            tools:text="Another listing uses this name with a different signer" />
 
     </LinearLayout>
 

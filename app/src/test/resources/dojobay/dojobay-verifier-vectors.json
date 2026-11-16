@@ -1,0 +1,427 @@
+{
+ "listings": [
+  {
+   "name": "valid-with-bip47-line",
+   "node": {
+    "id": "valid-with-bip47-line",
+    "network": "testnet",
+    "paymentCode": "PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE",
+    "payload": {
+     "pairing": {
+      "type": "dojo.api",
+      "version": "1.27.0",
+      "apikey": "testkey123",
+      "url": "http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2"
+     },
+     "explorer": {
+      "type": "explorer.btc_rpc_explorer",
+      "url": "http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion"
+     }
+    },
+    "signed": "-----BEGIN BITCOIN SIGNED MESSAGE-----\n{\"pairing\":{\"type\":\"dojo.api\",\"version\":\"1.27.0\",\"apikey\":\"testkey123\",\"url\":\"http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2\"},\"explorer\":{\"type\":\"explorer.btc_rpc_explorer\",\"url\":\"http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion\"}}\n\nBIP47: PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE\n-----BEGIN BITCOIN SIGNATURE-----\nVersion: Bitcoin-qt (1.0)\nAddress: 1PCkVf5HFH6hF2UCvrYJMgt5FtS9XvK12n\n\nIFbHks50JiB6YTLut85V+E5CwBEziQYRZ3Cz+zllHNxREmacwsFdAm1nLCAwwqyfvHvQSr7AJptuwPhMFLPGKsM=\n-----END BITCOIN SIGNATURE-----"
+   },
+   "server": true
+  },
+  {
+   "name": "valid-without-bip47-line",
+   "node": {
+    "id": "valid-without-bip47-line",
+    "network": "testnet",
+    "paymentCode": "PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE",
+    "payload": {
+     "pairing": {
+      "type": "dojo.api",
+      "version": "1.27.0",
+      "apikey": "testkey123",
+      "url": "http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2"
+     },
+     "explorer": {
+      "type": "explorer.btc_rpc_explorer",
+      "url": "http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion"
+     }
+    },
+    "signed": "-----BEGIN BITCOIN SIGNED MESSAGE-----\n{\"pairing\":{\"type\":\"dojo.api\",\"version\":\"1.27.0\",\"apikey\":\"testkey123\",\"url\":\"http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2\"},\"explorer\":{\"type\":\"explorer.btc_rpc_explorer\",\"url\":\"http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion\"}}\n-----BEGIN BITCOIN SIGNATURE-----\nVersion: Bitcoin-qt (1.0)\nAddress: 1PCkVf5HFH6hF2UCvrYJMgt5FtS9XvK12n\n\nH6I9lM9dSeAdpCqePeCjB+yz16J05bEKX/RpDmkJ6W4iGQurJ5hi9tCUqqLu1XgAitiyZCshAByHnNxXFNKKYWs=\n-----END BITCOIN SIGNATURE-----"
+   },
+   "server": true
+  },
+  {
+   "name": "sig-66-bytes-trailing-zero",
+   "node": {
+    "id": "sig-66-bytes-trailing-zero",
+    "network": "testnet",
+    "paymentCode": "PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE",
+    "payload": {
+     "pairing": {
+      "type": "dojo.api",
+      "version": "1.27.0",
+      "apikey": "testkey123",
+      "url": "http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2"
+     },
+     "explorer": {
+      "type": "explorer.btc_rpc_explorer",
+      "url": "http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion"
+     }
+    },
+    "signed": "-----BEGIN BITCOIN SIGNED MESSAGE-----\n{\"pairing\":{\"type\":\"dojo.api\",\"version\":\"1.27.0\",\"apikey\":\"testkey123\",\"url\":\"http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2\"},\"explorer\":{\"type\":\"explorer.btc_rpc_explorer\",\"url\":\"http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion\"}}\n\nBIP47: PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE\n-----BEGIN BITCOIN SIGNATURE-----\nVersion: Bitcoin-qt (1.0)\nAddress: 1PCkVf5HFH6hF2UCvrYJMgt5FtS9XvK12n\n\nIFbHks50JiB6YTLut85V+E5CwBEziQYRZ3Cz+zllHNxREmacwsFdAm1nLCAwwqyfvHvQSr7AJptuwPhMFLPGKsMA\n-----END BITCOIN SIGNATURE-----"
+   },
+   "server": false
+  },
+  {
+   "name": "header-uncompressed",
+   "node": {
+    "id": "header-uncompressed",
+    "network": "testnet",
+    "paymentCode": "PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE",
+    "payload": {
+     "pairing": {
+      "type": "dojo.api",
+      "version": "1.27.0",
+      "apikey": "testkey123",
+      "url": "http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2"
+     },
+     "explorer": {
+      "type": "explorer.btc_rpc_explorer",
+      "url": "http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion"
+     }
+    },
+    "signed": "-----BEGIN BITCOIN SIGNED MESSAGE-----\n{\"pairing\":{\"type\":\"dojo.api\",\"version\":\"1.27.0\",\"apikey\":\"testkey123\",\"url\":\"http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2\"},\"explorer\":{\"type\":\"explorer.btc_rpc_explorer\",\"url\":\"http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion\"}}\n\nBIP47: PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE\n-----BEGIN BITCOIN SIGNATURE-----\nVersion: Bitcoin-qt (1.0)\nAddress: 1PCkVf5HFH6hF2UCvrYJMgt5FtS9XvK12n\n\nHFbHks50JiB6YTLut85V+E5CwBEziQYRZ3Cz+zllHNxREmacwsFdAm1nLCAwwqyfvHvQSr7AJptuwPhMFLPGKsM=\n-----END BITCOIN SIGNATURE-----"
+   },
+   "server": false
+  },
+  {
+   "name": "header-p2sh-segwit-flag",
+   "node": {
+    "id": "header-p2sh-segwit-flag",
+    "network": "testnet",
+    "paymentCode": "PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE",
+    "payload": {
+     "pairing": {
+      "type": "dojo.api",
+      "version": "1.27.0",
+      "apikey": "testkey123",
+      "url": "http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2"
+     },
+     "explorer": {
+      "type": "explorer.btc_rpc_explorer",
+      "url": "http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion"
+     }
+    },
+    "signed": "-----BEGIN BITCOIN SIGNED MESSAGE-----\n{\"pairing\":{\"type\":\"dojo.api\",\"version\":\"1.27.0\",\"apikey\":\"testkey123\",\"url\":\"http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2\"},\"explorer\":{\"type\":\"explorer.btc_rpc_explorer\",\"url\":\"http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion\"}}\n\nBIP47: PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE\n-----BEGIN BITCOIN SIGNATURE-----\nVersion: Bitcoin-qt (1.0)\nAddress: 1PCkVf5HFH6hF2UCvrYJMgt5FtS9XvK12n\n\nJFbHks50JiB6YTLut85V+E5CwBEziQYRZ3Cz+zllHNxREmacwsFdAm1nLCAwwqyfvHvQSr7AJptuwPhMFLPGKsM=\n-----END BITCOIN SIGNATURE-----"
+   },
+   "server": false
+  },
+  {
+   "name": "header-p2wpkh-flag",
+   "node": {
+    "id": "header-p2wpkh-flag",
+    "network": "testnet",
+    "paymentCode": "PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE",
+    "payload": {
+     "pairing": {
+      "type": "dojo.api",
+      "version": "1.27.0",
+      "apikey": "testkey123",
+      "url": "http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2"
+     },
+     "explorer": {
+      "type": "explorer.btc_rpc_explorer",
+      "url": "http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion"
+     }
+    },
+    "signed": "-----BEGIN BITCOIN SIGNED MESSAGE-----\n{\"pairing\":{\"type\":\"dojo.api\",\"version\":\"1.27.0\",\"apikey\":\"testkey123\",\"url\":\"http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2\"},\"explorer\":{\"type\":\"explorer.btc_rpc_explorer\",\"url\":\"http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion\"}}\n\nBIP47: PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE\n-----BEGIN BITCOIN SIGNATURE-----\nVersion: Bitcoin-qt (1.0)\nAddress: 1PCkVf5HFH6hF2UCvrYJMgt5FtS9XvK12n\n\nKFbHks50JiB6YTLut85V+E5CwBEziQYRZ3Cz+zllHNxREmacwsFdAm1nLCAwwqyfvHvQSr7AJptuwPhMFLPGKsM=\n-----END BITCOIN SIGNATURE-----"
+   },
+   "server": false
+  },
+  {
+   "name": "duplicate-key-last-wins-matches-listing",
+   "node": {
+    "id": "duplicate-key-last-wins-matches-listing",
+    "network": "testnet",
+    "paymentCode": "PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE",
+    "payload": {
+     "pairing": {
+      "type": "dojo.api",
+      "version": "1.27.0",
+      "apikey": "testkey123",
+      "url": "http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2"
+     },
+     "explorer": {
+      "type": "explorer.btc_rpc_explorer",
+      "url": "http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion"
+     }
+    },
+    "signed": "-----BEGIN BITCOIN SIGNED MESSAGE-----\n{\"pairing\":{\"type\":\"dojo.api\",\"version\":\"1.27.0\",\"apikey\":\"evilkey\",\"apikey\":\"testkey123\",\"url\":\"http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2\"},\"explorer\":{\"type\":\"explorer.btc_rpc_explorer\",\"url\":\"http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion\"}}\n\nBIP47: PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE\n-----BEGIN BITCOIN SIGNATURE-----\nVersion: Bitcoin-qt (1.0)\nAddress: 1PCkVf5HFH6hF2UCvrYJMgt5FtS9XvK12n\n\nHwPz4ubNPnIWNTyDvWgPEthzXBjaAhllp0TENXG9xZVfQ40XHhEIDWx5B+jyrOGdhE+ej2MQEUV2B1QHwrnenV4=\n-----END BITCOIN SIGNATURE-----"
+   },
+   "server": true
+  },
+  {
+   "name": "duplicate-key-first-matches-listing",
+   "node": {
+    "id": "duplicate-key-first-matches-listing",
+    "network": "testnet",
+    "paymentCode": "PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE",
+    "payload": {
+     "pairing": {
+      "type": "dojo.api",
+      "version": "1.27.0",
+      "apikey": "testkey123",
+      "url": "http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2"
+     },
+     "explorer": {
+      "type": "explorer.btc_rpc_explorer",
+      "url": "http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion"
+     }
+    },
+    "signed": "-----BEGIN BITCOIN SIGNED MESSAGE-----\n{\"pairing\":{\"type\":\"dojo.api\",\"version\":\"1.27.0\",\"apikey\":\"testkey123\",\"apikey\":\"evilkey\",\"url\":\"http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2\"},\"explorer\":{\"type\":\"explorer.btc_rpc_explorer\",\"url\":\"http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion\"}}\n\nBIP47: PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE\n-----BEGIN BITCOIN SIGNATURE-----\nVersion: Bitcoin-qt (1.0)\nAddress: 1PCkVf5HFH6hF2UCvrYJMgt5FtS9XvK12n\n\nH8GhZ1adyMk00oDhTKUO9N6qwwmvLcHB4UjcteZzRl95WpEbMkPlwVhapX1qTOVL+7ZVl41lFPGI7rcTRhNH/ZY=\n-----END BITCOIN SIGNATURE-----"
+   },
+   "server": false
+  },
+  {
+   "name": "extra-unknown-field-signed",
+   "node": {
+    "id": "extra-unknown-field-signed",
+    "network": "testnet",
+    "paymentCode": "PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE",
+    "payload": {
+     "pairing": {
+      "type": "dojo.api",
+      "version": "1.27.0",
+      "apikey": "testkey123",
+      "url": "http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2"
+     },
+     "explorer": {
+      "type": "explorer.btc_rpc_explorer",
+      "url": "http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion"
+     }
+    },
+    "signed": "-----BEGIN BITCOIN SIGNED MESSAGE-----\n{\"pairing\":{\"type\":\"dojo.api\",\"extra\":\"x\",\"version\":\"1.27.0\",\"apikey\":\"testkey123\",\"url\":\"http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2\"},\"explorer\":{\"type\":\"explorer.btc_rpc_explorer\",\"url\":\"http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion\"}}\n\nBIP47: PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE\n-----BEGIN BITCOIN SIGNATURE-----\nVersion: Bitcoin-qt (1.0)\nAddress: 1PCkVf5HFH6hF2UCvrYJMgt5FtS9XvK12n\n\nIOhj8tZHVmKn2OPConXIM8wIj4maitDMGyMPs9vsN2dMFCO9lbE4OLC+jIvIoJ1Bqo2VjAXM6xk+1yHp2I/pOdU=\n-----END BITCOIN SIGNATURE-----"
+   },
+   "server": false
+  },
+  {
+   "name": "number-vs-string-version",
+   "node": {
+    "id": "number-vs-string-version",
+    "network": "testnet",
+    "paymentCode": "PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE",
+    "payload": {
+     "pairing": {
+      "type": "dojo.api",
+      "version": "1.27",
+      "apikey": "testkey123",
+      "url": "http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2"
+     },
+     "explorer": {
+      "type": "explorer.btc_rpc_explorer",
+      "url": "http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion"
+     }
+    },
+    "signed": "-----BEGIN BITCOIN SIGNED MESSAGE-----\n{\"pairing\":{\"type\":\"dojo.api\",\"version\":1.27,\"apikey\":\"testkey123\",\"url\":\"http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2\"},\"explorer\":{\"type\":\"explorer.btc_rpc_explorer\",\"url\":\"http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion\"}}\n\nBIP47: PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE\n-----BEGIN BITCOIN SIGNATURE-----\nVersion: Bitcoin-qt (1.0)\nAddress: 1PCkVf5HFH6hF2UCvrYJMgt5FtS9XvK12n\n\nH9dqtxCZ8gm0RIW5cIh0oEcAwrLzGFmQJrVIWL3+BBvlT4s9gB27R1H7m9lrUzAfkejMv4JQi1I5l4i+Z+ImmIk=\n-----END BITCOIN SIGNATURE-----"
+   },
+   "server": false
+  },
+  {
+   "name": "lenient-json-single-quotes",
+   "node": {
+    "id": "lenient-json-single-quotes",
+    "network": "testnet",
+    "paymentCode": "PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE",
+    "payload": {
+     "pairing": {
+      "type": "dojo.api",
+      "version": "1.27.0",
+      "apikey": "testkey123",
+      "url": "http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2"
+     },
+     "explorer": {
+      "type": "explorer.btc_rpc_explorer",
+      "url": "http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion"
+     }
+    },
+    "signed": "-----BEGIN BITCOIN SIGNED MESSAGE-----\n{'pairing':{'type':'dojo.api','version':'1.27.0','apikey':'testkey123','url':'http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2'},'explorer':{'type':'explorer.btc_rpc_explorer','url':'http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion'}}\n\nBIP47: PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE\n-----BEGIN BITCOIN SIGNATURE-----\nVersion: Bitcoin-qt (1.0)\nAddress: 1PCkVf5HFH6hF2UCvrYJMgt5FtS9XvK12n\n\nIJhdhDIEt8padVqpekwaaeILqQQSdHysedzC+0ehxY08XJf5UocxIi1Hc5NdgbdRsC5RkGE6GT825/Ox4enIFUE=\n-----END BITCOIN SIGNATURE-----"
+   },
+   "server": false
+  },
+  {
+   "name": "lenient-json-trailing-garbage",
+   "node": {
+    "id": "lenient-json-trailing-garbage",
+    "network": "testnet",
+    "paymentCode": "PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE",
+    "payload": {
+     "pairing": {
+      "type": "dojo.api",
+      "version": "1.27.0",
+      "apikey": "testkey123",
+      "url": "http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2"
+     },
+     "explorer": {
+      "type": "explorer.btc_rpc_explorer",
+      "url": "http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion"
+     }
+    },
+    "signed": "-----BEGIN BITCOIN SIGNED MESSAGE-----\n{\"pairing\":{\"type\":\"dojo.api\",\"version\":\"1.27.0\",\"apikey\":\"testkey123\",\"url\":\"http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2\"},\"explorer\":{\"type\":\"explorer.btc_rpc_explorer\",\"url\":\"http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion\"}} garbage\n\nBIP47: PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE\n-----BEGIN BITCOIN SIGNATURE-----\nVersion: Bitcoin-qt (1.0)\nAddress: 1PCkVf5HFH6hF2UCvrYJMgt5FtS9XvK12n\n\nH+OQ8ZXEzcGVVPvT7KQSRL865SWbjd2DsGaMhGrmaYonClWBPhzGgdeq6Q9onQqqjZX9HDMKk3jzrPnWViw2y1M=\n-----END BITCOIN SIGNATURE-----"
+   },
+   "server": false
+  },
+  {
+   "name": "listed-has-unsigned-extra-field",
+   "node": {
+    "id": "listed-has-unsigned-extra-field",
+    "network": "testnet",
+    "paymentCode": "PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE",
+    "payload": {
+     "pairing": {
+      "type": "dojo.api",
+      "version": "1.27.0",
+      "apikey": "testkey123",
+      "url": "http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2",
+      "extraUnsigned": "x"
+     },
+     "explorer": {
+      "type": "explorer.btc_rpc_explorer",
+      "url": "http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion"
+     }
+    },
+    "signed": "-----BEGIN BITCOIN SIGNED MESSAGE-----\n{\"pairing\":{\"type\":\"dojo.api\",\"version\":\"1.27.0\",\"apikey\":\"testkey123\",\"url\":\"http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2\"},\"explorer\":{\"type\":\"explorer.btc_rpc_explorer\",\"url\":\"http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion\"}}\n\nBIP47: PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE\n-----BEGIN BITCOIN SIGNATURE-----\nVersion: Bitcoin-qt (1.0)\nAddress: 1PCkVf5HFH6hF2UCvrYJMgt5FtS9XvK12n\n\nIFbHks50JiB6YTLut85V+E5CwBEziQYRZ3Cz+zllHNxREmacwsFdAm1nLCAwwqyfvHvQSr7AJptuwPhMFLPGKsM=\n-----END BITCOIN SIGNATURE-----"
+   },
+   "server": false
+  },
+  {
+   "name": "explorer-null-vs-absent",
+   "node": {
+    "id": "explorer-null-vs-absent",
+    "network": "testnet",
+    "paymentCode": "PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE",
+    "payload": {
+     "pairing": {
+      "type": "dojo.api",
+      "version": "1.27.0",
+      "apikey": "testkey123",
+      "url": "http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2"
+     }
+    },
+    "signed": "-----BEGIN BITCOIN SIGNED MESSAGE-----\n{\"pairing\":{\"type\":\"dojo.api\",\"version\":\"1.27.0\",\"apikey\":\"testkey123\",\"url\":\"http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2\"},\"explorer\":null}\n\nBIP47: PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE\n-----BEGIN BITCOIN SIGNATURE-----\nVersion: Bitcoin-qt (1.0)\nAddress: 1PCkVf5HFH6hF2UCvrYJMgt5FtS9XvK12n\n\nILfm390X/l9ZOV7tFUYiQ6VKPaeUV/pseAWhaZTWuJNPQSzpE6vLamxR7IyG8WVepwBhAVsERAJVjSbu31Yo7ho=\n-----END BITCOIN SIGNATURE-----"
+   },
+   "server": false
+  },
+  {
+   "name": "bip47-line-other-code",
+   "node": {
+    "id": "bip47-line-other-code",
+    "network": "testnet",
+    "paymentCode": "PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE",
+    "payload": {
+     "pairing": {
+      "type": "dojo.api",
+      "version": "1.27.0",
+      "apikey": "testkey123",
+      "url": "http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2"
+     },
+     "explorer": {
+      "type": "explorer.btc_rpc_explorer",
+      "url": "http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion"
+     }
+    },
+    "signed": "-----BEGIN BITCOIN SIGNED MESSAGE-----\n{\"pairing\":{\"type\":\"dojo.api\",\"version\":\"1.27.0\",\"apikey\":\"testkey123\",\"url\":\"http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2\"},\"explorer\":{\"type\":\"explorer.btc_rpc_explorer\",\"url\":\"http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion\"}}\n\nBIP47: PM8TJdDvSv3KnBPDvQZXCmHsGz4jYaQygzkGx1X3jzZXNrcvddgkHHURhU5NksCgqgAWY163A9eq67HYuWmiqKCHs1h511CQDjWkd5WqSU16mxkUsmmE\n-----BEGIN BITCOIN SIGNATURE-----\nVersion: Bitcoin-qt (1.0)\nAddress: 1PCkVf5HFH6hF2UCvrYJMgt5FtS9XvK12n\n\nH7SmYgsGlDSSr4EmM8Z6VOeUqT5RifrwgPMlxrgOMh/daMu/aVEB6/IkF/00ivecjoxUIW+e1/K6dxAWBGMOYVI=\n-----END BITCOIN SIGNATURE-----"
+   },
+   "server": false
+  },
+  {
+   "name": "no-tail-listed-code-other",
+   "node": {
+    "id": "no-tail-listed-code-other",
+    "network": "testnet",
+    "paymentCode": "PM8TJdDvSv3KnBPDvQZXCmHsGz4jYaQygzkGx1X3jzZXNrcvddgkHHURhU5NksCgqgAWY163A9eq67HYuWmiqKCHs1h511CQDjWkd5WqSU16mxkUsmmE",
+    "payload": {
+     "pairing": {
+      "type": "dojo.api",
+      "version": "1.27.0",
+      "apikey": "testkey123",
+      "url": "http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2"
+     },
+     "explorer": {
+      "type": "explorer.btc_rpc_explorer",
+      "url": "http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion"
+     }
+    },
+    "signed": "-----BEGIN BITCOIN SIGNED MESSAGE-----\n{\"pairing\":{\"type\":\"dojo.api\",\"version\":\"1.27.0\",\"apikey\":\"testkey123\",\"url\":\"http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2\"},\"explorer\":{\"type\":\"explorer.btc_rpc_explorer\",\"url\":\"http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion\"}}\n-----BEGIN BITCOIN SIGNATURE-----\nVersion: Bitcoin-qt (1.0)\nAddress: 1PCkVf5HFH6hF2UCvrYJMgt5FtS9XvK12n\n\nH6I9lM9dSeAdpCqePeCjB+yz16J05bEKX/RpDmkJ6W4iGQurJ5hi9tCUqqLu1XgAitiyZCshAByHnNxXFNKKYWs=\n-----END BITCOIN SIGNATURE-----"
+   },
+   "server": false
+  },
+  {
+   "name": "signed-by-B-claims-A-addr",
+   "node": {
+    "id": "signed-by-B-claims-A-addr",
+    "network": "testnet",
+    "paymentCode": "PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE",
+    "payload": {
+     "pairing": {
+      "type": "dojo.api",
+      "version": "1.27.0",
+      "apikey": "testkey123",
+      "url": "http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2"
+     },
+     "explorer": {
+      "type": "explorer.btc_rpc_explorer",
+      "url": "http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion"
+     }
+    },
+    "signed": "-----BEGIN BITCOIN SIGNED MESSAGE-----\n{\"pairing\":{\"type\":\"dojo.api\",\"version\":\"1.27.0\",\"apikey\":\"testkey123\",\"url\":\"http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion/test/v2\"},\"explorer\":{\"type\":\"explorer.btc_rpc_explorer\",\"url\":\"http://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.onion\"}}\n\nBIP47: PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE\n-----BEGIN BITCOIN SIGNATURE-----\nVersion: Bitcoin-qt (1.0)\nAddress: 1PCkVf5HFH6hF2UCvrYJMgt5FtS9XvK12n\n\nIEABFgbjKmxiwXxACsb6abjznHVyQB8XNaS9dCIreplgQCtzRRfHE+fEhynfSy8YHuQFsswJ7aB22BTXZvo15aI=\n-----END BITCOIN SIGNATURE-----"
+   },
+   "server": false
+  }
+ ],
+ "operators": [
+  {
+   "name": "valid",
+   "doc": {
+    "onion": "http://cccccccccccccccccccccccccccccccccccccccccccccccccccccccc.onion/",
+    "paymentCode": "PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE",
+    "verifySigned": "-----BEGIN BITCOIN SIGNED MESSAGE-----\nhttp://cccccccccccccccccccccccccccccccccccccccccccccccccccccccc.onion/\n\nBIP47: PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE\n-----BEGIN BITCOIN SIGNATURE-----\nVersion: Bitcoin-qt (1.0)\nAddress: 1PCkVf5HFH6hF2UCvrYJMgt5FtS9XvK12n\n\nIHCtvC7P9dNR4mUYP/13yk+qxvdUIn0ABFu5PhkMdiRmKFLdraMCVtiqZsIzGHleYCZFvl29UAzNCcEqFNjXR60=\n-----END BITCOIN SIGNATURE-----"
+   },
+   "fetched": "http://cccccccccccccccccccccccccccccccccccccccccccccccccccccccc.onion/",
+   "server": true
+  },
+  {
+   "name": "upper-case-host-signed",
+   "doc": {
+    "onion": "http://CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC.ONION/",
+    "paymentCode": "PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE",
+    "verifySigned": "-----BEGIN BITCOIN SIGNED MESSAGE-----\nhttp://CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC.ONION/\n\nBIP47: PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE\n-----BEGIN BITCOIN SIGNATURE-----\nVersion: Bitcoin-qt (1.0)\nAddress: 1PCkVf5HFH6hF2UCvrYJMgt5FtS9XvK12n\n\nIIMtnXwsXNg2Apq7aV02UVp5hSCH2ESi1M3cT/235q0rW7B71FvIrZEUNLTnx9eV//n9uvhecq65KGZ4oIMnmTY=\n-----END BITCOIN SIGNATURE-----"
+   },
+   "fetched": "http://cccccccccccccccccccccccccccccccccccccccccccccccccccccccc.onion/",
+   "server": false
+  },
+  {
+   "name": "path-case-differs",
+   "doc": {
+    "onion": "http://cccccccccccccccccccccccccccccccccccccccccccccccccccccccc.onion/Bay/",
+    "paymentCode": "PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE",
+    "verifySigned": "-----BEGIN BITCOIN SIGNED MESSAGE-----\nhttp://cccccccccccccccccccccccccccccccccccccccccccccccccccccccc.onion/Bay/\n\nBIP47: PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE\n-----BEGIN BITCOIN SIGNATURE-----\nVersion: Bitcoin-qt (1.0)\nAddress: 1PCkVf5HFH6hF2UCvrYJMgt5FtS9XvK12n\n\nHz6Vb5HKQo2vzZ62ibl1SrfASKK96/ONdYvjteAJvDtDW5037cxJTBBsp1Ogcavuz+s/6ecrLY0YcrMxFbK+0AE=\n-----END BITCOIN SIGNATURE-----"
+   },
+   "fetched": "http://cccccccccccccccccccccccccccccccccccccccccccccccccccccccc.onion/bay/",
+   "server": false
+  },
+  {
+   "name": "sig-66-bytes",
+   "doc": {
+    "onion": "http://cccccccccccccccccccccccccccccccccccccccccccccccccccccccc.onion/",
+    "paymentCode": "PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE",
+    "verifySigned": "-----BEGIN BITCOIN SIGNED MESSAGE-----\nhttp://cccccccccccccccccccccccccccccccccccccccccccccccccccccccc.onion/\n\nBIP47: PM8TJdJWQ5c9XJUMuNBBaJ7Zq9GnjfYtQk7PJn9n4jt8qdgRFBB9TUkAGGd4mK1VRLekUt3ifC9aGVRLYYmLb9WhsvsUrFin1FUBzEoyPxBnmVExHAjE\n-----BEGIN BITCOIN SIGNATURE-----\nVersion: Bitcoin-qt (1.0)\nAddress: 1PCkVf5HFH6hF2UCvrYJMgt5FtS9XvK12n\n\nIHCtvC7P9dNR4mUYP/13yk+qxvdUIn0ABFu5PhkMdiRmKFLdraMCVtiqZsIzGHleYCZFvl29UAzNCcEqFNjXR60A\n-----END BITCOIN SIGNATURE-----"
+   },
+   "fetched": "http://cccccccccccccccccccccccccccccccccccccccccccccccccccccccc.onion/",
+   "server": false
+  },
+  {
+   "name": "doc-names-B-signed-by-A",
+   "doc": {
+    "onion": "http://cccccccccccccccccccccccccccccccccccccccccccccccccccccccc.onion/",
+    "paymentCode": "PM8TJdDvSv3KnBPDvQZXCmHsGz4jYaQygzkGx1X3jzZXNrcvddgkHHURhU5NksCgqgAWY163A9eq67HYuWmiqKCHs1h511CQDjWkd5WqSU16mxkUsmmE",
+    "verifySigned": "-----BEGIN BITCOIN SIGNED MESSAGE-----\nhttp://cccccccccccccccccccccccccccccccccccccccccccccccccccccccc.onion/\n\nBIP47: PM8TJdDvSv3KnBPDvQZXCmHsGz4jYaQygzkGx1X3jzZXNrcvddgkHHURhU5NksCgqgAWY163A9eq67HYuWmiqKCHs1h511CQDjWkd5WqSU16mxkUsmmE\n-----BEGIN BITCOIN SIGNATURE-----\nVersion: Bitcoin-qt (1.0)\nAddress: 1PCkVf5HFH6hF2UCvrYJMgt5FtS9XvK12n\n\nIAwnrq2mGkdcDtlEoRucNM//dGIkIklcKgkP6tqpiprRRsw660+yyUiK1y0USBipw0Fm/IUZNYQF1NStK40UPcA=\n-----END BITCOIN SIGNATURE-----"
+   },
+   "fetched": "http://cccccccccccccccccccccccccccccccccccccccccccccccccccccccc.onion/",
+   "server": false
+  }
+ ]
+}

@@ -6,17 +6,21 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.webkit.ConsoleMessage
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.annotation.VisibleForTesting
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.webkit.*
@@ -27,6 +31,7 @@ import com.samourai.sentinel.data.Tx
 import com.samourai.sentinel.databinding.ActivityExplorerWebViewBinding
 import com.samourai.sentinel.tor.EnumTorState
 import com.samourai.sentinel.tor.SentinelTorManager
+import com.samourai.sentinel.ui.dojo.PayNymPage
 import com.samourai.sentinel.ui.utils.showFloatingSnackBar
 import org.koin.java.KoinJavaComponent.inject
 import timber.log.Timber
@@ -58,6 +63,28 @@ class ExplorerWebViewActivity : AppCompatActivity() {
      */
     @Volatile
     private var directSession = false
+
+    /**
+     * A PayNym page ("View on PayNym" in Community Dojos): an onion, so Tor
+     * is always required, and every block explains with the link to copy.
+     */
+    private var payNym = false
+
+    /** Where a PayNym page is ([PayNymLoad]); unused for explorer pages. */
+    @VisibleForTesting
+    internal var payNymPhase = PayNymLoadPhase.IDLE
+        private set
+
+    /**
+     * True when the app itself refused the current main-frame request
+     * (an onion off Tor). That gets the Tor block dialog, not the error screen.
+     */
+    @Volatile
+    private var mainFrameBlockedByApp = false
+
+    private val payNymTimer = Handler(Looper.getMainLooper())
+    private val payNymTimeout = Runnable { onPayNymEvent(PayNymLoadEvent.TIMED_OUT) }
+
     private val explorerRepository: ExplorerRepository by inject(ExplorerRepository::class.java)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -71,8 +98,16 @@ class ExplorerWebViewActivity : AppCompatActivity() {
 
         val incoming = intent.getStringExtra(EXTRA_URL)?.takeIf { it.isNotBlank() }
         val explicitTitle = intent.getStringExtra(EXTRA_TITLE)?.takeIf { it.isNotBlank() }
-        val selected = SentinelState.selectedTx
-        if (incoming != null && explicitTitle != null) {
+        payNym = intent.getStringExtra(EXTRA_PAGE) == PayNymPage.PAGE_KIND
+        val selected = if (payNym) null else SentinelState.selectedTx
+        if (payNym) {
+            // Only a link built from a signer's +name; anything else closes.
+            if (PayNymPage.nymOf(incoming) == null) {
+                finish()
+                return
+            }
+            title = PayNymPage.TITLE
+        } else if (incoming != null && explicitTitle != null) {
             title = explicitTitle
             if (selected != null && selected.hash.split("-")[0] == explicitTitle) {
                 tx = selected
@@ -95,7 +130,7 @@ class ExplorerWebViewActivity : AppCompatActivity() {
         if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) {
             WebSettingsCompat.setForceDark(binding.webView.settings, WebSettingsCompat.FORCE_DARK_ON)
         }
-        if (incoming == null && tx != null &&
+        if (!payNym && incoming == null && tx != null &&
             explorerRepository.pageUrl(ExplorerBinding.ExplorerPage.TX, tx!!.hash.split("-")[0]) == null
         ) {
             // Opened with no URL and nothing bound. Ask here; a confirmed
@@ -126,7 +161,7 @@ class ExplorerWebViewActivity : AppCompatActivity() {
 
     /** Wallet Tor rule, plus any `.onion` host. */
     private fun torRequiredForThisPage(): Boolean =
-        ExplorerBinding.lookupRequiresTor(loadTarget(), SentinelState.isTorRequired())
+        payNym || ExplorerBinding.lookupRequiresTor(loadTarget(), SentinelState.isTorRequired())
 
     /**
      * #472: Tor-required is part of every load decision. #241 already
@@ -148,15 +183,18 @@ class ExplorerWebViewActivity : AppCompatActivity() {
             // STARTING / ON-before-listener: defer, show the same progress
             // the page load uses - fetch nothing. The Tor observer's ON arm
             // completes the load once the listener is live.
-            ExplorerLoadDecision.WAIT_FOR_TOR -> binding.progressWeb.visibility = View.VISIBLE
+            ExplorerLoadDecision.WAIT_FOR_TOR -> {
+                binding.progressWeb.visibility = View.VISIBLE
+                if (payNym) onPayNymEvent(PayNymLoadEvent.WAIT_FOR_TOR)
+            }
             ExplorerLoadDecision.BLOCK_TOR_OFF -> showBlocked(
                 getString(R.string.explorer_tor_required_title),
-                getString(R.string.explorer_tor_required_off),
+                getString(torOffMessage()),
                 allowWait = true
             )
             ExplorerLoadDecision.BLOCK_PROXY_UNSUPPORTED -> showBlocked(
                 getString(R.string.explorer_tor_required_title),
-                getString(R.string.explorer_tor_required_unsupported),
+                getString(unsupportedMessage()),
                 allowWait = false
             )
             // Tor optional: going direct is the user's explicit choice.
@@ -176,9 +214,16 @@ class ExplorerWebViewActivity : AppCompatActivity() {
      * screen stays open and the Tor observer loads through the proxy if
      * Tor becomes ready.
      */
+    private fun torOffMessage(): Int =
+        if (payNym) R.string.paynym_tor_required_off else R.string.explorer_tor_required_off
+
+    private fun unsupportedMessage(): Int =
+        if (payNym) R.string.paynym_tor_required_unsupported else R.string.explorer_tor_required_unsupported
+
     private fun showBlocked(title: String, message: String, allowWait: Boolean) {
         if (isFinishing || isDestroyed) return
         binding.progressWeb.visibility = View.INVISIBLE
+        if (payNym) onPayNymEvent(PayNymLoadEvent.BLOCKED)
         blockedDialog?.dismiss()
         val builder = MaterialAlertDialogBuilder(this)
             .setTitle(title)
@@ -190,6 +235,15 @@ class ExplorerWebViewActivity : AppCompatActivity() {
                 binding.progressWeb.visibility = View.VISIBLE
             }
         }
+        // A PayNym page can still be opened elsewhere over Tor: copying
+        // the link is the fallback. Nothing is loaded here.
+        val payNymLink = if (payNym) PayNymPage.urlFor(PayNymPage.nymOf(intent.getStringExtra(EXTRA_URL))) else null
+        if (payNymLink != null) {
+            builder.setNeutralButton(R.string.paynym_copy_link) { _, _ ->
+                copyText(payNymLink, R.string.paynym_link_copied)
+                finish()
+            }
+        }
         blockedDialog = builder.show()
     }
 
@@ -198,7 +252,7 @@ class ExplorerWebViewActivity : AppCompatActivity() {
             // Only reachable if support changed under us; never go direct.
             showBlocked(
                 getString(R.string.explorer_tor_required_title),
-                getString(R.string.explorer_tor_required_unsupported),
+                getString(unsupportedMessage()),
                 allowWait = false
             )
             return
@@ -250,7 +304,7 @@ class ExplorerWebViewActivity : AppCompatActivity() {
         Timber.e(cause, "Explorer proxy override failed (#472)")
         showBlocked(
             getString(R.string.explorer_tor_route_failed_title),
-            getString(R.string.explorer_tor_route_failed),
+            getString(if (payNym) R.string.paynym_tor_route_failed else R.string.explorer_tor_route_failed),
             allowWait = false
         )
     }
@@ -279,10 +333,7 @@ class ExplorerWebViewActivity : AppCompatActivity() {
         val unsupported = !WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)
         showBlocked(
             getString(R.string.explorer_tor_required_title),
-            getString(
-                if (unsupported) R.string.explorer_tor_required_unsupported
-                else R.string.explorer_tor_required_off,
-            ),
+            getString(if (unsupported) unsupportedMessage() else torOffMessage()),
             allowWait = !unsupported,
         )
     }
@@ -328,6 +379,31 @@ class ExplorerWebViewActivity : AppCompatActivity() {
                 super.onPageCommitVisible(view, url)
                 Timber.i("onPageCommitVisible: ")
                 binding.progressWeb.visibility = View.INVISIBLE
+                if (payNym) onPayNymEvent(PayNymLoadEvent.PAGE_SHOWN)
+            }
+
+            /** PayNym: a main-frame network error gets the app's error screen, not Chromium's. */
+            override fun onReceivedError(
+                view: WebView,
+                request: WebResourceRequest,
+                error: WebResourceError,
+            ) {
+                super.onReceivedError(view, request, error)
+                if (payNym && PayNymLoad.failsPage(request.isForMainFrame, null, mainFrameBlockedByApp)) {
+                    onPayNymEvent(PayNymLoadEvent.MAIN_FRAME_ERROR)
+                }
+            }
+
+            /** PayNym: a 4xx or 5xx main frame gets the same screen. */
+            override fun onReceivedHttpError(
+                view: WebView,
+                request: WebResourceRequest,
+                errorResponse: WebResourceResponse,
+            ) {
+                super.onReceivedHttpError(view, request, errorResponse)
+                if (payNym && PayNymLoad.failsPage(request.isForMainFrame, errorResponse.statusCode, mainFrameBlockedByApp)) {
+                    onPayNymEvent(PayNymLoadEvent.MAIN_FRAME_ERROR)
+                }
             }
 
             /**
@@ -361,6 +437,7 @@ class ExplorerWebViewActivity : AppCompatActivity() {
                 request: WebResourceRequest,
             ): WebResourceResponse? {
                 val decision = followupFor(request)
+                if (request.isForMainFrame) mainFrameBlockedByApp = decision != ExplorerFollowup.ALLOW
                 if (decision == ExplorerFollowup.ALLOW) return null
                 if (decision == ExplorerFollowup.BLOCK_AND_EXPLAIN) {
                     runOnUiThread { explainOnionBlocked() }
@@ -392,12 +469,79 @@ class ExplorerWebViewActivity : AppCompatActivity() {
         }
         url = target
         pageLoaded = true
+        mainFrameBlockedByApp = false
+        if (payNym) onPayNymEvent(PayNymLoadEvent.LOAD_STARTED)
         binding.webView.loadUrl(url)
 
     }
 
+    /**
+     * A PayNym page's phase changed ([PayNymLoad.next]): restart its time
+     * limit and show the matching screen. While waiting, loading or after
+     * a failure the WebView is hidden, so Chromium's own error page (which
+     * prints the URL) is never shown.
+     */
+    @VisibleForTesting
+    internal fun onPayNymEvent(event: PayNymLoadEvent) {
+        if (!payNym || isFinishing || isDestroyed) return
+        val before = payNymPhase
+        val after = PayNymLoad.next(before, event)
+        payNymPhase = after
+        if (after != before || event == PayNymLoadEvent.LOAD_STARTED || event == PayNymLoadEvent.WAIT_FOR_TOR) {
+            payNymTimer.removeCallbacks(payNymTimeout)
+            PayNymLoad.limitFor(after)?.let { payNymTimer.postDelayed(payNymTimeout, it) }
+        }
+        if (after == PayNymLoadPhase.FAILED && before != PayNymLoadPhase.FAILED) {
+            binding.webView.stopLoading()
+        }
+        showPayNymPhase(after)
+    }
+
+    private fun showPayNymPhase(phase: PayNymLoadPhase) {
+        val status = binding.payNymStatus
+        when (phase) {
+            PayNymLoadPhase.IDLE, PayNymLoadPhase.LOADED -> {
+                status.visibility = View.GONE
+                binding.webView.visibility = View.VISIBLE
+                return
+            }
+            PayNymLoadPhase.WAITING_FOR_TOR -> bindPayNymStatus(
+                R.string.paynym_connecting_title, R.string.paynym_connecting_message, failed = false,
+            )
+            PayNymLoadPhase.LOADING -> bindPayNymStatus(
+                R.string.paynym_loading_title, R.string.paynym_loading_message, failed = false,
+            )
+            PayNymLoadPhase.FAILED -> {
+                binding.progressWeb.visibility = View.INVISIBLE
+                bindPayNymStatus(R.string.paynym_unreachable_title, R.string.paynym_unreachable_message, failed = true)
+            }
+        }
+        binding.webView.visibility = View.INVISIBLE
+        status.visibility = View.VISIBLE
+    }
+
+    private fun bindPayNymStatus(title: Int, message: Int, failed: Boolean) {
+        binding.payNymStatusTitle.setText(title)
+        binding.payNymStatusMessage.setText(message)
+        binding.payNymStatusProgress.visibility = if (failed) View.GONE else View.VISIBLE
+        binding.payNymStatusActions.visibility = if (failed) View.VISIBLE else View.GONE
+        binding.payNymRetry.setOnClickListener { retryPayNym() }
+        binding.payNymCopyLink.setOnClickListener {
+            PayNymPage.urlFor(PayNymPage.nymOf(intent.getStringExtra(EXTRA_URL)))
+                ?.let { copyText(it, R.string.paynym_link_copied) }
+        }
+    }
+
+    /** Retry: the same routing as opening the screen, so still Tor only. */
+    private fun retryPayNym() {
+        if (payNymPhase != PayNymLoadPhase.FAILED) return
+        beginRouting()
+    }
+
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.web_explorer, menu)
+        // A PayNym page has no transaction to copy.
+        if (payNym) menu.findItem(R.id.menu_web_copy_tx)?.isVisible = false
         SentinelTorManager.getTorStateLiveData().observe(this) {
             menu.findItem(R.id.menu_web_tor).icon =
                 ContextCompat.getDrawable(applicationContext, R.drawable.ic_tor_on)
@@ -440,7 +584,7 @@ class ExplorerWebViewActivity : AppCompatActivity() {
                     ) {
                         showBlocked(
                             getString(R.string.explorer_tor_required_title),
-                            getString(R.string.explorer_tor_required_off),
+                            getString(torOffMessage()),
                             allowWait = true,
                         )
                     }
@@ -454,6 +598,7 @@ class ExplorerWebViewActivity : AppCompatActivity() {
 
 
     override fun onDestroy() {
+        payNymTimer.removeCallbacks(payNymTimeout)
         blockedDialog?.dismiss()
         blockedDialog = null
         binding.webView.stopLoading()
@@ -486,13 +631,13 @@ class ExplorerWebViewActivity : AppCompatActivity() {
         }
     }
 
-    private fun copyText(string: String) {
+    private fun copyText(string: String, toast: Int = R.string.copied_to_clipboard) {
         val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager?
         val clipData = ClipData
                 .newPlainText("", string)
         if (cm != null) {
             cm.setPrimaryClip(clipData)
-            Toast.makeText(applicationContext, getString(R.string.copied_to_clipboard), Toast.LENGTH_SHORT).show()
+            Toast.makeText(applicationContext, getString(toast), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -505,5 +650,11 @@ class ExplorerWebViewActivity : AppCompatActivity() {
          */
         const val EXTRA_URL = "com.samourai.sentinel.ui.webview.EXTRA_URL"
         const val EXTRA_TITLE = "com.samourai.sentinel.ui.webview.EXTRA_TITLE"
+
+        /**
+         * What kind of page [EXTRA_URL] is, when it isn't an explorer page:
+         * [PayNymPage.PAGE_KIND] for a signer's PayNym page.
+         */
+        const val EXTRA_PAGE = "com.samourai.sentinel.ui.webview.EXTRA_PAGE"
     }
 }

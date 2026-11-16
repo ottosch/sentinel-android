@@ -100,6 +100,54 @@ class PairingAckGateTest {
         assertEquals(PairingAckDecision.NOOP, declinedGate.onPairingSelected())
     }
 
+    //
+    // DON'T PAIR from the Community Dojos list: the sheet goes back to
+    // the list, and the gate re-arms for the next pick - only after a
+    // decline, never after Pair.
+    //
+
+    @Test
+    fun `a decline re-arms once and the next pick shows a fresh confirmation`() {
+        val gate = PairingAckGate()
+        gate.onPairingSelected()
+        gate.onUserDeclined()
+        assertEquals(true, gate.rearmAfterDecline())
+        assertEquals(PairingAckDecision.SHOW_CONFIRMATION, gate.onPairingSelected())
+        // The fresh dialog behaves like the first one.
+        assertEquals(PairingAckDecision.NOOP, gate.onPairingSelected())
+        assertEquals(PairingAckDecision.START_CONNECT, gate.onUserConfirmed())
+        // A second re-arm without another decline does nothing.
+        assertFalse(gate.rearmAfterDecline())
+    }
+
+    @Test
+    fun `Pair never re-arms`() {
+        val gate = PairingAckGate()
+        gate.onPairingSelected()
+        gate.onUserConfirmed()
+        assertFalse(gate.rearmAfterDecline())
+        assertEquals(PairingAckDecision.NOOP, gate.onPairingSelected())
+        assertEquals(PairingAckDecision.NOOP, gate.onUserDeclined())
+    }
+
+    @Test
+    fun `nothing re-arms before a decision`() {
+        val fresh = PairingAckGate()
+        assertFalse(fresh.rearmAfterDecline())
+        val open = PairingAckGate()
+        open.onPairingSelected()
+        assertFalse(open.rearmAfterDecline())
+        assertEquals(PairingAckDecision.START_CONNECT, open.onUserConfirmed())
+    }
+
+    @Test
+    fun `DON'T PAIR goes back to the list only for a pick from a list that is still open`() {
+        assertEquals(PairingDeclineOutcome.BACK_TO_LIST, pairingDeclineOutcome(pickedFromList = true, listShowing = true))
+        assertEquals(PairingDeclineOutcome.CLOSE_SHEET, pairingDeclineOutcome(pickedFromList = true, listShowing = false))
+        assertEquals(PairingDeclineOutcome.CLOSE_SHEET, pairingDeclineOutcome(pickedFromList = false, listShowing = true))
+        assertEquals(PairingDeclineOutcome.CLOSE_SHEET, pairingDeclineOutcome(pickedFromList = false, listShowing = false))
+    }
+
     @Test
     fun `taps before any selection are no-ops`() {
         val gate = PairingAckGate()

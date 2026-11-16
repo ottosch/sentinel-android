@@ -223,11 +223,87 @@
          dominant latency is Dojo Bay probing every listed node, and a
          retry usually answers quickly once the probe cache is warm. -->
     <string name="community_dojo_probe_timeout" translatable="false">Probing timed out. A second try is sometimes needed and usually answers quickly.</string>
-    <string name="community_dojo_auto_retry" translatable="false">First probe timed out - retrying. Dojo Bay usually answers on the second try…</string>
+    <string name="community_dojo_auto_retry" translatable="false">The first try did not get an answer - retrying. Dojo Bay usually answers on the second try…</string>
     <string name="community_dojo_empty" translatable="false">No active %1$s Dojos were found on DojoBay.org right now.</string>
     <string name="community_dojo_error" translatable="false">Could not reach Dojo Bay: %1$s</string>
     <string name="community_dojo_retry" translatable="false">Retry</string>
     <string name="community_dojo_status_dot_description" translatable="false">Dojo online status</string>
+    <!-- Dojo Bay unreachable: the last list fetched is kept and shown with
+         its date, and the directory address can be changed. -->
+    <string name="community_dojo_cached_refreshing" translatable="false">Showing saved list from %1$s · checking Dojo Bay… (%2$d s)</string>
+    <string name="community_dojo_cached_unreachable" translatable="false">Dojo Bay unreachable · showing list from %1$s</string>
+    <string name="community_dojo_waiting_tor" translatable="false">Waiting for Tor…</string>
+    <string name="community_dojo_cached_waiting_tor" translatable="false">Showing saved list from %1$s · waiting for Tor…</string>
+    <!-- Dojo Bay answered with no Dojos at all: the saved list is kept. -->
+    <string name="community_dojo_cached_listed_none" translatable="false">Dojo Bay currently lists no Dojos · showing list from %1$s</string>
+    <string name="community_dojo_listed_none" translatable="false">Dojo Bay currently lists no Dojos, and there is no saved list. You can still pair with Connect to your Dojo by scanning or pasting a Dojo\'s pairing details, or change the Dojo Bay address.</string>
+    <!-- operator.json 404: the saved list stays up, with no age limit. -->
+    <string name="community_dojo_cached_no_operator" translatable="false">Saved list from %1$s · Dojo Bay has no operator statement, so it can\'t be re-checked</string>
+    <string name="community_dojo_unreachable_no_cache" translatable="false">Could not reach Dojo Bay: %1$s. There is no saved list yet. You can still pair with Connect to your Dojo by scanning or pasting a Dojo\'s pairing details, or change the Dojo Bay address.</string>
+    <string name="community_dojo_failed_two_tries" translatable="false">Dojo Bay could not be reached after two tries. Tap Retry to try again. There is no saved list yet. You can still pair with Connect to your Dojo by scanning or pasting a Dojo\'s pairing details, or change the Dojo Bay address.</string>
+    <string name="community_dojo_change_address" translatable="false">Change Dojo Bay address</string>
+    <string name="dojobay_address_title" translatable="false">Dojo Bay address</string>
+    <string name="dojobay_address_message" translatable="false">The directory the Community Dojos list is read from. Anyone can run a Dojo Bay. Enter its onion address and its operator\'s BIP47 payment code, as published by the operator. The list is shown only if the Dojo Bay\'s signed operator statement verifies against that code. Requests always go over Tor.</string>
+    <string name="dojobay_address_hint" translatable="false">http://….onion/</string>
+    <string name="dojobay_address_label" translatable="false">Onion address</string>
+    <string name="dojobay_code_label" translatable="false">Operator\'s payment code</string>
+    <string name="dojobay_code_hint" translatable="false">PM8T…</string>
+    <string name="dojobay_address_invalid_not_onion" translatable="false">Only onion addresses can be used. Enter the Dojo Bay\'s v3 .onion address.</string>
+    <string name="dojobay_address_invalid_not_http" translatable="false">Use http:// with an onion address. Tor already encrypts the connection end to end.</string>
+    <string name="dojobay_code_invalid_empty" translatable="false">Enter the operator\'s payment code. A custom Dojo Bay is only used once its signature verifies against this code.</string>
+    <string name="dojobay_code_invalid" translatable="false">That is not a valid BIP47 payment code. It starts with PM8T and is 116 characters long.</string>
+    <string name="dojobay_code_not_default" translatable="false">This is the default Dojo Bay, whose operator code is built in. Leave the code empty, or use Reset to default.</string>
+    <string name="community_dojo_refused_no_code" translatable="false">No operator payment code is saved for this Dojo Bay (%1$s). Change the Dojo Bay address and enter the operator\'s code.</string>
+    <string name="community_dojo_refused_missing" translatable="false">This Dojo Bay (%1$s) did not provide a signed operator statement, so the app cannot confirm who runs it. Its list is not shown.</string>
+    <string name="dojobay_address_save" translatable="false">Save</string>
+    <string name="dojobay_address_reset" translatable="false">Reset to default</string>
+    <string name="dojobay_address_cancel" translatable="false">Cancel</string>
+    <string name="dojobay_address_saved" translatable="false">Dojo Bay address and operator code saved</string>
+    <string name="dojobay_address_reset_done" translatable="false">Dojo Bay address reset to default</string>
+    <string name="dojobay_address_invalid_empty" translatable="false">Enter an address</string>
+    <string name="dojobay_address_invalid_malformed" translatable="false">That is not a valid address. Enter the Dojo Bay\'s address, for example http://….onion/</string>
+    <string name="dojobay_address_invalid_onion" translatable="false">That is not a valid v3 onion address. Check it for typos: it needs 56 characters (letters a–z and digits 2–7) before .onion.</string>
+    <string name="dojobay_address_invalid_port" translatable="false">The port must be between 1 and 65535.</string>
+    <string name="dojobay_address_invalid_extras" translatable="false">Remove the user name, query, or fragment from the address</string>
+    <string name="network_directory_row_title" translatable="false">Dojo Bay directory</string>
+    <string name="network_directory_default" translatable="false">Default · %1$s</string>
+    <string name="network_directory_custom" translatable="false">Custom · %1$s</string>
+    <string name="community_dojo_signed_by" translatable="false">Signed by %1$s</string>
+    <string name="signer_unverified_chip" translatable="false">Unverified</string>
+    <string name="dojo_pairing_directory_not_signed" translatable="false">Name and location are set by the directory and are not signed.</string>
+    <string name="dojo_pairing_row_signed_by" translatable="false">Signed by</string>
+    <string name="dojo_pairing_signer_collision" translatable="false">Another listing uses this name with a different signer. Check the full code.</string>
+    <string name="community_dojo_signer_collision" translatable="false">Another listing uses this name with a different signer</string>
+    <string name="community_dojo_signed_by_expanded" translatable="false">Signed by</string>
+    <string name="community_dojo_signer_expand_description" translatable="false">Show the full signer code</string>
+    <string name="paynym_view_link" translatable="false">View on PayNym</string>
+    <string name="paynym_from_caption" translatable="false">from paynym.rs</string>
+    <string name="paynym_avatar_description" translatable="false">PayNym avatar</string>
+    <string name="paynym_avatar_failed_description" translatable="false">PayNym avatar unavailable</string>
+    <string name="paynym_copy_link" translatable="false">Copy link</string>
+    <string name="paynym_link_copied" translatable="false">PayNym link copied</string>
+    <string name="paynym_connecting_title" translatable="false">Connecting over Tor…</string>
+    <string name="paynym_connecting_message" translatable="false">PayNym opens only through Tor. The page loads as soon as Tor is ready.</string>
+    <string name="paynym_loading_title" translatable="false">Loading PayNym over Tor…</string>
+    <string name="paynym_loading_message" translatable="false">Onion pages can take a little while to answer.</string>
+    <string name="paynym_unreachable_title" translatable="false">Couldn\'t reach PayNym over Tor</string>
+    <string name="paynym_unreachable_message" translatable="false">The page didn\'t load. Tor may still be connecting, or PayNym may be busy. Try again, or copy the link to open it elsewhere over Tor.</string>
+    <string name="paynym_retry" translatable="false">Retry</string>
+    <string name="paynym_page_not_found" translatable="false">No PayNym page to open: PayNym has no name for this code, or it couldn\'t be reached over Tor.</string>
+    <string name="paynym_tor_required_off" translatable="false">PayNym is an onion site, so it opens only through Tor, and Tor is not running. Start Tor, or copy the link to open it elsewhere over Tor.</string>
+    <string name="paynym_tor_required_unsupported" translatable="false">PayNym is an onion site, so it opens only through Tor, and this device\'s WebView cannot route through Tor. It will not load here. Copy the link to open it elsewhere over Tor.</string>
+    <string name="paynym_tor_route_failed" translatable="false">PayNym could not be routed through Tor, so it will not load. Close this screen and try again, or copy the link.</string>
+    <string name="community_dojo_unverified" translatable="false">Signature check failed (%1$s) · can\'t pair</string>
+    <string name="community_dojo_unverified_toast" translatable="false">This Dojo\'s listing is not signed by its owner\'s payment code, so it can\'t be paired from here</string>
+    <string name="community_dojo_failure_missing" translatable="false">no signature</string>
+    <string name="community_dojo_failure_unreadable" translatable="false">unreadable signature</string>
+    <string name="community_dojo_failure_bad_signature" translatable="false">invalid signature</string>
+    <string name="community_dojo_failure_signer" translatable="false">signer is not the payment code</string>
+    <string name="community_dojo_failure_mismatch" translatable="false">details differ from what was signed</string>
+    <string name="community_dojo_failure_not_pairing" translatable="false">signed text is not pairing details</string>
+    <string name="community_dojo_refused_unverified" translatable="false">The operator signature of this Dojo Bay (%1$s) does not verify for this address. Its list is not shown.</string>
+    <string name="community_dojo_refused_pin" translatable="false">This Dojo Bay is signed by a different payment code (%1$s) from the operator code you entered (%2$s). Its list is not shown. Check the code with the operator, then change the Dojo Bay address.</string>
+    <string name="community_dojo_refused_default_pin" translatable="false">The default Dojo Bay is signed by an unexpected payment code (%1$s). Its list is not shown.</string>
     <string name="copy_dojo_pairing_json" translatable="false">Copy Dojo pairing JSON</string>
 
     <string name="loading">loading…</string>

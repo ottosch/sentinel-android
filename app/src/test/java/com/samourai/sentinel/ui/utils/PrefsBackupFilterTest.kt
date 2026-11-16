@@ -85,4 +85,31 @@ class PrefsBackupFilterTest {
         assertEquals(true, prefs.pinEnabled)
         assertEquals(false, prefs.notificationPromptDone)
     }
+
+    @Test
+    fun customDojoBayAddressAndCodeStayOnTheDevice() {
+        val onion = "http://yfua6lm3x5rjc6v76gltnahdaf5mcgpn3z5p3pognswi4cpmmwanueqd.onion/"
+        prefs.dojoBayUrl = onion
+        prefs.dojoBayPinnedCode = "PM8Tlocal"
+        val exported = prefs.export()
+        assertFalse(exported.has("dojoBayUrl"))
+        assertFalse(exported.has("dojoBayPinnedCode"))
+        assertFalse(exported.toString().contains("yfua6lm3"))
+
+        val incoming = JSONObject()
+            .put("selectedCurrency", "EUR")
+            .put("dojoBayUrl", "http://pyetvy7jsvckrvfbs2ngf4k5jcyqtbmoh7f4l5o3jjukuk6aor3tvtyd.onion/")
+            .put("dojoBayPinnedCode", "PM8Tfrom-backup")
+        prefs.import(incoming)
+        assertEquals("EUR", prefs.selectedCurrency)
+        assertEquals(onion, prefs.dojoBayUrl)
+        assertEquals("PM8Tlocal", prefs.dojoBayPinnedCode)
+
+        // A device with no custom address keeps the default after importing one.
+        prefs.dojoBayUrl = null
+        prefs.dojoBayPinnedCode = null
+        prefs.import(incoming)
+        assertEquals(null, prefs.dojoBayUrl)
+        assertEquals(null, prefs.dojoBayPinnedCode)
+    }
 }

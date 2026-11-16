@@ -16,6 +16,12 @@ import com.samourai.sentinel.core.DerivedNetwork
  * (read-verified, #250 census; both observed fixtures agree
  * - testnet answers at .../test/v2, mainnet at .../v2/).
  *
+ * The directory's label is not covered by the listing's
+ * signature, so the declaration that reaches this function for a
+ * Community Dojos listing is CheckedDojo.network: from the signed
+ * URL only (/test/ is testnet, anything else mainnet), the label
+ * ignored. A directory relabelling a signed listing changes nothing.
+ *
  * The table (#250/#272 agreement):
  *   no evidence                -> PROCEED (the reverse-
  *                                direction gap is

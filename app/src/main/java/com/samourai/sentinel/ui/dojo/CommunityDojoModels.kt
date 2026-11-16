@@ -1,13 +1,22 @@
 package com.samourai.sentinel.ui.dojo
 
+import com.google.gson.Gson
+import com.google.gson.JsonElement
+import com.google.gson.JsonNull
+import com.google.gson.JsonObject
+import com.google.gson.TypeAdapter
+import com.google.gson.annotations.JsonAdapter
 import com.google.gson.annotations.SerializedName
+import com.google.gson.internal.bind.TypeAdapters
+import com.google.gson.stream.JsonReader
+import com.google.gson.stream.JsonWriter
 import com.samourai.sentinel.data.txfacts.TxFactsResolver
 import com.samourai.sentinel.helpers.toJSON
 import com.samourai.sentinel.ui.webview.ExplorerBinding
 
 /**
  * Response shape of the Dojo Bay community directory
- * (http://dojobayeryasshgghz537de5ckgd5hhi4z5sdeil3roeh65fwhdnu2yd.onion/dojos.json).
+ * (<directory>/data/dojos.json; PublicNode in Dojo Bay's types.d.ts).
  */
 data class CommunityDojoDirectory(
     @SerializedName("generated_at")
@@ -34,7 +43,17 @@ data class CommunityDojoNode(
     @SerializedName("checked_at")
     val checkedAt: String? = null,
     @SerializedName("payload")
-    val payload: CommunityDojoPayload? = null
+    val payload: CommunityDojoPayload? = null,
+    // Dojo Bay's display name and code for the owner. Not signed; the app
+    // shows the code the signature proves instead (DojoBaySignatures).
+    @SerializedName("paynym")
+    val paynym: String? = null,
+    @SerializedName("paymentCode")
+    val paymentCode: String? = null,
+    // The owner's BIP47-signed pairing block (PublicNode.signed in Dojo
+    // Bay's types.d.ts).
+    @SerializedName("signed")
+    val signed: String? = null,
 ) {
     val isOnline: Boolean
         get() = status.equals("active", ignoreCase = true)
@@ -85,6 +104,7 @@ fun communityDojoSubtitle(node: CommunityDojoNode): String {
     ).joinToString(" • ")
 }
 
+@JsonAdapter(CommunityDojoPayloadAdapter::class)
 data class CommunityDojoPayload(
     @SerializedName("pairing")
     val pairing: Pairing? = null,
@@ -93,4 +113,46 @@ data class CommunityDojoPayload(
     // pairing flow's capture sites see it.
     @SerializedName("explorer")
     val explorer: Explorer? = null
-)
+) {
+    /**
+     * The payload exactly as the directory served it (and as the saved list
+     * stores it), so a listing is compared with its signed text as JSON,
+     * the way Dojo Bay's sameSignedPayload does, with every field, type and
+     * null kept. Null for a payload built in code; [rawOrModel] then falls
+     * back to the model. Not part of equals or copy.
+     */
+    @Transient
+    var raw: JsonElement? = null
+
+    fun rawOrModel(): JsonElement = raw ?: JsonObject().also { o ->
+        pairing?.let { o.add("pairing", Gson().toJsonTree(it)) }
+        explorer?.let { o.add("explorer", Gson().toJsonTree(it)) }
+    }
+}
+
+/** Reads the model and keeps the raw JSON beside it; writes the raw JSON back unchanged. */
+class CommunityDojoPayloadAdapter : TypeAdapter<CommunityDojoPayload>() {
+    private val plain = Gson()
+
+    override fun write(out: JsonWriter, value: CommunityDojoPayload?) {
+        if (value == null) {
+            out.nullValue()
+            return
+        }
+        TypeAdapters.JSON_ELEMENT.write(out, value.rawOrModel())
+    }
+
+    override fun read(input: JsonReader): CommunityDojoPayload? {
+        val element = TypeAdapters.JSON_ELEMENT.read(input)
+        if (element == null || element is JsonNull) return null
+        val obj = element as? JsonObject
+        val model = CommunityDojoPayload(
+            pairing = obj?.get("pairing")?.takeIf { it.isJsonObject }
+                ?.let { runCatching { plain.fromJson(it, Pairing::class.java) }.getOrNull() },
+            explorer = obj?.get("explorer")?.takeIf { it.isJsonObject }
+                ?.let { runCatching { plain.fromJson(it, Explorer::class.java) }.getOrNull() },
+        )
+        model.raw = element
+        return model
+    }
+}
