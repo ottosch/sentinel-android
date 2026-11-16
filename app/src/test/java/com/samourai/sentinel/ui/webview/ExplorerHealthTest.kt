@@ -8,7 +8,9 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.samourai.wallet.SamouraiWalletConst
 import java.io.File
+import java.io.IOException
 import java.io.InterruptedIOException
 import java.net.ConnectException
 import java.net.InetSocketAddress
@@ -177,7 +179,17 @@ class ExplorerHealthTest {
             FetchVerdict.NO_RESPONSE,
             failureVerdict(SocketException("SOCKS: Network unreachable")),
         )
-        assertEquals("SocketTimeoutException", SocketTimeoutException("onion").javaClass.simpleName)
+        assertEquals("SocketTimeoutException", probeFailureLabel(SocketTimeoutException("onion")))
+        assertEquals("ConnectException", probeFailureLabel(ConnectException("Connection refused")))
+        assertEquals("NoRouteToHostException", probeFailureLabel(NoRouteToHostException("No route to host")))
+        assertEquals("SocketException", probeFailureLabel(SocketException("SOCKS: Host unreachable")))
+        assertEquals("InterruptedIOException", probeFailureLabel(InterruptedIOException("timeout")))
+        assertEquals("IOException", probeFailureLabel(object : IOException("PM8Tcrafted") {}))
+        assertEquals("error", probeFailureLabel(IllegalStateException("OnionHostError")))
+        assertEquals("SocketTimeoutException", statusToken("SocketTimeoutException"))
+        assertEquals("error", statusToken("OnionHostError"))
+        assertEquals("error", statusToken("SSLHandshakeError"))
+        assertEquals("error", statusToken("PM8T" + "A".repeat(40) + "Error"))
 
         assertEquals(
             ProbeResult.Kind.REACHABLE,
@@ -363,6 +375,40 @@ class ExplorerHealthTest {
                 null,
             ),
         )
+        assertFalse(
+            releaseKeepsExplorerProbe(
+                Log.INFO,
+                ExplorerProbeLog.TAG,
+                "result outcome=UNCONFIRMED status=OnionHostError elapsedMs=1",
+                null,
+            ),
+        )
+        assertFalse(
+            releaseKeepsExplorerProbe(
+                Log.INFO,
+                ExplorerProbeLog.TAG,
+                "result outcome=UNREACHABLE status=PM8T" + "A".repeat(40) + "Error elapsedMs=1",
+                null,
+            ),
+        )
+        val probeSrc = source(
+            "src/main/java/com/samourai/sentinel/ui/webview/ExplorerHealthProbe.kt",
+            "app/src/main/java/com/samourai/sentinel/ui/webview/ExplorerHealthProbe.kt",
+        )
+        val coordSrc = source(
+            "src/main/java/com/samourai/sentinel/ui/webview/ExplorerProbeCoordinator.kt",
+            "app/src/main/java/com/samourai/sentinel/ui/webview/ExplorerProbeCoordinator.kt",
+        )
+        val logSrc = source(
+            "src/main/java/com/samourai/sentinel/ui/webview/ExplorerProbeLog.kt",
+            "app/src/main/java/com/samourai/sentinel/ui/webview/ExplorerProbeLog.kt",
+        )
+        assertFalse(probeSrc.contains("simpleName"))
+        assertFalse(coordSrc.contains("simpleName"))
+        assertFalse(logSrc.contains("simpleName"))
+        assertTrue(probeSrc.contains("probeFailureLabel"))
+        assertTrue(coordSrc.contains("probeFailureLabel"))
+        assertTrue(logSrc.contains("error is TimeoutCancellationException -> \"TimeoutCancellationException\""))
         val app = source(
             "src/main/java/com/samourai/sentinel/SentinelApplication.kt",
             "app/src/main/java/com/samourai/sentinel/SentinelApplication.kt",
@@ -398,6 +444,13 @@ class ExplorerHealthTest {
         assertEquals("[::1]:9050", ExplorerProbeLog.socksLabel("[::1]:9050"))
         assertEquals("unknown", ExplorerProbeLog.socksLabel("203.0.113.10:9050"))
         assertEquals("unknown", ExplorerProbeLog.socksLabel("2001:db8::1:9050"))
+        val paymentCode = SamouraiWalletConst.samouraiDonationPCode
+        assertTrue(paymentCode.startsWith("PM8T"))
+        assertEquals("/", ExplorerProbeLog.pathOf("http://example.test/pay/$paymentCode"))
+        val payLine = ExplorerProbeLog.urlLine("http://example.test/pay/$paymentCode", "200", 4)
+        assertTrue(payLine.contains("path=/"))
+        assertFalse(payLine.contains(paymentCode))
+        assertFalse(payLine.contains("PM8T"))
         val dotted = ExplorerProbeLog.urlLine("https://mempool.space/api", "203.0.113.10", 1)
         assertTrue(dotted.contains("result=error"))
         assertFalse(dotted.contains("203.0.113.10"))

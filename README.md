@@ -119,7 +119,7 @@ If the Network screen's Block Explorer row stays on "Checking…" or shows
 retry. If it persists, turn Tor off and on again on the Network screen.
 Re-pairing the Dojo is not normally needed. If it still persists, collect
 `adb logcat -s ExplorerProbe` and open an issue. A release build logs one
-line per finished probe: outcome, HTTP status or exception class, and
+line per finished probe: outcome, HTTP status or failure name, and
 elapsed time, with no explorer address. A debug build also logs the
 shortened host.
 

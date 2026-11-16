@@ -1,5 +1,6 @@
 package com.samourai.sentinel.util
 
+import com.samourai.wallet.SamouraiWalletConst
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -306,6 +307,34 @@ class LogRedactionTest {
         val ones26 = "1".repeat(26)
         assertFalse(LogRedaction.redact(ones26).contains(ones26))
         assertEquals("m/84'/0'/0'/0/1", LogRedaction.redact("m/84'/0'/0'/0/1"))
+    }
+
+    @Test
+    fun bip47PaymentCodeIsRedacted() {
+        val code = SamouraiWalletConst.samouraiDonationPCode
+        assertTrue(code.startsWith("PM8T"))
+        val out = LogRedaction.redact("notification $code failed")
+        assertFalse(out.contains(code))
+        assertFalse(out.contains("PM8T"))
+        assertTrue(out.contains("PAYMENT_CODE_REDACTED"))
+        assertTrue(out.contains("notification"))
+        assertTrue(out.contains("failed"))
+
+        val short = "PM8T" + "A".repeat(79)
+        assertEquals(short, LogRedaction.redact(short))
+        val longEnough = "PM8T" + "A".repeat(80)
+        val masked = LogRedaction.redact("saw $longEnough")
+        assertFalse(masked.contains(longEnough))
+        assertTrue(masked.contains("PAYMENT_CODE_REDACTED"))
+
+        // CrashReportingTree writes LogRedaction.redact(stackTrace).
+        val stack = "java.lang.IllegalArgumentException: bad $code\n" +
+            "\tat com.example.Foo.bar(Foo.kt:1)"
+        val dumped = LogRedaction.redact(stack)
+        assertFalse(dumped.contains(code))
+        assertTrue(dumped.contains("IllegalArgumentException"))
+        assertTrue(dumped.contains("PAYMENT_CODE_REDACTED"))
+        assertTrue(dumped.contains("Foo.bar"))
     }
 
     @Test

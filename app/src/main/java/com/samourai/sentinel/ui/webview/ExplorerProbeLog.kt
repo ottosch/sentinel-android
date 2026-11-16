@@ -1,8 +1,23 @@
 package com.samourai.sentinel.ui.webview
 
+import android.os.NetworkOnMainThreadException
 import android.util.Log
+import com.samourai.sentinel.util.LogRedaction
+import kotlinx.coroutines.TimeoutCancellationException
 import timber.log.Timber
+import java.io.EOFException
+import java.io.IOException
+import java.io.InterruptedIOException
+import java.net.ConnectException
+import java.net.NoRouteToHostException
+import java.net.ProtocolException
+import java.net.SocketException
+import java.net.SocketTimeoutException
 import java.net.URI
+import java.net.UnknownHostException
+import javax.net.ssl.SSLException
+import javax.net.ssl.SSLHandshakeException
+import javax.net.ssl.SSLPeerUnverifiedException
 
 /**
  * Logcat for the block-explorer health check. Tag [TAG] so a device
@@ -15,7 +30,7 @@ import java.net.URI
  * change is still visible on a debug build.
  *
  * Release builds keep only [result] (#523): probe outcome, an HTTP
- * status or exception class, and elapsed milliseconds. No host,
+ * status or a fixed failure token, and elapsed milliseconds. No host,
  * onion, URL, path, or address. Other tags are unchanged.
  */
 internal object ExplorerProbeLog {
@@ -35,8 +50,8 @@ internal object ExplorerProbeLog {
 
     /**
      * The one line a release build keeps. [detail] is an HTTP status
-     * or an exception class name. [baseUrl] is the probe target and
-     * is not written: it is an onion or a clearnet address.
+     * or a token from [probeFailureLabel]. [baseUrl] is the probe
+     * target and is not written: it is an onion or a clearnet address.
      *
      * REACHABLE is the green row ("Bound to …" for the paired Dojo,
      * "Using …" otherwise). UNREACHABLE is the red row. UNCONFIRMED
@@ -114,14 +129,39 @@ internal object ExplorerProbeLog {
 }
 
 /**
- * Whole-string shape of the only line [releaseKeepsExplorerProbe]
- * accepts. Outcome, status, and elapsed time. No host and no room
- * for a second field.
+ * Closed set of failure tokens the probe may log. HTTP codes, `none`,
+ * and `empty` are separate. [RELEASE_RESULT] is this set plus those
+ * sentinels: a string that merely ends in Exception, Error, or
+ * Throwable is not enough. A payment code, an address, or an onion
+ * can be shaped that way.
+ *
+ * OkHttp internals such as StreamResetException are not in the set.
+ * They are [IOException]s, and the parent token is what gets logged,
+ * so an R8 rename of an internal class cannot become the status.
  */
+internal val PROBE_FAILURE_LABELS: List<String> = listOf(
+    "TimeoutCancellationException",
+    "SocketTimeoutException",
+    "ConnectException",
+    "NoRouteToHostException",
+    "UnknownHostException",
+    "SSLHandshakeException",
+    "SSLPeerUnverifiedException",
+    "SSLException",
+    "EOFException",
+    "InterruptedIOException",
+    "SocketException",
+    "ProtocolException",
+    "IOException",
+    "IllegalArgumentException",
+    "NetworkOnMainThreadException",
+)
+
 internal val RELEASE_RESULT = Regex(
-    "result outcome=(REACHABLE|UNREACHABLE|UNCONFIRMED|error) " +
-        "status=(none|empty|error|[1-5][0-9]{2}|[A-Z][A-Za-z0-9]{0,60}(?:Exception|Error|Throwable)) " +
-        "elapsedMs=[0-9]+",
+    "result outcome=(REACHABLE|UNREACHABLE|UNCONFIRMED|error) status=(" +
+        (listOf("none", "empty", "error", "[1-5][0-9]{2}") + PROBE_FAILURE_LABELS)
+            .joinToString("|") +
+        ") elapsedMs=[0-9]+",
 )
 
 internal fun outcomeToken(outcome: String): String {
@@ -132,21 +172,45 @@ internal fun outcomeToken(outcome: String): String {
 }
 
 /**
- * HTTP status, the empty-URL sentinel, or an exception class name.
- * Anything else (a URL, an onion, a txid, an xpub, an address, a
- * key) becomes `error`.
+ * HTTP status, the empty-URL sentinel, or one [PROBE_FAILURE_LABELS]
+ * token. Anything else becomes `error`.
  */
 internal fun statusToken(detail: String): String {
     val trimmed = detail.trim()
     if (trimmed.isEmpty()) return "none"
-    if (trimmed == "empty") return "empty"
-    if (trimmed.length <= 3 && HTTP_STATUS.matches(trimmed)) return trimmed
-    if (trimmed.length in 1..80 && EXCEPTION_CLASS.matches(trimmed)) return trimmed
+    if (trimmed == "empty" || trimmed == "error") return trimmed
+    if (HTTP_STATUS.matches(trimmed)) return trimmed
+    if (trimmed in PROBE_FAILURE_LABELS) return trimmed
     return "error"
 }
 
+/**
+ * Fixed log token for a failure the probe actually caught.
+ * [Throwable.javaClass] is not consulted: R8 renames bundled classes
+ * such as [TimeoutCancellationException], and a crafted class whose
+ * name ends in Error must not be logged as itself.
+ * Subclasses are listed before their parents.
+ */
+internal fun probeFailureLabel(error: Throwable): String = when {
+    error is TimeoutCancellationException -> "TimeoutCancellationException"
+    error is SocketTimeoutException -> "SocketTimeoutException"
+    error is ConnectException -> "ConnectException"
+    error is NoRouteToHostException -> "NoRouteToHostException"
+    error is UnknownHostException -> "UnknownHostException"
+    error is SSLHandshakeException -> "SSLHandshakeException"
+    error is SSLPeerUnverifiedException -> "SSLPeerUnverifiedException"
+    error is SSLException -> "SSLException"
+    error is EOFException -> "EOFException"
+    error is InterruptedIOException -> "InterruptedIOException"
+    error is SocketException -> "SocketException"
+    error is ProtocolException -> "ProtocolException"
+    error is IOException -> "IOException"
+    error is IllegalArgumentException -> "IllegalArgumentException"
+    error is NetworkOnMainThreadException -> "NetworkOnMainThreadException"
+    else -> "error"
+}
+
 private val HTTP_STATUS = Regex("[1-5][0-9]{2}")
-private val EXCEPTION_CLASS = Regex("[A-Z][A-Za-z0-9]{0,60}(?:Exception|Error|Throwable)")
 private val IPV4 = Regex("(?:\\d{1,3}\\.){3}\\d{1,3}")
 private val HEX_RUN = Regex("[0-9a-fA-F]{32,}")
 private val SENSITIVE_PATH = Regex(
@@ -179,6 +243,7 @@ private fun sensitivePath(path: String): Boolean {
     if (SENSITIVE_PATH.containsMatchIn(path)) return true
     if (HEX_RUN.containsMatchIn(path)) return true
     if (IPV4.containsMatchIn(path)) return true
+    if (LogRedaction.containsPaymentCode(path)) return true
     return false
 }
 
