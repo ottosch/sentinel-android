@@ -38,8 +38,8 @@ public class Boltzmann {
         txProcessor.processTx(txos, maxCjIntrafeesRatio, linkerOptions);
 
     long duration = (System.currentTimeMillis() - t1) / 1000;
-    // Silent on purpose (#564). BoltzmannResult.print() dumps inputs, outputs,
-    // fees and the export JSON. The CLI main is the only caller of print().
+    // Silent on purpose (#564). The CLI report lives on Application, not on
+    // this library type, so a caller cannot dump inputs and outputs.
     return new BoltzmannResult(duration, txProcessorResult);
   }
 }

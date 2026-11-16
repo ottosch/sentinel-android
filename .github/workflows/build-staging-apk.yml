@@ -161,20 +161,18 @@ jobs:
           ./gradlew --version
           sdkmanager --list_installed
 
-      - name: Guard - no logback on the staging release runtime classpath
+      - name: Guard - every release runtime classpath binds only slf4j-nop
         shell: bash
         run: |
           set -euo pipefail
-          out="$RUNNER_TEMP/staging-release-runtime.txt"
-          ./gradlew :app:dependencies --configuration stagingReleaseRuntimeClasspath --console=plain > "$out"
-          if grep -E 'ch\.qos\.logback' "$out"; then
-            echo "::error::ch.qos.logback is on stagingReleaseRuntimeClasspath (#564)"
-            exit 1
-          fi
-          if ! grep -E 'org\.slf4j:slf4j-nop:' "$out"; then
-            echo "::error::slf4j-nop is not on stagingReleaseRuntimeClasspath (#564)"
-            exit 1
-          fi
+          dir="$RUNNER_TEMP/log-backends"
+          mkdir -p "$dir"
+          for cfg in stagingReleaseRuntimeClasspath productionReleaseRuntimeClasspath; do
+            ./gradlew :app:dependencies --configuration "$cfg" --console=plain > "$dir/$cfg.txt"
+          done
+          python3 scripts/check-log-backends.py \
+            "$dir/stagingReleaseRuntimeClasspath.txt" \
+            "$dir/productionReleaseRuntimeClasspath.txt"
 
       - name: Build staging debug APK
         run: ./gradlew --stacktrace :app:assembleStagingDebug
@@ -383,6 +381,28 @@ jobs:
             sha256sum "$base" > SHA256SUMS.txt
           )
           cat release-artifacts/SHA256SUMS.txt
+
+      - name: Build production release APK
+        run: ./gradlew --stacktrace :app:assembleProductionRelease
+
+      - name: Guard - release dex does not gain a logcat call
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          staging=(app/build/outputs/apk/staging/release/*.apk)
+          production=(app/build/outputs/apk/production/release/*.apk)
+          if [ "${#staging[@]}" -ne 1 ] || [ "${#production[@]}" -ne 1 ]; then
+            echo "Expected one staging and one production release APK."
+            printf 'staging: %s\n' "${staging[@]:-}"
+            printf 'production: %s\n' "${production[@]:-}"
+            exit 1
+          fi
+          python3 scripts/check-release-dex.py \
+            "${staging[0]}" \
+            app/build/outputs/mapping/stagingRelease/mapping.txt \
+            "${production[0]}" \
+            app/build/outputs/mapping/productionRelease/mapping.txt
 
       - name: Upload staging release APK
         if: startsWith(github.ref, 'refs/tags/')
