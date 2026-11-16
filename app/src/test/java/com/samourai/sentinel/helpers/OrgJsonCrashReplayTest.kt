@@ -224,6 +224,21 @@ class OrgJsonCrashReplayTest {
      */
     @Test(timeout = 30_000)
     fun tokenRefreshOnASmallStackRefusesFourThousandNestedArrays() {
+        driveRefresh(refreshBomb(), SafeJson.DEPTH_MESSAGE)
+    }
+
+    /**
+     * The same chain, with the nesting hidden from a double-quote-only
+     * scan by a block comment: `{"authorizations":{"access_token":/*"*/[…]}}`.
+     * AOSP org.json skips the comment and then recurses. The pre-scan
+     * rejects the comment before that parser runs.
+     */
+    @Test(timeout = 30_000)
+    fun tokenRefreshRejectsNestingHiddenByAComment() {
+        driveRefresh(refreshBombHiddenInComment(), SafeJson.SYNTAX_MESSAGE)
+    }
+
+    private fun driveRefresh(refreshBody: String, expectedMessage: String) {
         prefs.refreshToken = "refresh-old"
         prefs.authorization = "expired-token"
         shadowOf(Looper.getMainLooper()).idle()
@@ -234,7 +249,7 @@ class OrgJsonCrashReplayTest {
                 seen.add(path)
                 return when {
                     path.startsWith("/auth/refresh") ->
-                        MockResponse().setResponseCode(200).setBody(refreshBomb())
+                        MockResponse().setResponseCode(200).setBody(refreshBody)
                     path.startsWith("/wallet") ->
                         MockResponse().setResponseCode(401).setBody("expired")
                     else -> error("unexpected $path")
@@ -276,7 +291,7 @@ class OrgJsonCrashReplayTest {
             shadowOf(Looper.getMainLooper()).idle()
             assertEquals("expired-token", prefs.authorization)
             val refusal = logged.filterIsInstance<UnsafeJsonException>().single()
-            assertEquals(SafeJson.DEPTH_MESSAGE, refusal.message)
+            assertEquals(expectedMessage, refusal.message)
             assertNull(refusal.cause)
             assertTrue(logged.none { it is StackOverflowError })
         } finally {
@@ -331,5 +346,15 @@ class OrgJsonCrashReplayTest {
             repeat(4000) { append(']') }
         }
         return """{"authorizations":$nested}"""
+    }
+
+    /** About 10,000 arrays after a comment that a double-quote scan treats as a string. */
+    private fun refreshBombHiddenInComment(): String {
+        val nested = buildString {
+            repeat(10_000) { append('[') }
+            append('1')
+            repeat(10_000) { append(']') }
+        }
+        return """{"authorizations":{"access_token":/*"*/$nested}}"""
     }
 }

@@ -742,7 +742,7 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
                     // throw before that, and a null body (close is a no-op).
                     // #567: the cap is applied while the socket is read.
                     try {
-                        val body = response.body?.readUtf8Capped() ?: "{}"
+                        val body = response.body?.readUtf8Capped(SafeJson.AUTH_MAX_BYTES) ?: "{}"
                         if (response.code == 401 || (response.isSuccessful && !body.contains("authorizations"))) {
                             Timber.d("Unauthorized: wrong API key")
                             // #261: newly reachable AFTER consent - the
@@ -750,6 +750,12 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
                             dismissAllOrToast(false)
                         }
                         else if (response.isSuccessful) {
+                            // #567: parse here, on the callback thread. A
+                            // throw inside mainHandler.post is uncaught on
+                            // the main looper and kills the process at the
+                            // Pair tap. The failure toast is the same one
+                            // a rejected key uses.
+                            val parsed = SafeJson.parseObject(body)
                             // #261: consent is already spent - the Pair tap
                             // preceded this response - so a 200 commits
                             // directly. The gate has nothing left to decide
@@ -758,10 +764,13 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
                             // body ride the mainHandler closure into
                             // commitPairing(), the exact commit body #234
                             // gated and #256 receipted.
-                            mainHandler.post { commitPairing(pairing, SafeJson.parseObject(body)) }
+                            mainHandler.post { commitPairing(pairing, parsed) }
                         }  else {
                             dismissAllOrToast(false)
                         }
+                    } catch (e: Exception) {
+                        Timber.w(e, "Dojo pairing response was not usable")
+                        dismissAllOrToast(false)
                     } finally {
                         try {
                             response.body?.close()

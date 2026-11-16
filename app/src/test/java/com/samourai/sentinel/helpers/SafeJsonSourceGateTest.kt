@@ -50,6 +50,28 @@ class SafeJsonSourceGateTest {
     }
 
     @Test
+    fun authAndFeesAreCappedAtSixtyFourKibAndPairingParsesBeforeTheMainThread() {
+        val api = readMain("com/samourai/sentinel/api/ApiService.kt")
+        val refresh = api.substringAfter("fun refreshDojoToken").substringBefore("fun checkImportStatus")
+        val login = api.substringAfter("fun authenticateDojo(").substringBefore("fun getTx(")
+        val fees = api.substringAfter("fun getFees()").substringBefore("fun getWallet(")
+        assertTrue(refresh.contains("maxBodyBytes = SafeJson.AUTH_MAX_BYTES"))
+        assertTrue(login.contains("maxBodyBytes = SafeJson.AUTH_MAX_BYTES"))
+        assertTrue(fees.contains("maxBodyBytes = SafeJson.FEES_MAX_BYTES"))
+
+        val sheet = readMain("com/samourai/sentinel/ui/dojo/DojoConfigureBottomSheet.kt")
+        val callback = sheet.substringAfter("override fun onResponse")
+        val parse = callback.indexOf("SafeJson.parseObject")
+        val post = callback.indexOf("mainHandler.post { commitPairing")
+        assertTrue(parse in 0 until post)
+        assertTrue(!callback.substring(post).contains("SafeJson.parseObject"))
+        assertTrue(callback.contains("catch (e: Exception)"))
+        assertTrue(callback.contains("dojo pairing response was not usable") ||
+            callback.contains("Dojo pairing response was not usable"))
+        assertTrue(callback.contains("readUtf8Capped(SafeJson.AUTH_MAX_BYTES)"))
+    }
+
+    @Test
     fun safeJsonCatchesOnlyStackOverflowError() {
         val source = mainJava().resolve(
             "com/samourai/sentinel/helpers/SafeJson.kt",
@@ -177,6 +199,8 @@ class SafeJsonSourceGateTest {
         }
         return text.substring(start)
     }
+
+    private fun readMain(relative: String): String = mainJava().resolve(relative).readText()
 
     private fun mainJava(): File {
         val found = listOf(File("app/src/main/java"), File("src/main/java")).firstOrNull { it.isDirectory }

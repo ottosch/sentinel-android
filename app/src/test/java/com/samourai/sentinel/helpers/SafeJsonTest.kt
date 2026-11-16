@@ -110,11 +110,59 @@ class SafeJsonTest {
     }
 
     @Test
-    fun aTruncatedDocumentIsTheParsersError() {
-        val thrown = assertThrowsJson("""{"a":""") { SafeJson.parseObject(it) }
-        assertFalse(thrown is UnsafeJsonException)
-        val cutOffEscape = assertThrowsJson("""{"a":"\""") { SafeJson.parseObject(it) }
-        assertFalse(cutOffEscape is UnsafeJsonException)
+    fun aTruncatedDocumentIsRefusedBeforeTheParser() {
+        val thrown = refusedObject("""{"a":""")
+        assertEquals(SafeJson.SYNTAX_MESSAGE, thrown.message)
+        assertNull(thrown.cause)
+        val cutOffEscape = refusedObject("""{"a":"\""")
+        assertEquals(SafeJson.SYNTAX_MESSAGE, cutOffEscape.message)
+        assertNull(cutOffEscape.cause)
+    }
+
+    @Test
+    fun lenientSyntaxIsRefusedBeforeTheParser() {
+        val hidden = "[".repeat(10_000)
+        val cases = listOf(
+            "/*\"*/$hidden",
+            "//\"\n$hidden",
+            "#\"\n$hidden",
+            "['\"',$hidden",
+            "[',[']',$hidden",
+            "{a:1}",
+            "{'a':1}",
+            "{\"a\"=1}",
+            "{\"a\"=>1}",
+            "[1;2]",
+            "]",
+            "}",
+            "{",
+            "{}{}",
+            "hello",
+            "+1",
+            "01",
+        )
+        for (text in cases) {
+            val thrown = refusedObject(text)
+            assertEquals(text.take(24), SafeJson.SYNTAX_MESSAGE, thrown.message)
+            assertNull(text.take(24), thrown.cause)
+        }
+    }
+
+    @Test
+    fun tooManyValuesIsRefusedBeforeTheParser() {
+        val body = buildString(SafeJson.MAX_JSON_VALUES * 3 + 2) {
+            append('[')
+            repeat(SafeJson.MAX_JSON_VALUES) { index ->
+                if (index > 0) append(',')
+                append("{}")
+            }
+            append(']')
+        }
+        assertTrue(body.length < SafeJson.MAX_JSON_BYTES)
+        val thrown = refused(body)
+        assertEquals(SafeJson.VALUES_MESSAGE, thrown.message)
+        assertNull(thrown.cause)
+        assertEquals(2, SafeJson.parseArray("[{},{}]").length())
     }
 
     @Test
@@ -142,9 +190,10 @@ class SafeJsonTest {
         assertEquals(SafeJson.SIZE_MESSAGE, thrown.message)
         assertNull(thrown.cause)
 
-        val exact = "x".repeat(SafeJson.MAX_JSON_BYTES)
-        val parsed = assertThrowsJson(exact) { SafeJson.parseObject(it) }
-        assertFalse(parsed is UnsafeJsonException)
+        val pad = SafeJson.MAX_JSON_BYTES - """{"a":""}""".length
+        val exact = "{\"a\":\"" + "x".repeat(pad) + "\"}"
+        assertEquals(SafeJson.MAX_JSON_BYTES, exact.length)
+        assertEquals(pad, SafeJson.parseObject(exact).getString("a").length)
     }
 
     @Test

@@ -289,7 +289,7 @@ open class ApiService {
             .post(formBody)
             .url("${getAPIUrl()}/auth/refresh")
             .build()
-        return callOn(http, request, maxBodyBytes = SafeJson.MAX_JSON_BYTES)
+        return callOn(http, request, maxBodyBytes = SafeJson.AUTH_MAX_BYTES)
     }
 
 
@@ -298,7 +298,7 @@ open class ApiService {
         val request = Request.Builder()
             .url("${getAPIUrl()}/xpub/${pubKey}/import/status")
             .build()
-        val response = callOn(http, request, maxBodyBytes = SafeJson.MAX_JSON_BYTES)
+        val response = callOn(http, request, maxBodyBytes = SafeJson.SMALL_BODY_MAX_BYTES)
         val status = response.body?.string()
         if (!status.isNullOrEmpty()) {
             val json = SafeJson.parseObject(status)
@@ -343,7 +343,7 @@ open class ApiService {
             .post(formBody)
             .build()
 
-        return callOn(http, request, maxBodyBytes = SafeJson.MAX_JSON_BYTES)
+        return callOn(http, request, maxBodyBytes = SafeJson.SMALL_BODY_MAX_BYTES)
     }
 
     /**
@@ -389,7 +389,7 @@ open class ApiService {
                 .post(formBody)
                 .build()
 
-            callOn(rescanClient, request, maxBodyBytes = SafeJson.MAX_JSON_BYTES)
+            callOn(rescanClient, request, maxBodyBytes = SafeJson.SMALL_BODY_MAX_BYTES)
         }
 
     /**
@@ -497,7 +497,7 @@ open class ApiService {
             .post(formBody)
             .url("${getAPIUrl()}/auth/login")
             .build()
-        return callOn(http, request, maxBodyBytes = SafeJson.MAX_JSON_BYTES)
+        return callOn(http, request, maxBodyBytes = SafeJson.AUTH_MAX_BYTES)
     }
 
 
@@ -506,7 +506,7 @@ open class ApiService {
         val request = Request.Builder()
             .url("${getAPIUrl()}/tx/${txId}?fees=1")
             .build()
-        return callOn(http, request, maxBodyBytes = SafeJson.MAX_JSON_BYTES)
+        return callOn(http, request, maxBodyBytes = SafeJson.TX_MAX_BYTES)
     }
 
 
@@ -515,7 +515,7 @@ open class ApiService {
         val request = Request.Builder()
             .url("${getAPIUrl()}/fees")
             .build()
-        return callOn(http, request, maxBodyBytes = SafeJson.MAX_JSON_BYTES)
+        return callOn(http, request, maxBodyBytes = SafeJson.FEES_MAX_BYTES)
     }
 
 
@@ -524,7 +524,7 @@ open class ApiService {
         val request = Request.Builder()
             .url("${getAPIUrl()}/wallet?active=${pubKey}")
             .build()
-        return callOn(http, request, maxBodyBytes = SafeJson.MAX_JSON_BYTES)
+        return callOn(http, request, maxBodyBytes = SafeJson.WALLET_MAX_BYTES)
     }
 
     /**
@@ -547,7 +547,7 @@ open class ApiService {
         // Dojo TokenAuthenticator: it would burn a real Dojo re-login and
         // retry the exchange URL with `at=<Dojo access token>` appended.
         val http = buildClient(excludeApiKey = excludeApiKey, excludeAuthenticator = true)
-        return callOn(http, request, maxBodyBytes = SafeJson.MAX_JSON_BYTES)
+        return callOn(http, request, maxBodyBytes = SafeJson.SMALL_BODY_MAX_BYTES)
     }
 
 
@@ -582,7 +582,7 @@ open class ApiService {
             .url("${getAPIUrl()}/pushtx/")
             .post(formBody)
             .build()
-        val response = callOn(http, request, maxBodyBytes = SafeJson.MAX_JSON_BYTES)
+        val response = callOn(http, request, maxBodyBytes = SafeJson.SMALL_BODY_MAX_BYTES)
         val string = response.body?.string() ?: "{}"
         val json = SafeJson.parseObject(string)
         return if (response.isSuccessful) {
