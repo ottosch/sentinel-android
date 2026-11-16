@@ -1,7 +1,6 @@
 package com.samourai.sentinel.ui.webview
 
 import com.samourai.sentinel.data.txfacts.TxFactsResolver
-import java.net.URI
 
 /**
  * #472: how the explorer WebView may load, decided from routing state.
@@ -79,22 +78,21 @@ enum class ExplorerFollowup {
 }
 
 /**
- * True when [url]'s host, or [host] when the URL did not parse, ends
- * in `.onion`. Case-insensitive. A trailing dot is still that host.
- * Userinfo and path are not the host.
+ * True when [url]'s host, or [host] when one was supplied, is an
+ * `.onion` name after percent-decoding and IDN mapping. A trailing
+ * dot is still that host. Userinfo and path are not the host.
+ * A value that was supplied and does not parse fails closed: it
+ * is treated as requiring Tor. A null URL with no host does not.
  */
 fun onionAuthority(url: String?, host: String? = null): Boolean {
     if (onionHost(host)) return true
-    if (url.isNullOrBlank()) return false
-    if (TxFactsResolver.isOnionHost(url)) return true
-    val parsed = runCatching { URI(url.trim()).host }.getOrNull()
-    return onionHost(parsed)
+    if (!url.isNullOrBlank() && TxFactsResolver.isOnionHost(url)) return true
+    if (TxFactsResolver.normalizedHost(url) != null) return false
+    if (!host.isNullOrBlank()) return false
+    return !url.isNullOrBlank()
 }
 
-fun onionHost(host: String?): Boolean {
-    val name = host?.trim()?.trimEnd('.')?.lowercase() ?: return false
-    return name.endsWith(".onion") && name.length > ".onion".length
-}
+fun onionHost(host: String?): Boolean = TxFactsResolver.hostIsOnion(host)
 
 /**
  * An onion target is allowed only when this WebView started on the Tor

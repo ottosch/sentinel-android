@@ -1,6 +1,6 @@
 package com.samourai.sentinel.data.txfacts
 
-import java.net.URI
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 /**
  * #119 Route A: destination cascade for the live tx-facts fetch.
@@ -54,13 +54,8 @@ object TxFactsResolver {
 
     /** True when the URL's host is mempool.space's onion service. */
     fun isMempoolOnionHost(url: String?): Boolean {
-        if (url.isNullOrBlank()) return false
-        return try {
-            val host = URI(url.trim()).host ?: return false
-            host.equals(MEMPOOL_ONION_HOST, ignoreCase = true)
-        } catch (e: Exception) {
-            false
-        }
+        val host = normalizedHost(url)?.trimEnd('.') ?: return false
+        return host.equals(MEMPOOL_ONION_HOST, ignoreCase = true)
     }
 
     enum class Destination { SELF, PUBLIC }
@@ -75,19 +70,55 @@ object TxFactsResolver {
         }
 
     /**
-     * True only when the URL's authority is an `.onion` host. Not
-     * the userinfo, not a path segment: `x.onion@evil.example` and
-     * `https://evil.example/x.onion` are not onion hosts. The
-     * scheme is not consulted - an onion explorer published with a
-     * `https` scheme stays the Dojo's own.
+     * Host Chromium would use, or null when [url] is not an http(s)
+     * URL. Tab, CR, and LF are removed first, the way the URL
+     * parser removes them. OkHttp percent-decodes the host and
+     * maps it with IDN. A scheme-less string has no host.
+     */
+    fun normalizedHost(url: String?): String? {
+        if (url.isNullOrBlank()) return null
+        val stripped = stripUrlSpace(url.trim())
+        if (stripped.isEmpty()) return null
+        return stripped.toHttpUrlOrNull()?.host?.takeIf { it.isNotEmpty() }
+    }
+
+    /**
+     * True when [host] is an `.onion` name after the same
+     * percent-decoding and IDN mapping [normalizedHost] applies.
+     * A trailing dot is still that host. Null and a name that
+     * does not parse are not onion hosts.
+     */
+    fun hostIsOnion(host: String?): Boolean {
+        val name = canonicalHost(host)?.trimEnd('.')?.lowercase() ?: return false
+        return name.endsWith(".onion") && name.length > ".onion".length
+    }
+
+    /**
+     * True only when the URL's host is an `.onion` name. Not the
+     * userinfo, not a path segment: `x.onion@evil.example` and
+     * `https://evil.example/x.onion` are not onion hosts. An
+     * encoded `x.oni%6fn`, a full-width `ｘ.ｏｎｉｏｎ`, and
+     * `x.onion。` are. The scheme is not consulted beyond http(s):
+     * an onion explorer published with `https` stays the Dojo's own.
+     * A URL that does not parse is not an onion host.
      */
     fun isOnionHost(url: String?): Boolean {
-        if (url.isNullOrBlank()) return false
-        return try {
-            val host = URI(url.trim()).host ?: return false
-            host.lowercase().endsWith(".onion")
-        } catch (e: Exception) {
-            false
+        val host = normalizedHost(url) ?: return false
+        val name = host.trimEnd('.').lowercase()
+        return name.endsWith(".onion") && name.length > ".onion".length
+    }
+
+    private fun canonicalHost(host: String?): String? {
+        if (host.isNullOrBlank()) return null
+        val cleaned = stripUrlSpace(host.trim()).trim('/')
+        if (cleaned.isEmpty()) return null
+        return "http://$cleaned/".toHttpUrlOrNull()?.host?.takeIf { it.isNotEmpty() }
+    }
+
+    private fun stripUrlSpace(value: String): String = buildString(value.length) {
+        for (c in value) {
+            if (c == '\t' || c == '\n' || c == '\r') continue
+            append(c)
         }
     }
 

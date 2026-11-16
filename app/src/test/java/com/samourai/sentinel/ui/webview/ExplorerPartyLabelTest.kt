@@ -115,6 +115,12 @@ class ExplorerPartyLabelTest {
         )
         assertEquals("blockstream.info", ExplorerOpener.partyLabelOf("https://blockstream.info/tx/{txid}"))
 
+        // Chromium deletes the tab, so this loads evil.example.
+        // Prepending a scheme onto the unstripped text labeled it "https".
+        assertEquals("evil.example", ExplorerOpener.partyLabelOf("https:/\t/evil.example/tx/{txid}"))
+        assertEquals("evil.example", ExplorerOpener.partyLabelOf("https:/\n/evil.example"))
+        assertEquals("evil.example", ExplorerOpener.partyLabelOf("https:/\r\n/evil.example/tx/{txid}"))
+
         // `\` ends the authority before the @, and `pass` is not a
         // port, so Chromium does not load this. Do not guess the
         // host that follows the @.
@@ -133,7 +139,8 @@ class ExplorerPartyLabelTest {
 
         assertFalse(ExplorerOptions.customTemplateRejected("https://explorer.example/tx/{txid}"))
         assertFalse(ExplorerOptions.customTemplateRejected("http://xyz.onion/tx/{txid}"))
-        assertFalse(ExplorerOptions.customTemplateRejected("explorer.example/tx/{address}"))
+        // A scheme is required. A bare host is not saved.
+        assertTrue(ExplorerOptions.customTemplateRejected("explorer.example/tx/{address}"))
         assertFalse(ExplorerOptions.customTemplateRejected("https://explorer.example/tx/{txid}?q=a@b"))
         assertFalse(ExplorerOptions.customTemplateRejected("https://explorer.example/tx/{txid}#a@b"))
         assertFalse(ExplorerOptions.customTemplateRejected("  "))

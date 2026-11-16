@@ -95,6 +95,29 @@ class ExplorerOnionGateTest {
     }
 
     @Test
+    fun `an encoded full width or dotted onion requires tor and an unparsed url fails closed`() {
+        val encoded = "http://x.oni%6fn/tx/$txid"
+        val fullWidth = "http://\uFF58.\uFF4F\uFF4E\uFF49\uFF4F\uFF4E/tx/$txid"
+        val ideographicDot = "http://x.onion\u3002/tx/$txid"
+        assertTrue(ExplorerBinding.lookupRequiresTor(encoded, walletRequiresTor = false))
+        assertTrue(ExplorerBinding.lookupRequiresTor(fullWidth, walletRequiresTor = false))
+        assertTrue(ExplorerBinding.lookupRequiresTor(ideographicDot, walletRequiresTor = false))
+        assertTrue(onionHost("x.oni%6fn"))
+        assertTrue(onionHost("\uFF58.\uFF4F\uFF4E\uFF49\uFF4F\uFF4E"))
+        assertTrue(onionHost("x.onion\u3002"))
+        // The percent-encoding is in the path, not the host.
+        assertFalse(
+            ExplorerBinding.lookupRequiresTor("https://evil.example/x.oni%6fn", walletRequiresTor = false),
+        )
+        // Nothing parsed, so Tor is required. A null URL still adds nothing.
+        assertTrue(ExplorerBinding.lookupRequiresTor("not a uri", walletRequiresTor = false))
+        assertTrue(ExplorerBinding.lookupRequiresTor("javascript:alert(1)", walletRequiresTor = false))
+        assertFalse(ExplorerBinding.lookupRequiresTor(null, walletRequiresTor = false))
+        assertFalse(ExplorerBinding.lookupRequiresTor("   ", walletRequiresTor = false))
+        assertFalse(ExplorerBinding.lookupRequiresTor("https://evil.example/tx/$txid", walletRequiresTor = false))
+    }
+
+    @Test
     fun `a direct session blocks a later onion navigation redirect and subresource`() {
         // Tor off, or Tor up somewhere else but this WebView loaded direct.
         for (ready in listOf(false, true)) {

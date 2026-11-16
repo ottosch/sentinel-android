@@ -317,9 +317,19 @@ class ExplorerOpener(
          * still be named.
          */
         private fun browserHost(substituted: String): String? {
-            substituted.toHttpUrlOrNull()?.host?.takeIf { it.isNotEmpty() }?.let { return it }
-            if ("://" in substituted) return null
-            return "http://$substituted".toHttpUrlOrNull()?.host?.takeIf { it.isNotEmpty() }
+            // Chromium deletes tab and newline before parsing, so
+            // `https:/\t/evil.example` loads evil.example. Do not
+            // prepend a scheme onto a string that already has one:
+            // that labeled this URL "https".
+            val stripped = buildString(substituted.length) {
+                for (c in substituted) {
+                    if (c == '\t' || c == '\n' || c == '\r') continue
+                    append(c)
+                }
+            }
+            stripped.toHttpUrlOrNull()?.host?.takeIf { it.isNotEmpty() }?.let { return it }
+            if (':' in stripped) return null
+            return "http://$stripped".toHttpUrlOrNull()?.host?.takeIf { it.isNotEmpty() }
         }
 
         /** The URL itself, shortened. Not a host taken from a failed parse. */

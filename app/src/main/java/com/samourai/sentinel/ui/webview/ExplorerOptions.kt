@@ -1,7 +1,6 @@
 package com.samourai.sentinel.ui.webview
 
 import com.samourai.sentinel.data.txfacts.TxFactsResolver
-import java.net.URI
 
 /**
  * Settings rows, info-sheet choice, and "don't show again" for the
@@ -193,39 +192,27 @@ object ExplorerOptions {
 
     /**
      * True when Settings must not save this Custom template.
-     * Chromium treats `\` as `/` in an http(s) URL, and the host is
-     * only what follows the last `@` in the authority, so either one
-     * can open a different site than the address looks like. An `@`
-     * in the query or the fragment is not userinfo. A blank value is
-     * a separate "nothing entered" error.
+     * The check is [ExplorerBinding.customTemplateRejected]: http(s)
+     * only, no userinfo, no backslash or control character, no
+     * placeholder in the host, no non-canonical IPv4 host. A blank
+     * value is a separate "nothing entered" error.
      */
-    fun customTemplateRejected(url: String): Boolean {
-        val trimmed = url.trim()
-        if (trimmed.isEmpty()) return false
-        if ('\\' in trimmed) return true
-        val authority = trimmed
-            .substringAfter("://", trimmed)
-            .substringBefore('/')
-            .substringBefore('?')
-            .substringBefore('#')
-        return '@' in authority
-    }
+    fun customTemplateRejected(url: String): Boolean =
+        ExplorerBinding.customTemplateRejected(url)
 
     /**
      * A saved Custom template often contains `{txid}` or `{address}`,
-     * which [java.net.URI] will not parse. Those placeholders are not
-     * part of the host, so they are stood in for before the host check.
-     * The substituted page URL is what the WebView loads.
+     * which are not part of the host, so they are stood in for
+     * before the host check. The substituted page URL is what the
+     * WebView loads. The host is OkHttp's, so an encoded or
+     * full-width onion is an onion and a URL that does not parse
+     * is not.
      */
     private fun customIsOnion(url: String): Boolean =
         TxFactsResolver.isOnionHost(parsable(url))
 
     private fun clearnetHost(url: String): String? =
-        try {
-            URI(parsable(url)).host?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
-        } catch (e: Exception) {
-            null
-        }
+        TxFactsResolver.normalizedHost(parsable(url))
 
     internal fun parsable(url: String): String =
         url.trim()

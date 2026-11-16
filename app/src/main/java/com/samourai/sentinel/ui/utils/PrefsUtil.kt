@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
 import com.samourai.sentinel.data.repository.FeeRepository
+import com.samourai.sentinel.ui.webview.ExplorerBinding
 import org.json.JSONObject
 import timber.log.Timber
 import kotlin.reflect.KMutableProperty
@@ -80,6 +81,14 @@ class PrefsUtil(context: Context) : Preferences(context, "${context.packageName}
     // Blockstream / Blockchair values are rewritten on read.
     var selectedExplorer by stringPref(defaultValue = "Paired")
     var customExplorerUrl by stringPref(defaultValue = "")
+
+    /**
+     * Set by [import] when the backup's custom explorer template
+     * was rejected. The lookup is unbound until the user chooses
+     * again. Cleared at the start of the next import.
+     */
+    var importRejectedCustomExplorer: Boolean = false
+        private set
     // "Don't show again" for one explorer option, plus the route
     // privacy the user accepted. A worse route asks again. The value
     // is option keys, never an onion, a key, or a lookup id.
@@ -182,6 +191,7 @@ class PrefsUtil(context: Context) : Preferences(context, "${context.packageName}
     fun import(payload: JSONObject): JSONObject {
         val clazz = this.javaClass.kotlin
         val skip = PREFS_OMITTED_FROM_BACKUP + setOf("apiEndPoint", "apiEndPointTor")
+        importRejectedCustomExplorer = false
         payload.keys().forEach { key ->
             clazz.declaredMemberProperties.forEach {
                 if (it.name == key && it.name !in skip) {
@@ -193,6 +203,12 @@ class PrefsUtil(context: Context) : Preferences(context, "${context.packageName}
                     }
                 }
             }
+        }
+        val scrubbed = ExplorerBinding.scrubImportedExplorer(customExplorerUrl, selectedExplorer)
+        importRejectedCustomExplorer = scrubbed.rejected
+        if (scrubbed.rejected) {
+            customExplorerUrl = scrubbed.customUrl.orEmpty()
+            scrubbed.selection?.let { selectedExplorer = it }
         }
         return payload
     }

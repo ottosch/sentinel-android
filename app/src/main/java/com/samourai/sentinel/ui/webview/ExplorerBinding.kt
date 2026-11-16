@@ -4,6 +4,7 @@ import com.samourai.sentinel.core.DerivedNetwork
 import com.samourai.sentinel.core.NetworkClassifier
 import com.samourai.sentinel.data.txfacts.TxFactsResolver
 import com.samourai.sentinel.ui.dojo.normalizeDeclaredNetwork
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.net.URI
 
 /**
@@ -103,9 +104,11 @@ object ExplorerBinding {
      * Any host ending in `.onion` is reachable only through Tor,
      * whatever the saved choice. mempool.onion is that rule, not a
      * special case. Every other page follows the wallet's own Tor
-     * requirement. A null URL does not add a requirement. The host
-     * is the authority only: a path or a userinfo trick is not an
-     * onion (SR-23).
+     * requirement. A null URL does not add a requirement. A URL
+     * that does not parse as http(s) does: fail closed, so a bad
+     * template is not fetched in the clear when Tor is off. The
+     * host is the authority only: a path or a userinfo trick is
+     * not an onion (SR-23).
      */
     fun lookupRequiresTor(url: String?, walletRequiresTor: Boolean): Boolean =
         walletRequiresTor || onionAuthority(url)
@@ -131,6 +134,11 @@ object ExplorerBinding {
         if (selection == CHOICE_CUSTOM) {
             val template = facts.customUrl?.trim().orEmpty()
             if (template.isNotEmpty()) {
+                // A stored template that no longer passes the check
+                // is not a bound explorer, and it does not fall
+                // through to the paired one. The lookup stays here
+                // until the user chooses again.
+                if (customTemplateRejected(template)) return ExplorerResolution.Unbound
                 return ExplorerResolution.Bound(
                     kind = ExplorerKind.CUSTOM,
                     baseUrl = template,
@@ -303,6 +311,113 @@ object ExplorerBinding {
             .replace(Regex("(?i)/tx/?$"), "")
             .trimEnd('/')
         return "$base/address/$id"
+    }
+
+    /**
+     * True when a Custom template must not be saved, imported, or
+     * bound. Blank is a separate "nothing entered" error.
+     *
+     * After the placeholders are stood in, only an http(s) URL with
+     * no userinfo is accepted. `\` , tab, CR, LF, and every other
+     * control character are refused, including the single-slash
+     * form `https:/user@host` and a later `://` in the query.
+     * A placeholder in the host is refused, and so is an IPv4 host
+     * written in octal, hex, decimal, or any other non-canonical
+     * form. A strict dotted quad such as `127.0.0.1` is allowed.
+     */
+    fun customTemplateRejected(url: String): Boolean {
+        val trimmed = url.trim()
+        if (trimmed.isEmpty()) return false
+        if (trimmed.any { it == '\\' || it.isISOControl() }) return true
+        if (hostHasPlaceholder(trimmed)) return true
+        if (queryContainsScheme(trimmed)) return true
+        val substituted = trimmed
+            .replace(TXID_PLACEHOLDER, "x", ignoreCase = true)
+            .replace(ADDRESS_PLACEHOLDER, "x", ignoreCase = true)
+        val parsed = substituted.toHttpUrlOrNull() ?: return true
+        if (parsed.username.isNotEmpty() || parsed.password.isNotEmpty()) return true
+        if (authorityHasUserinfo(trimmed)) return true
+        return ambiguousIpv4(parsed.host)
+    }
+
+    /**
+     * Backup import. A rejected template is not a usable explorer.
+     * When Custom is the saved choice the URL is kept so the choice
+     * does not silently become the paired explorer; [resolve] then
+     * leaves the lookup unbound. Any other choice drops the URL.
+     */
+    fun scrubImportedExplorer(customUrl: String?, selection: String?): ImportedExplorer {
+        if (customUrl.isNullOrBlank() || !customTemplateRejected(customUrl)) {
+            return ImportedExplorer(customUrl, selection, rejected = false)
+        }
+        val customSelected = selection?.trim()?.equals(CHOICE_CUSTOM, ignoreCase = true) == true
+        return if (customSelected) {
+            ImportedExplorer(customUrl, selection, rejected = true)
+        } else {
+            ImportedExplorer("", selection, rejected = true)
+        }
+    }
+
+    data class ImportedExplorer(
+        val customUrl: String?,
+        val selection: String?,
+        val rejected: Boolean,
+    )
+
+    private fun hostHasPlaceholder(url: String): Boolean {
+        val host = authorityHost(url)
+        return host.contains(TXID_PLACEHOLDER, ignoreCase = true) ||
+            host.contains(ADDRESS_PLACEHOLDER, ignoreCase = true)
+    }
+
+    /** `@` in the authority, including an empty `https://@host`. */
+    private fun authorityHasUserinfo(url: String): Boolean = '@' in authorityOf(url)
+
+    private fun authorityHost(url: String): String {
+        val hostPort = authorityOf(url).substringAfterLast('@')
+        return if (hostPort.startsWith("[")) {
+            hostPort.removePrefix("[").substringBefore(']')
+        } else {
+            hostPort.substringBefore(':')
+        }
+    }
+
+    private fun authorityOf(url: String): String {
+        val scheme = url.indexOf(':')
+        val rest = if (scheme > 0 && url.getOrNull(scheme + 1) == '/') {
+            url.substring(scheme + 1).dropWhile { it == '/' }
+        } else {
+            url
+        }
+        return rest.substringBefore('/').substringBefore('?').substringBefore('#')
+    }
+
+    private fun queryContainsScheme(url: String): Boolean {
+        val queryAt = url.indexOf('?')
+        if (queryAt < 0) return false
+        val hash = url.indexOf('#', queryAt)
+        val query = if (hash < 0) url.substring(queryAt + 1) else url.substring(queryAt + 1, hash)
+        return "://" in query
+    }
+
+    /**
+     * True for an IPv4 host that is not four decimal octets in
+     * 0..255 without a leading zero. Octal (`0177.0.0.1`), hex
+     * (`0x7f.0.0.1`), and the decimal dword (`2130706433`) are
+     * the forms this refuses.
+     */
+    private fun ambiguousIpv4(host: String): Boolean {
+        val name = host.trim().trimEnd('.').lowercase()
+        if (name.isEmpty() || ':' in name) return false
+        if ("0x" in name) return true
+        val parts = name.split('.')
+        if (parts.any { it.isEmpty() } || parts.any { part -> part.any { !it.isDigit() } }) {
+            return false
+        }
+        val canonical = parts.size == 4 && parts.all { part ->
+            (part == "0" || !part.startsWith('0')) && (part.toIntOrNull() ?: -1) in 0..255
+        }
+        return !canonical
     }
 
     private fun customRoot(template: String): String {
