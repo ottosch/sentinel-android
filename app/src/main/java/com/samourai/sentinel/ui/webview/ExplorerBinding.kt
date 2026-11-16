@@ -4,6 +4,7 @@ import com.samourai.sentinel.core.DerivedNetwork
 import com.samourai.sentinel.core.NetworkClassifier
 import com.samourai.sentinel.data.txfacts.TxFactsResolver
 import com.samourai.sentinel.ui.dojo.normalizeDeclaredNetwork
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.net.URI
 
 /**
@@ -103,9 +104,11 @@ object ExplorerBinding {
      * Any host ending in `.onion` is reachable only through Tor,
      * whatever the saved choice. mempool.onion is that rule, not a
      * special case. Every other page follows the wallet's own Tor
-     * requirement. A null URL does not add a requirement. The host
-     * is the authority only: a path or a userinfo trick is not an
-     * onion (SR-23).
+     * requirement. A null URL does not add a requirement. An http,
+     * https, ws, or wss URL whose host does not parse does: fail
+     * closed. A hostless scheme such as data: or mailto: does not.
+     * The host is the authority only: a path or a userinfo trick
+     * is not an onion (SR-23).
      */
     fun lookupRequiresTor(url: String?, walletRequiresTor: Boolean): Boolean =
         walletRequiresTor || onionAuthority(url)
@@ -131,6 +134,11 @@ object ExplorerBinding {
         if (selection == CHOICE_CUSTOM) {
             val template = facts.customUrl?.trim().orEmpty()
             if (template.isNotEmpty()) {
+                // A stored template that no longer passes the check
+                // is not a bound explorer, and it does not fall
+                // through to the paired one. The lookup stays here
+                // until the user chooses again.
+                if (customTemplateRejected(template)) return ExplorerResolution.Unbound
                 return ExplorerResolution.Bound(
                     kind = ExplorerKind.CUSTOM,
                     baseUrl = template,
@@ -146,7 +154,7 @@ object ExplorerBinding {
         val clean = id.trim()
         if (clean.isEmpty()) return null
         return when (bound.kind) {
-            ExplorerKind.CUSTOM -> customPage(bound.baseUrl, page, clean)
+            ExplorerKind.CUSTOM -> customPage(bound.baseUrl, page, clean) ?: return null
             else -> joinBase(bound.baseUrl, page, clean)
         }
     }
@@ -287,9 +295,13 @@ object ExplorerBinding {
         return "$root/$segment/$id"
     }
 
-    private fun customPage(template: String, page: ExplorerPage, id: String): String {
+    private fun customPage(template: String, page: ExplorerPage, id: String): String? {
         if (page == ExplorerPage.TX) {
             return if (template.contains(TXID_PLACEHOLDER, ignoreCase = true)) {
+                // A value that is not a txid must not be written into
+                // the template. `https:{txid}` would otherwise take
+                // whatever string the caller passed as its host.
+                if (!isHexTxid(id)) return null
                 template.replace(TXID_PLACEHOLDER, id, ignoreCase = true)
             } else {
                 template.trimEnd('/') + "/" + id
@@ -303,6 +315,184 @@ object ExplorerBinding {
             .replace(Regex("(?i)/tx/?$"), "")
             .trimEnd('/')
         return "$base/address/$id"
+    }
+
+    /**
+     * True when a Custom template must not be saved, imported, or
+     * bound. Blank is a separate "nothing entered" error.
+     *
+     * After the placeholders are stood in, only an http(s) URL with
+     * no userinfo is accepted. `\` , tab, CR, LF, and every other
+     * control character are refused, including the single-slash
+     * form `https:/user@host`. A second scheme in the authority or
+     * the path is refused; one in the query is not. The host must
+     * be the same for two different placeholder values, must be
+     * ASCII (punycode is allowed), and must not be an octal, hex,
+     * or other odd IPv4 form. A strict dotted quad such as
+     * `127.0.0.1` is allowed.
+     */
+    fun customTemplateRejected(url: String): Boolean {
+        val trimmed = url.trim()
+        if (trimmed.isEmpty()) return false
+        if (trimmed.any { it == '\\' || it.isISOControl() }) return true
+        if (hostHasPlaceholder(trimmed)) return true
+        if (embeddedScheme(trimmed)) return true
+        if (authorityHasUserinfo(trimmed)) return true
+        if (rawHostHasNonAscii(trimmed)) return true
+        val first = substitutedHost(trimmed, "aaaa", "addr-a")
+        val second = substitutedHost(trimmed, "bbbb", "addr-b")
+        if (first == null || second == null || !first.equals(second, ignoreCase = true)) return true
+        val parsed = substitute(trimmed, "aaaa", "addr-a").toHttpUrlOrNull() ?: return true
+        if (parsed.username.isNotEmpty() || parsed.password.isNotEmpty()) return true
+        return ambiguousIpv4(parsed.host)
+    }
+
+    /**
+     * Backup import. A rejected template is not a usable explorer.
+     * When Custom is the saved choice the URL is kept so the choice
+     * does not silently become the paired explorer; [resolve] then
+     * leaves the lookup unbound. Any other choice drops the URL.
+     */
+    fun scrubImportedExplorer(customUrl: String?, selection: String?): ImportedExplorer {
+        if (customUrl.isNullOrBlank() || !customTemplateRejected(customUrl)) {
+            return ImportedExplorer(customUrl, selection, rejected = false)
+        }
+        val customSelected = selection?.trim()?.equals(CHOICE_CUSTOM, ignoreCase = true) == true
+        return if (customSelected) {
+            ImportedExplorer(customUrl, selection, rejected = true)
+        } else {
+            ImportedExplorer("", selection, rejected = true)
+        }
+    }
+
+    data class ImportedExplorer(
+        val customUrl: String?,
+        val selection: String?,
+        val rejected: Boolean,
+    )
+
+    private fun hostHasPlaceholder(url: String): Boolean {
+        val host = authorityHost(url)
+        return host.contains(TXID_PLACEHOLDER, ignoreCase = true) ||
+            host.contains(ADDRESS_PLACEHOLDER, ignoreCase = true)
+    }
+
+    /** `@` in the authority, including an empty `https://@host`. */
+    private fun authorityHasUserinfo(url: String): Boolean = '@' in authorityOf(url)
+
+    private fun authorityHost(url: String): String {
+        val hostPort = authorityOf(url).substringAfterLast('@')
+        return if (hostPort.startsWith("[")) {
+            hostPort.removePrefix("[").substringBefore(']')
+        } else {
+            hostPort.substringBefore(':')
+        }
+    }
+
+    private fun authorityOf(url: String): String {
+        val scheme = url.indexOf(':')
+        val rest = if (scheme > 0 && url.getOrNull(scheme + 1) == '/') {
+            url.substring(scheme + 1).dropWhile { it == '/' }
+        } else {
+            url
+        }
+        return rest.substringBefore('/').substringBefore('?').substringBefore('#')
+    }
+
+    /**
+     * A second `://` after the URL's own scheme, in the authority
+     * or the path. A `://` in the query or the fragment is left
+     * alone: explorers put links there.
+     */
+    private fun embeddedScheme(url: String): Boolean {
+        val hash = url.indexOf('#')
+        val beforeFragment = if (hash < 0) url else url.substring(0, hash)
+        val queryAt = beforeFragment.indexOf('?')
+        val beforeQuery = if (queryAt < 0) beforeFragment else beforeFragment.substring(0, queryAt)
+        val schemeEnd = beforeQuery.indexOf(':')
+        if (schemeEnd <= 0) return false
+        return "://" in beforeQuery.substring(schemeEnd + 1)
+    }
+
+    /**
+     * Non-ASCII in the host, including a percent-encoded form such
+     * as `fa%C3%9F.de`. OkHttp maps that to `fass.de`; Chromium
+     * opens `xn--fa-hia.de`. An encoding that decodes to ASCII
+     * (`x.oni%6fn`) stays.
+     */
+    private fun rawHostHasNonAscii(url: String): Boolean {
+        val host = authorityHost(url)
+        if (host.any { it.code > 0x7F }) return true
+        if ('%' !in host) return false
+        val decoded = percentDecodeUtf8(host) ?: return true
+        return decoded.any { it.code > 0x7F }
+    }
+
+    /** Null when a `%` sequence is not two hex digits. */
+    private fun percentDecodeUtf8(value: String): String? {
+        val out = ArrayList<Byte>(value.length)
+        var i = 0
+        while (i < value.length) {
+            val c = value[i]
+            if (c != '%') {
+                if (c.code > 0x7F) return null
+                out.add(c.code.toByte())
+                i++
+                continue
+            }
+            if (i + 2 >= value.length) return null
+            val byte = value.substring(i + 1, i + 3).toIntOrNull(16) ?: return null
+            out.add(byte.toByte())
+            i += 3
+        }
+        return String(out.toByteArray(), Charsets.UTF_8)
+    }
+
+    /**
+     * Host after standing [txid] and [address] in for the
+     * placeholders. Two calls with different values must agree:
+     * `https:{txid}` parses as a different host for each value.
+     */
+    private fun substitutedHost(template: String, txid: String, address: String): String? =
+        substitute(template, txid, address).toHttpUrlOrNull()?.host?.takeIf { it.isNotEmpty() }
+
+    private fun substitute(template: String, txid: String, address: String): String =
+        template
+            .replace(TXID_PLACEHOLDER, txid, ignoreCase = true)
+            .replace(ADDRESS_PLACEHOLDER, address, ignoreCase = true)
+
+    /**
+     * True for an IPv4 host that is not four decimal octets in
+     * 0..255 without a leading zero. Octal (`0177.0.0.1`), a real
+     * hex form (`0x`, `0x7f.0.0.1`, `0x7f000001`), and the decimal dword
+     * (`2130706433`) are refused. A name that merely contains the
+     * letters "0x" is not an IPv4 address.
+     */
+    private fun ambiguousIpv4(host: String): Boolean {
+        val name = host.trim().trimEnd('.').lowercase()
+        if (name.isEmpty() || ':' in name) return false
+        val parts = name.split('.')
+        if (parts.any { it.isEmpty() }) return false
+        if (!parts.all { isDecimalLabel(it) || isHexLabel(it) }) return false
+        if (parts.any { isHexLabel(it) }) return true
+        val canonical = parts.size == 4 && parts.all { part ->
+            (part == "0" || !part.startsWith('0')) && (part.toIntOrNull() ?: -1) in 0..255
+        }
+        return !canonical
+    }
+
+    private fun isDecimalLabel(part: String): Boolean =
+        part.isNotEmpty() && part.all { it.isDigit() }
+
+    private fun isHexLabel(part: String): Boolean =
+        part.length >= 2 &&
+            part.startsWith("0x") &&
+            part.drop(2).all { it in '0'..'9' || it in 'a'..'f' }
+
+    /** 64 hex characters. Anything else is not written into `{txid}`. */
+    internal fun isHexTxid(id: String): Boolean {
+        if (id.length != 64) return false
+        return id.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }
     }
 
     private fun customRoot(template: String): String {

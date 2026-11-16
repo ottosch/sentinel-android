@@ -95,6 +95,47 @@ class ExplorerOnionGateTest {
     }
 
     @Test
+    fun `an encoded full width or dotted onion requires tor and an unparsed url fails closed`() {
+        val encoded = "http://x.oni%6fn/tx/$txid"
+        val fullWidth = "http://\uFF58.\uFF4F\uFF4E\uFF49\uFF4F\uFF4E/tx/$txid"
+        val ideographicDot = "http://x.onion\u3002/tx/$txid"
+        assertTrue(ExplorerBinding.lookupRequiresTor(encoded, walletRequiresTor = false))
+        assertTrue(ExplorerBinding.lookupRequiresTor(fullWidth, walletRequiresTor = false))
+        assertTrue(ExplorerBinding.lookupRequiresTor(ideographicDot, walletRequiresTor = false))
+        assertTrue(onionHost("x.oni%6fn"))
+        assertTrue(onionHost("\uFF58.\uFF4F\uFF4E\uFF49\uFF4F\uFF4E"))
+        assertTrue(onionHost("x.onion\u3002"))
+        // The percent-encoding is in the path, not the host.
+        assertFalse(
+            ExplorerBinding.lookupRequiresTor("https://evil.example/x.oni%6fn", walletRequiresTor = false),
+        )
+        // A network URL with no host fails closed. Hostless schemes do not:
+        // data: images and mailto: links on a clearnet page must still load.
+        assertTrue(ExplorerBinding.lookupRequiresTor("https://", walletRequiresTor = false))
+        assertTrue(ExplorerBinding.lookupRequiresTor("https://bad host/x", walletRequiresTor = false))
+        assertTrue(ExplorerBinding.lookupRequiresTor("ws://", walletRequiresTor = false))
+        assertTrue(ExplorerBinding.lookupRequiresTor("wss://custom.onion/socket", walletRequiresTor = false))
+        assertFalse(ExplorerBinding.lookupRequiresTor("ws://explorer.example/ws", walletRequiresTor = false))
+        assertFalse(ExplorerBinding.lookupRequiresTor("data:image/png,aaaa", walletRequiresTor = false))
+        assertFalse(ExplorerBinding.lookupRequiresTor("about:blank", walletRequiresTor = false))
+        assertFalse(ExplorerBinding.lookupRequiresTor("mailto:user@example.com", walletRequiresTor = false))
+        assertFalse(ExplorerBinding.lookupRequiresTor("intent://scan/#Intent;end", walletRequiresTor = false))
+        assertFalse(ExplorerBinding.lookupRequiresTor("javascript:alert(1)", walletRequiresTor = false))
+        assertFalse(ExplorerBinding.lookupRequiresTor("not a uri", walletRequiresTor = false))
+        assertFalse(ExplorerBinding.lookupRequiresTor(null, walletRequiresTor = false))
+        assertFalse(ExplorerBinding.lookupRequiresTor("   ", walletRequiresTor = false))
+        assertFalse(ExplorerBinding.lookupRequiresTor("https://evil.example/tx/$txid", walletRequiresTor = false))
+    }
+
+    @Test
+    fun `tab cr and lf are removed before the scheme is read`() {
+        assertTrue(ExplorerBinding.lookupRequiresTor("ht\ttps://custom.onion/tx/$txid", walletRequiresTor = false))
+        assertTrue(ExplorerBinding.lookupRequiresTor("ht\r\ntps://custom.onion/x", walletRequiresTor = false))
+        assertFalse(ExplorerBinding.lookupRequiresTor("da\tta:image/png,aaaa", walletRequiresTor = false))
+        assertFalse(ExplorerBinding.lookupRequiresTor("ht\ttps://evil.example/x", walletRequiresTor = false))
+    }
+
+    @Test
     fun `a direct session blocks a later onion navigation redirect and subresource`() {
         // Tor off, or Tor up somewhere else but this WebView loaded direct.
         for (ready in listOf(false, true)) {

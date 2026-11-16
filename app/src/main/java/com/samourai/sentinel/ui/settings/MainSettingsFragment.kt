@@ -424,6 +424,10 @@ class MainSettingsFragment : PreferenceFragmentCompat() {
                 val url = input.trim()
                 if (url.isEmpty()) {
                     Toast.makeText(requireContext(), getString(R.string.explorer_custom_empty), Toast.LENGTH_SHORT).show()
+                } else if (ExplorerOptions.customTemplateRejected(url)) {
+                    // A backslash or a username makes Chromium open a
+                    // different host than the address looks like.
+                    Toast.makeText(requireContext(), getString(R.string.explorer_custom_rejected), Toast.LENGTH_SHORT).show()
                 } else {
                     val save = {
                         prefsUtil.customExplorerUrl = url

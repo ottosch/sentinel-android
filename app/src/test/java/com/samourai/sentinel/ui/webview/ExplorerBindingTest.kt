@@ -298,6 +298,31 @@ class ExplorerBindingTest {
 
         // A page URL with no parsable host fails closed: advisory owed.
         assertTrue(ExplorerBinding.requiresAdvisory(customOnion, "$txid/{txid}"))
+
+        val encoded = ExplorerBinding.resolve(
+            facts(saved = ExplorerBinding.CHOICE_CUSTOM, custom = "http://x.oni%6fn/tx/{txid}"),
+        )
+        val encodedUrl = ExplorerBinding.pageUrl(encoded, ExplorerBinding.ExplorerPage.TX, txid)!!
+        assertFalse(ExplorerBinding.requiresAdvisory(encoded, encodedUrl))
+    }
+
+    @Test
+    fun `a rejected custom template stays unbound even when a paired explorer exists`() {
+        val paired = facts(published = onion, declared = "mainnet")
+        val rejected = ExplorerBinding.resolve(
+            paired.copy(
+                savedSelection = ExplorerBinding.CHOICE_CUSTOM,
+                customUrl = "javascript:alert(1)",
+            ),
+        )
+        assertTrue(rejected is ExplorerBinding.ExplorerResolution.Unbound)
+        val tabbed = ExplorerBinding.resolve(
+            paired.copy(
+                savedSelection = ExplorerBinding.CHOICE_CUSTOM,
+                customUrl = "https:/\t/evil.example/tx/{txid}",
+            ),
+        )
+        assertTrue(tabbed is ExplorerBinding.ExplorerResolution.Unbound)
     }
 
     private fun facts(

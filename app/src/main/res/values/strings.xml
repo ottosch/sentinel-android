@@ -668,6 +668,7 @@
     <string name="explorer_custom_hint" translatable="false">Onion URL, e.g. http://xyz.onion/tx/{txid}</string>
     <string name="explorer_custom_save" translatable="false">Save</string>
     <string name="explorer_custom_empty" translatable="false">No URL entered</string>
+    <string name="explorer_custom_rejected" translatable="false">Enter the explorer address without a backslash or a username.</string>
     <string name="explorer_open" translatable="false">Open in explorer</string>
     <string name="explorer_unbound_title" translatable="false">No block explorer</string>
     <string name="explorer_unbound_message" translatable="false">No explorer is published for this network. Nothing is sent to a third party unless you ask.</string>
@@ -683,5 +684,6 @@
     <string name="explorer_third_party_direct" translatable="false">This load does not go over Tor, so %1$s also sees your IP address.</string>
     <string name="explorer_third_party_unsent" translatable="false">Nothing is sent unless this load goes over Tor.</string>
     <string name="explorer_third_party_guidance" translatable="false">The private option is a paired Dojo explorer. Pair a Community Dojo that publishes an explorer, or set Custom in Settings > Explorer.</string>
+    <string name="explorer_third_party_guidance_paired" translatable="false">The private option is your paired Dojo explorer. Switch to it in Settings > Explorer.</string>
     <string name="explorer_third_party_continue" translatable="false">Continue</string>
 </resources>

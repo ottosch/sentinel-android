@@ -1,7 +1,6 @@
 package com.samourai.sentinel.ui.webview
 
 import com.samourai.sentinel.data.txfacts.TxFactsResolver
-import java.net.URI
 
 /**
  * #472: how the explorer WebView may load, decided from routing state.
@@ -78,23 +77,66 @@ enum class ExplorerFollowup {
     BLOCK_SILENT,
 }
 
+private val NETWORK_SCHEMES = setOf("http", "https", "ws", "wss")
+
 /**
- * True when [url]'s host, or [host] when the URL did not parse, ends
- * in `.onion`. Case-insensitive. A trailing dot is still that host.
- * Userinfo and path are not the host.
+ * True when [url]'s host, or [host] when one was supplied, is an
+ * `.onion` name after percent-decoding and IDN mapping. A trailing
+ * dot is still that host. Userinfo and path are not the host.
+ *
+ * Fail closed only for http, https, ws, and wss when that host
+ * cannot be parsed. `data:`, `about:`, `mailto:`, `intent:`, and
+ * any other hostless scheme are not onion loads.
  */
 fun onionAuthority(url: String?, host: String? = null): Boolean {
     if (onionHost(host)) return true
     if (url.isNullOrBlank()) return false
-    if (TxFactsResolver.isOnionHost(url)) return true
-    val parsed = runCatching { URI(url.trim()).host }.getOrNull()
-    return onionHost(parsed)
+    val cleaned = stripUrlSpace(url)
+    val parsed = networkHost(cleaned)
+    if (parsed != null) return TxFactsResolver.hostIsOnion(parsed)
+    if (!host.isNullOrBlank()) return false
+    val scheme = urlScheme(cleaned)
+    return scheme != null && scheme in NETWORK_SCHEMES
 }
 
-fun onionHost(host: String?): Boolean {
-    val name = host?.trim()?.trimEnd('.')?.lowercase() ?: return false
-    return name.endsWith(".onion") && name.length > ".onion".length
+/** Tab, CR, and LF, removed before the scheme the way WHATWG does. */
+private fun stripUrlSpace(value: String): String = buildString(value.length) {
+    for (c in value) {
+        if (c == '\t' || c == '\n' || c == '\r') continue
+        append(c)
+    }
 }
+
+/** Scheme of [url], or null when it does not start with one. */
+internal fun urlScheme(url: String?): String? {
+    if (url.isNullOrBlank()) return null
+    val trimmed = stripUrlSpace(url).trim()
+    val colon = trimmed.indexOf(':')
+    if (colon <= 0) return null
+    val scheme = trimmed.substring(0, colon)
+    if (!scheme[0].isLetter()) return null
+    if (scheme.any { !(it.isLetterOrDigit() || it == '+' || it == '-' || it == '.') }) return null
+    return scheme.lowercase()
+}
+
+/**
+ * Host of an http(s)/ws(s) URL. ws and wss are read as http and
+ * https so the host check does not depend on OkHttp refusing them.
+ * Null for any other scheme, and for a network URL with no host.
+ */
+private fun networkHost(url: String): String? {
+    val cleaned = stripUrlSpace(url).trim()
+    val scheme = urlScheme(cleaned) ?: return null
+    if (scheme !in NETWORK_SCHEMES) return null
+    val asHttp = when (scheme) {
+        "ws" -> "http" + cleaned.substring(scheme.length)
+        "wss" -> "https" + cleaned.substring(scheme.length)
+        else -> cleaned
+    }
+    return TxFactsResolver.normalizedHost(asHttp)
+}
+
+fun onionHost(host: String?): Boolean = TxFactsResolver.hostIsOnion(host)
 
 /**
  * An onion target is allowed only when this WebView started on the Tor
