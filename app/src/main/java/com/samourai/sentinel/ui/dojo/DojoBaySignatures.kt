@@ -7,9 +7,6 @@ import com.google.gson.JsonNull
 import com.google.gson.JsonObject
 import com.google.gson.JsonPrimitive
 import com.google.gson.annotations.SerializedName
-import com.google.gson.internal.bind.TypeAdapters
-import com.google.gson.stream.JsonReader
-import com.google.gson.stream.JsonToken
 import com.samourai.sentinel.helpers.toJSON
 import com.samourai.wallet.bip47.rpc.PaymentCode
 import org.bitcoinj.core.ECKey
@@ -17,7 +14,6 @@ import org.bitcoinj.core.NetworkParameters
 import org.bitcoinj.params.MainNetParams
 import org.bitcoinj.params.TestNet3Params
 import org.bouncycastle.util.encoders.Base64
-import java.io.StringReader
 import java.math.BigDecimal
 
 /**
@@ -218,15 +214,12 @@ object DojoBaySignatures {
         return NodeCheck.Verified(signerCode, pairingJson, drift)
     }
 
-    /** One JSON value and nothing after it, without Gson's leniency; null if [text] is not strict JSON. */
-    internal fun parseStrictJson(text: String): JsonElement? = try {
-        val reader = JsonReader(StringReader(text))
-        reader.isLenient = false
-        val element = TypeAdapters.JSON_ELEMENT.read(reader)
-        if (reader.peek() != JsonToken.END_DOCUMENT) null else element
-    } catch (e: Exception) {
-        null
-    }
+    /**
+     * One JSON value and nothing after it, as JSON.parse reads it
+     * ([DojoBayJson]: Strictness.STRICT, nesting limit, no byte-order mark);
+     * null if [text] is not one.
+     */
+    internal fun parseStrictJson(text: String): JsonElement? = DojoBayJson.parseTree(text)
 
     /**
      * stableStringify (crypto.ts): keys sorted at every level, values typed.

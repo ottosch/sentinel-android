@@ -5,7 +5,6 @@ import com.google.gson.JsonObject
 import com.samourai.sentinel.api.okHttp.await
 import com.samourai.sentinel.util.ImportTooLargeException
 import com.samourai.sentinel.util.OkHttpLogRedaction
-import com.samourai.sentinel.helpers.fromJSON
 import com.samourai.sentinel.tor.SentinelTorManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -131,7 +130,8 @@ object CommunityDojoRepository {
      * The list is not requested when the operator check already refuses the
      * instance ([refusalCertain]), or when operator.json could not be
      * fetched (a failed fetch either way: the saved list stays up). The one
-     * exception is a 404: the list is still requested, so an address that
+     * exception is a 404: the list is still requested (its status only; the
+     * body is not parsed), so an address that
      * isn't a Dojo Bay at all (its list 404s too) reports the list's own
      * error, and a Dojo Bay that answers its list but has no operator
      * statement gets [Failure.NO_OPERATOR_STATEMENT]. operator.json is a
@@ -147,8 +147,11 @@ object CommunityDojoRepository {
             fetchOperatorWith(client, baseUrl)
         } catch (e: FetchException) {
             if (e.failure == Failure.HTTP_ERROR && e.httpCode == 404) {
-                // Throws the list's own failure if it fails too.
-                fetchWith(client, DojoBaySource.directoryUrl(baseUrl))
+                // Only the list's status is checked: its body is not parsed,
+                // since nothing from an instance without an operator
+                // statement is used. Throws the list's own failure if it
+                // fails too.
+                fetchStatusWith(client, DojoBaySource.directoryUrl(baseUrl))
                 // Dojo Bay answered, it just has no operator statement: say
                 // so rather than "unreachable". Still a failed fetch, so a
                 // saved list from the trusted operator stays up (no age limit).
@@ -176,15 +179,17 @@ object CommunityDojoRepository {
             val response = client.newCall(request).await(maxBodyBytes = MAX_OPERATOR_BYTES)
             response.use {
                 if (!it.isSuccessful) throw FetchException(Failure.HTTP_ERROR, it.code)
-                it.body?.string()
+                // Bytes, not string(): string() would drop a byte-order mark.
+                it.body?.bytes()
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             throw classify(e)
         }
-        if (body.isNullOrBlank()) throw FetchException(Failure.BAD_RESPONSE)
-        val tree = DojoBaySignatures.parseStrictJson(body) as? JsonObject
+        val text = body?.let { DojoBayJson.decodeBody(it) }
+        if (text.isNullOrBlank()) throw FetchException(Failure.BAD_RESPONSE)
+        val tree = DojoBaySignatures.parseStrictJson(text) as? JsonObject
             ?: throw FetchException(Failure.BAD_RESPONSE)
         val doc = try {
             Gson().fromJson(tree, DojoBaySignatures.OperatorDoc::class.java)
@@ -238,18 +243,43 @@ object CommunityDojoRepository {
             throw classify(e)
         }
         val body = try {
-            response.body?.string()
+            // Bytes, not string(): string() would drop a byte-order mark.
+            response.use { it.body?.bytes() }
         } catch (e: Exception) {
             throw classify(e)
         }
         if (!response.isSuccessful) throw FetchException(Failure.HTTP_ERROR, response.code)
-        return parseDirectory(body)
+        val text = body?.let { DojoBayJson.decodeBody(it) } ?: throw FetchException(Failure.BAD_RESPONSE)
+        return parseDirectory(text)
     }
 
-    /** Parses a directory body. Blank, non-JSON, or JSON that is not a directory object is [Failure.BAD_RESPONSE]. */
+    /**
+     * One request to [url] with [client], for its status only: the body is
+     * not parsed. A non-2xx answer is [Failure.HTTP_ERROR]; every failure is
+     * a [FetchException].
+     */
+    internal suspend fun fetchStatusWith(client: OkHttpClient, url: String) {
+        val response = try {
+            val request = Request.Builder().url(url).build()
+            client.newCall(request).await(maxBodyBytes = MAX_DIRECTORY_BYTES)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw classify(e)
+        }
+        response.use {
+            if (!it.isSuccessful) throw FetchException(Failure.HTTP_ERROR, it.code)
+        }
+    }
+
+    /**
+     * Parses a directory body with the strict reader ([DojoBayJson]): blank,
+     * not strict JSON, nested deeper than [DojoBayJson.NESTING_LIMIT], or
+     * not a directory object is [Failure.BAD_RESPONSE].
+     */
     fun parseDirectory(body: String?): List<CommunityDojoNode> {
         if (body.isNullOrBlank()) throw FetchException(Failure.BAD_RESPONSE)
-        val directory = fromJSON<CommunityDojoDirectory>(body)
+        val directory = DojoBayJson.parse(body, CommunityDojoDirectory::class.java)
             ?: throw FetchException(Failure.BAD_RESPONSE)
         return directory.nodes.orEmpty().filterNotNull()
     }

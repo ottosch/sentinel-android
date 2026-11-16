@@ -1,7 +1,6 @@
 package com.samourai.sentinel.ui.dojo
 
 import com.google.gson.annotations.SerializedName
-import com.samourai.sentinel.helpers.fromJSON
 import com.samourai.sentinel.helpers.toJSON
 import java.io.File
 
@@ -75,7 +74,10 @@ class CommunityDojoCache(private val file: File) {
         } catch (e: Exception) {
             return null
         }
-        val entry = fromJSON<Entry>(text) ?: return null
+        // The saved list is read like the list itself (DojoBayJson): a
+        // file that isn't strict JSON within the nesting limit reads as no
+        // saved list, so it can't break every open of the sheet.
+        val entry = DojoBayJson.parse(text, Entry::class.java) ?: return null
         // Gson leaves non-null Kotlin fields null when they are missing.
         @Suppress("SENSELESS_COMPARISON")
         if (entry.source == null || entry.nodes == null) return null
