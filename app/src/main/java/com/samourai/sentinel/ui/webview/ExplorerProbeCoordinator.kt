@@ -240,7 +240,9 @@ class ExplorerProbeCoordinator(
             val result = try {
                 withTimeout(timeoutMs) { probe(base, endpoint) }
             } catch (t: TimeoutCancellationException) {
-                ProbeResult.unconfirmed(t.javaClass.simpleName)
+                // Fixed token. The runtime name follows R8's rename of this
+                // kotlinx class, and the release line would say error.
+                ProbeResult.unconfirmed(probeFailureLabel(t))
             } catch (t: CancellationException) {
                 throw t
             }

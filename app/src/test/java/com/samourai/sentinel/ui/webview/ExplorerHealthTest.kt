@@ -8,7 +8,9 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.samourai.wallet.SamouraiWalletConst
 import java.io.File
+import java.io.IOException
 import java.io.InterruptedIOException
 import java.net.ConnectException
 import java.net.InetSocketAddress
@@ -177,7 +179,17 @@ class ExplorerHealthTest {
             FetchVerdict.NO_RESPONSE,
             failureVerdict(SocketException("SOCKS: Network unreachable")),
         )
-        assertEquals("SocketTimeoutException", SocketTimeoutException("onion").javaClass.simpleName)
+        assertEquals("SocketTimeoutException", probeFailureLabel(SocketTimeoutException("onion")))
+        assertEquals("ConnectException", probeFailureLabel(ConnectException("Connection refused")))
+        assertEquals("NoRouteToHostException", probeFailureLabel(NoRouteToHostException("No route to host")))
+        assertEquals("SocketException", probeFailureLabel(SocketException("SOCKS: Host unreachable")))
+        assertEquals("InterruptedIOException", probeFailureLabel(InterruptedIOException("timeout")))
+        assertEquals("IOException", probeFailureLabel(object : IOException("PM8Tcrafted") {}))
+        assertEquals("error", probeFailureLabel(IllegalStateException("OnionHostError")))
+        assertEquals("SocketTimeoutException", statusToken("SocketTimeoutException"))
+        assertEquals("error", statusToken("OnionHostError"))
+        assertEquals("error", statusToken("SSLHandshakeError"))
+        assertEquals("error", statusToken("PM8T" + "A".repeat(40) + "Error"))
 
         assertEquals(
             ProbeResult.Kind.REACHABLE,
@@ -252,39 +264,77 @@ class ExplorerHealthTest {
     @Test
     fun `release keeps one redacted result line and drops the rest`() {
         val onionHost = "abcd" + "e".repeat(48) + "wxyz"
+        val txid = "ab".repeat(32)
+        val xpub = "xpub" + "1".repeat(100)
         val nasty = "http://user:secret@$onionHost.onion/api/blocks/tip/height?at=supersecret"
         val line = ExplorerProbeLog.resultLine(nasty, "UNCONFIRMED", "SocketTimeoutException", 30_012)
-        assertTrue(line.startsWith("result "))
-        assertTrue(line.contains("outcome=UNCONFIRMED"))
-        assertTrue(line.contains("status=SocketTimeoutException"))
-        assertTrue(line.contains("elapsedMs=30012"))
-        assertTrue(line.contains(ExplorerBinding.shortenOnion(nasty)!!))
-        assertFalse(line.contains(onionHost))
-        assertFalse(line.contains("supersecret"))
-        assertFalse(line.contains("?"))
-        assertFalse(line.contains("secret@"))
-        assertFalse(line.contains("/api/"))
-        val redacted = LogRedaction.redact(line)
-        assertTrue(redacted.contains(ExplorerBinding.shortenOnion(nasty)!!))
-        assertFalse(redacted.contains(onionHost))
-        val leaked = LogRedaction.redact("result host=$onionHost.onion outcome=UNCONFIRMED status=none elapsedMs=1")
-        assertFalse(leaked.contains(onionHost))
-        assertTrue(leaked.contains("ONION_REDACTED"))
-
-        val dirty = ExplorerProbeLog.resultLine(
-            "http://example.test/x",
-            "UNCONFIRMED",
-            "404?at=supersecret",
-            5,
+        assertEquals(
+            "result outcome=UNCONFIRMED status=SocketTimeoutException elapsedMs=30012",
+            line,
         )
-        assertTrue(dirty.contains("status=error"))
-        assertFalse(dirty.contains("supersecret"))
-        assertFalse(dirty.contains("?"))
+        assertFalse(line.contains(onionHost))
+        assertFalse(line.contains("onion"))
+        assertFalse(line.contains("supersecret"))
+        assertFalse(line.contains("secret"))
+        assertFalse(line.contains("http"))
+        assertFalse(line.contains("host="))
+        assertFalse(line.contains("/api"))
+        assertEquals(line, LogRedaction.redact(line))
+
+        val reachable = ExplorerProbeLog.resultLine("https://mempool.space", "REACHABLE", "200", 18)
+        assertEquals("result outcome=REACHABLE status=200 elapsedMs=18", reachable)
+        val refused = ExplorerProbeLog.resultLine("http://203.0.113.10", "UNREACHABLE", "ConnectException", 4)
+        assertEquals("result outcome=UNREACHABLE status=ConnectException elapsedMs=4", refused)
+        val empty = ExplorerProbeLog.resultLine(nasty, "UNREACHABLE", "", 1)
+        assertEquals("result outcome=UNREACHABLE status=none elapsedMs=1", empty)
+        val noUrls = ExplorerProbeLog.resultLine(nasty, "UNREACHABLE", "empty", 1)
+        assertEquals("result outcome=UNREACHABLE status=empty elapsedMs=1", noUrls)
+
+        val dirty = ExplorerProbeLog.resultLine(nasty, "UNCONFIRMED", "404?at=supersecret", 5)
+        assertEquals("result outcome=UNCONFIRMED status=error elapsedMs=5", dirty)
+        val asDetail = ExplorerProbeLog.resultLine("http://example.test", "UNREACHABLE", nasty, 2)
+        assertEquals("result outcome=UNREACHABLE status=error elapsedMs=2", asDetail)
+        assertFalse(asDetail.contains(onionHost))
+        val asOutcome = ExplorerProbeLog.resultLine(nasty, nasty, "200", 2)
+        assertEquals("result outcome=error status=200 elapsedMs=2", asOutcome)
+        val txLine = ExplorerProbeLog.resultLine(nasty, "REACHABLE", txid, 3)
+        assertEquals("result outcome=REACHABLE status=error elapsedMs=3", txLine)
+        assertFalse(txLine.contains(txid))
+        val keyLine = ExplorerProbeLog.resultLine(nasty, "UNREACHABLE", xpub, 3)
+        assertEquals("result outcome=UNREACHABLE status=error elapsedMs=3", keyLine)
+        assertFalse(keyLine.contains("xpub"))
+        val ipLine = ExplorerProbeLog.resultLine("http://203.0.113.10/x", "UNREACHABLE", "203.0.113.10", 3)
+        assertEquals("result outcome=UNREACHABLE status=error elapsedMs=3", ipLine)
+        assertFalse(ipLine.contains("203.0.113.10"))
+        val onionDetail = ExplorerProbeLog.resultLine(nasty, "UNCONFIRMED", "$onionHost.onion", 3)
+        assertEquals("result outcome=UNCONFIRMED status=error elapsedMs=3", onionDetail)
+        assertFalse(onionDetail.contains("onion"))
 
         assertTrue(releaseKeepsExplorerProbe(Log.INFO, ExplorerProbeLog.TAG, line, null))
+        assertTrue(releaseKeepsExplorerProbe(Log.INFO, ExplorerProbeLog.TAG, reachable, null))
         assertFalse(releaseKeepsExplorerProbe(Log.DEBUG, ExplorerProbeLog.TAG, line, null))
         assertFalse(releaseKeepsExplorerProbe(Log.INFO, ExplorerProbeLog.TAG, line, IllegalStateException("x")))
         assertFalse(releaseKeepsExplorerProbe(Log.INFO, "OkHttp", line, null))
+        val shortened = ExplorerBinding.shortenOnion(nasty)!!
+        assertFalse(
+            releaseKeepsExplorerProbe(
+                Log.INFO,
+                ExplorerProbeLog.TAG,
+                "result host=$shortened outcome=UNCONFIRMED status=SocketTimeoutException elapsedMs=1",
+                null,
+            ),
+        )
+        assertFalse(
+            releaseKeepsExplorerProbe(
+                Log.INFO,
+                ExplorerProbeLog.TAG,
+                "result host=$onionHost.onion outcome=UNCONFIRMED status=none elapsedMs=1",
+                null,
+            ),
+        )
+        val leaked = LogRedaction.redact("result host=$onionHost.onion outcome=UNCONFIRMED status=none elapsedMs=1")
+        assertFalse(leaked.contains(onionHost))
+        assertTrue(leaked.contains("ONION_REDACTED"))
         assertFalse(
             releaseKeepsExplorerProbe(
                 Log.INFO,
@@ -325,6 +375,40 @@ class ExplorerHealthTest {
                 null,
             ),
         )
+        assertFalse(
+            releaseKeepsExplorerProbe(
+                Log.INFO,
+                ExplorerProbeLog.TAG,
+                "result outcome=UNCONFIRMED status=OnionHostError elapsedMs=1",
+                null,
+            ),
+        )
+        assertFalse(
+            releaseKeepsExplorerProbe(
+                Log.INFO,
+                ExplorerProbeLog.TAG,
+                "result outcome=UNREACHABLE status=PM8T" + "A".repeat(40) + "Error elapsedMs=1",
+                null,
+            ),
+        )
+        val probeSrc = source(
+            "src/main/java/com/samourai/sentinel/ui/webview/ExplorerHealthProbe.kt",
+            "app/src/main/java/com/samourai/sentinel/ui/webview/ExplorerHealthProbe.kt",
+        )
+        val coordSrc = source(
+            "src/main/java/com/samourai/sentinel/ui/webview/ExplorerProbeCoordinator.kt",
+            "app/src/main/java/com/samourai/sentinel/ui/webview/ExplorerProbeCoordinator.kt",
+        )
+        val logSrc = source(
+            "src/main/java/com/samourai/sentinel/ui/webview/ExplorerProbeLog.kt",
+            "app/src/main/java/com/samourai/sentinel/ui/webview/ExplorerProbeLog.kt",
+        )
+        assertFalse(probeSrc.contains("simpleName"))
+        assertFalse(coordSrc.contains("simpleName"))
+        assertFalse(logSrc.contains("simpleName"))
+        assertTrue(probeSrc.contains("probeFailureLabel"))
+        assertTrue(coordSrc.contains("probeFailureLabel"))
+        assertTrue(logSrc.contains("error is TimeoutCancellationException -> \"TimeoutCancellationException\""))
         val app = source(
             "src/main/java/com/samourai/sentinel/SentinelApplication.kt",
             "app/src/main/java/com/samourai/sentinel/SentinelApplication.kt",
@@ -334,6 +418,42 @@ class ExplorerHealthTest {
         assertTrue(tree.contains("Log.println"))
         assertTrue(tree.contains("LogRedaction.redact"))
         assertTrue(tree.indexOf("releaseKeepsExplorerProbe") < tree.indexOf("if (t == null)"))
+    }
+
+    @Test
+    fun `debug probe lines keep a shortened onion and drop addresses and secrets`() {
+        val onionHost = "abcd" + "e".repeat(48) + "wxyz"
+        val txid = "cd".repeat(32)
+        val nasty = "http://user:secret@$onionHost.onion/api/blocks/tip/height?at=supersecret"
+        val url = ExplorerProbeLog.urlLine(nasty, "200", 12)
+        assertTrue(url.contains("path=/api/blocks/tip/height"))
+        assertTrue(url.contains("result=200"))
+        assertTrue(url.contains(ExplorerBinding.shortenOnion(nasty)!!))
+        assertFalse(url.contains(onionHost))
+        assertFalse(url.contains("supersecret"))
+        assertFalse(url.contains("secret@"))
+        assertFalse(url.contains("?"))
+
+        assertEquals("ip", ExplorerProbeLog.host("http://203.0.113.10:8333/explorer"))
+        assertEquals("ip", ExplorerProbeLog.host("http://[2001:db8::1]/"))
+        assertEquals("mempool.space", ExplorerProbeLog.host("https://mempool.space/tx/abc"))
+        assertEquals("/", ExplorerProbeLog.pathOf("http://example.test/tx/$txid"))
+        assertEquals("/", ExplorerProbeLog.pathOf("http://example.test/wallet/xpub" + "6".repeat(100)))
+        assertEquals("none", ExplorerProbeLog.socksLabel("none"))
+        assertEquals("127.0.0.1:9050", ExplorerProbeLog.socksLabel("127.0.0.1:9050"))
+        assertEquals("[::1]:9050", ExplorerProbeLog.socksLabel("[::1]:9050"))
+        assertEquals("unknown", ExplorerProbeLog.socksLabel("203.0.113.10:9050"))
+        assertEquals("unknown", ExplorerProbeLog.socksLabel("2001:db8::1:9050"))
+        val paymentCode = SamouraiWalletConst.samouraiDonationPCode
+        assertTrue(paymentCode.startsWith("PM8T"))
+        assertEquals("/", ExplorerProbeLog.pathOf("http://example.test/pay/$paymentCode"))
+        val payLine = ExplorerProbeLog.urlLine("http://example.test/pay/$paymentCode", "200", 4)
+        assertTrue(payLine.contains("path=/"))
+        assertFalse(payLine.contains(paymentCode))
+        assertFalse(payLine.contains("PM8T"))
+        val dotted = ExplorerProbeLog.urlLine("https://mempool.space/api", "203.0.113.10", 1)
+        assertTrue(dotted.contains("result=error"))
+        assertFalse(dotted.contains("203.0.113.10"))
     }
 
     @Test

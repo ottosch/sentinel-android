@@ -20,6 +20,10 @@
 -keep class com.sparrowwallet.** { *; }
 -keep class com.lambdaworks.** { *; }
 
+# Those keeps do not cover kotlinx.coroutines or OkHttp. R8 can rename
+# TimeoutCancellationException. Explorer probe status is a fixed token
+# from an is-check, never Class.simpleName (#523).
+
 -keepclassmembers,allowobfuscation class * {
     @com.google.gson.annotations.SerializedName <fields>;
 }
