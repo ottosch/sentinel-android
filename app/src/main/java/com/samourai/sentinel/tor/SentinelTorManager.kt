@@ -42,24 +42,6 @@ object SentinelTorManager {
 
     private const val TAG = "SentinelTorManager"
 
-    /**
-     * Tor's SocksTimeout (default 120 s): how long a stream may wait for a
-     * usable circuit before Tor fails it ("TTL expired"). The first
-     * onion-service connection after a start can wait longer than 120 s,
-     * and the Dojo Bay fetch gives its first try 240 s
-     * (CommunityDojoFetchPolicy), so Tor must not give up first.
-     *
-     * The option is Tor-wide and can't be scoped to one client. Effect on
-     * the others: ApiService (45 s connect), the explorer probe and the
-     * WebView still give up on their own, shorter timers. Pairing
-     * (DojoConfigureBottomSheet, 180 s connect) now waits up to 180 s, so
-     * a dead Dojo onion fails at 180 s instead of about 120 s, and a slow
-     * first circuit that completes in between now pairs. Rescan's 120 s
-     * connect limit used to tie with Tor's; only its error label changes
-     * (a client timeout instead of "TTL expired").
-     */
-    const val SOCKS_TIMEOUT_SECONDS = 300
-
     // ---- #11/#172 watchdog: tiered zero-progress stall recovery ----
     private const val CHEAP_RESTART_MS = 15_000L    // tier 1: restart, data dirs KEPT
     private const val WIPE_STALL_MS = 35_000L       // tier 2: TOTAL stall budget, then wipe
@@ -156,7 +138,6 @@ object SentinelTorManager {
                 TorOption.ReducedConnectionPadding.configure(true)
                 TorOption.DormantClientTimeout.configure(10, IntervalUnit.MINUTES)
                 TorOption.DormantCanceledByStartup.configure(true)
-                TorOption.SocksTimeout.configure(SOCKS_TIMEOUT_SECONDS, IntervalUnit.SECONDS)
                 TorOption.ClientOnionAuthDir.configure(
                     directory = environment.workDirectory
                         .resolve("auth_private_files"),

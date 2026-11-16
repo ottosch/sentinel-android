@@ -96,8 +96,7 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
      * signature of a warmed probe cache. One automatic retry converts the
      * worst first-run experience into a self-healing one. The retry follows
      * a failure whichever side gave up (the app's timeout or Tor failing the
-     * stream), and the first fetch after a Tor start gets a longer limit:
-     * see CommunityDojoFetchPolicy.
+     * stream), on a fresh Tor circuit: see CommunityDojoFetchPolicy.
      */
 
     private val adapter = CommunityDojoAdapter(
@@ -328,12 +327,8 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
             while (true) {
                 attempt++
                 startElapsedTicker()
-                // The first fetch after a Tor start gets the longer limit.
-                val socksGeneration = SentinelTorManager.socksGeneration()
-                val timeoutSeconds = CommunityDojoFetchPolicy.timeoutFor(attempt, socksGeneration)
                 try {
-                    val nodes = CommunityDojoRepository.fetchDirectory(forSource, timeoutSeconds = timeoutSeconds)
-                    CommunityDojoFetchPolicy.settle(socksGeneration)
+                    val nodes = CommunityDojoRepository.fetchDirectory(forSource)
                     val fetchedAt = System.currentTimeMillis()
                     // Saved for this address only. The fetch runs in the
                     // view's lifecycle scope, so closing the sheet cancels it
@@ -378,7 +373,6 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    CommunityDojoFetchPolicy.settle(socksGeneration)
                     if (gen != generation) return@launch
                     stopElapsedTicker()
                     val failure = CommunityDojoRepository.classify(e).failure
@@ -387,7 +381,8 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
                         // not wasted - retry once before giving up (operator
                         // datum: 120 s timeout then ~3 s success). Also when
                         // Tor failed the stream first: right after a Tor
-                        // start the first onion connection often stalls.
+                        // start the first onion connection can stall, and
+                        // the retry's fresh circuit gets past it.
                         if (!isAdded) {
                             fetchInFlight = false
                             return@launch
