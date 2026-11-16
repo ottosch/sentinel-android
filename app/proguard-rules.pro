@@ -12,6 +12,8 @@
 # Application is the Boltzmann CLI. It must not survive into the release dex.
 -keep class !com.samourai.boltzmann.Application,com.samourai.** { *; }
 -checkdiscard class com.samourai.boltzmann.Application
+# The 1.7 NOP binder must keep its name so the release dex can be checked.
+-keep class org.slf4j.impl.StaticLoggerBinder { *; }
 -keep interface com.samourai.** { *; }
 -keep class com.invertedx.** { *; }
 -keep class org.bitcoinj.** { *; }

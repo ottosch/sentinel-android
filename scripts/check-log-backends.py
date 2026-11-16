@@ -44,6 +44,27 @@ def is_backend(group: str, artifact: str) -> bool:
     return False
 
 
+# Left side, then an optional Gradle " -> " resolution. A module substitution
+# (`slf4j-nop -> org.slf4j:slf4j-api`) means nop is not on the classpath.
+EDGE = re.compile(
+    r"org\.slf4j:(slf4j-api|slf4j-nop):(\d\S*|\{[^}]+\})"
+    r"(?:\s*->\s*(\S+))?"
+)
+
+
+def resolved_module(artifact: str, version: str, arrow: str | None) -> tuple[str, str] | None:
+    """The module that actually lands on the classpath."""
+    if arrow and ":" in arrow:
+        substituted = re.match(r"org\.slf4j:(slf4j-api|slf4j-nop):(\S+)", arrow)
+        if not substituted:
+            return None
+        return substituted.group(1), substituted.group(2).rstrip("()")
+    chosen = arrow or version
+    if not chosen or chosen.startswith("{"):
+        return None
+    return artifact, chosen.rstrip("()")
+
+
 def check_text(text: str, label: str) -> list[str]:
     found = []
     seen = set()
@@ -51,17 +72,6 @@ def check_text(text: str, label: str) -> list[str]:
     saw_api = False
     for match in COORD.finditer(text):
         group, artifact = match.group(1), match.group(2)
-        requested, resolved = match.group(3), match.group(4)
-        if group == "org.slf4j" and artifact in {"slf4j-api", "slf4j-nop"}:
-            for ver in (requested, resolved):
-                if ver and not is_17(ver):
-                    found.append(f"{label}: {group}:{artifact}:{ver} is not the 1.7.x line")
-            chosen = resolved or requested
-            if is_17(chosen):
-                if artifact == "slf4j-api":
-                    saw_api = True
-                if artifact == "slf4j-nop":
-                    has_nop = True
         if not is_backend(group, artifact):
             continue
         key = f"{group}:{artifact}"
@@ -69,21 +79,18 @@ def check_text(text: str, label: str) -> list[str]:
             continue
         seen.add(key)
         found.append(f"{label}: logging backend {key} is not slf4j-nop")
-    # `slf4j-api:{strictly [1.7,1.8)} -> 1.7.36` does not match COORD.
-    for match in re.finditer(
-        r"org\.slf4j:(slf4j-api|slf4j-nop):(?:\{[^}]+\}|(\d\S+))(?:\s*->\s*(\d\S+))?",
-        text,
-    ):
-        artifact = match.group(1)
-        chosen = match.group(3) or match.group(2)
-        if not chosen:
+    for match in EDGE.finditer(text):
+        resolved = resolved_module(match.group(1), match.group(2), match.group(3))
+        if resolved is None:
             continue
-        if not is_17(chosen):
-            found.append(f"{label}: org.slf4j:{artifact}:{chosen} is not the 1.7.x line")
+        artifact, version = resolved
+        if not is_17(version):
+            found.append(f"{label}: org.slf4j:{artifact}:{version} is not the 1.7.x line")
+            continue
+        if artifact == "slf4j-nop":
+            has_nop = True
         elif artifact == "slf4j-api":
             saw_api = True
-        elif artifact == "slf4j-nop":
-            has_nop = True
     if not has_nop:
         found.append(f"{label}: org.slf4j:slf4j-nop:1.7.x is not on this runtime classpath")
     if not saw_api:

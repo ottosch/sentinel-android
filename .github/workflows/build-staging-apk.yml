@@ -173,6 +173,7 @@ jobs:
           python3 scripts/check-log-backends.py \
             "$dir/stagingReleaseRuntimeClasspath.txt" \
             "$dir/productionReleaseRuntimeClasspath.txt"
+          python3 scripts/check-app-libs.py
 
       - name: Build staging debug APK
         run: ./gradlew --stacktrace :app:assembleStagingDebug

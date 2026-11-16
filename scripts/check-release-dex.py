@@ -287,8 +287,18 @@ def load_mapping(path: Path) -> dict[str, str]:
     return mapping
 
 
+SGET = re.compile(
+    r"sget(?:-object|-boolean|-byte|-char|-short|-wide)?\s+\S+,\s+L([^;]+);\.(out|err):"
+)
+
+
 def method_hits(text: str) -> list[str]:
     hits = []
+    for owner, field in SGET.findall(text):
+        if owner == "java/lang/System" and field in {"out", "err"}:
+            hits.append("System." + field)
+        elif owner == "java/io/FileDescriptor" and field in {"out", "err"}:
+            hits.append("FileDescriptor." + field)
     for owner, name in INVOKE.findall(text):
         if owner == "java/io/PrintStream":
             hits.append("PrintStream." + name)
@@ -373,33 +383,108 @@ def find_dexdump() -> Path:
     return tool
 
 
-def binding_errors(apk: Path, zf: zipfile.ZipFile, dumps: list[str]) -> list[str]:
-    """SLF4J 2.x service providers and any StaticLoggerBinder that is not NOP."""
+def apk_variant(apk: Path) -> str | None:
+    text = f"{apk.parent}/{apk.name}".lower()
+    if "production" in text and "staging" not in text:
+        return "production"
+    if "staging" in text and "production" not in text:
+        return "staging"
+    return None
+
+
+def mapping_variant(path: Path) -> str | None:
+    text = str(path).lower().replace("-", "").replace("_", "")
+    staging = "staging" in text
+    production = "production" in text
+    if production and not staging:
+        return "production"
+    if staging and not production:
+        return "staging"
+    return None
+
+
+def variant_errors(apk: Path, mapping_path: Path) -> list[str]:
+    """Reject a staging mapping used on a production APK, and the reverse."""
+    apk_v = apk_variant(apk)
+    map_v = mapping_variant(mapping_path)
+    if apk_v and map_v and apk_v != map_v:
+        return [
+            f"{apk.name}: {map_v} mapping {mapping_path.name} does not match "
+            f"the {apk_v} APK"
+        ]
+    return []
+
+
+def binder_chunks(dumps: list[str], mapping: dict[str, str]) -> list[str]:
+    """Class bodies for StaticLoggerBinder, after R8 renaming."""
+    wanted = {"org.slf4j.impl.StaticLoggerBinder"}
+    for obfuscated, original in mapping.items():
+        if original == "org.slf4j.impl.StaticLoggerBinder":
+            wanted.add(obfuscated)
+    chunks = []
+    for dump in dumps:
+        parts = dump.split("Class descriptor")
+        for chunk in parts[1:]:
+            header = chunk.split("\n", 1)[0]
+            match = re.search(r"'(L[^']+;)'", header)
+            if not match:
+                continue
+            name = descriptor_to_name(match.group(1))
+            original = mapping.get(name, name)
+            if name in wanted or original in wanted:
+                chunks.append(chunk)
+    return chunks
+
+
+def binding_errors(
+    apk: Path, zf: zipfile.ZipFile, dumps: list[str], mapping: dict[str, str]
+) -> list[str]:
+    """SLF4J 2.x providers and any StaticLoggerBinder that is not NOP."""
     errors = []
     for name in zf.namelist():
         norm = name.replace("\\", "/").lstrip("./")
         if norm == SERVICE_PROVIDER or norm.endswith("/" + SERVICE_PROVIDER):
             errors.append(f"{apk.name}: {norm} is an SLF4J 2.x provider")
-        if BINDER in norm and not norm.endswith("/"):
-            blob = zf.read(name)
-            if b"NOPLoggerFactory" not in blob:
-                errors.append(f"{apk.name}: {norm} is not the NOP StaticLoggerBinder")
-    for dump in dumps:
-        chunks = dump.split("Class descriptor")
-        for chunk in chunks[1:]:
-            if "Lorg/slf4j/impl/StaticLoggerBinder;" not in chunk.split("\n", 1)[0]:
-                continue
-            if "NOPLoggerFactory" not in chunk:
+        if "META-INF/services/org.slf4j." in norm:
+            errors.append(f"{apk.name}: {norm} is an SLF4J service provider")
+        if norm.startswith("org/slf4j/") or "/org/slf4j/" in norm:
+            if "NOPLoggerFactory" not in norm and not norm.endswith("/"):
+                # A loose class file. The dex check covers the binder itself.
+                if "StaticLoggerBinder" in norm and not norm.endswith("/"):
+                    blob = zf.read(name)
+                    if b"NOPLoggerFactory" not in blob:
+                        errors.append(
+                            f"{apk.name}: {norm} is not the NOP StaticLoggerBinder"
+                        )
+    # Release builds rename the binder and NOPLoggerFactory. Require the mapped
+    # class, and require it to instantiate NOPLoggerFactory (by name or by
+    # mapping.txt). A JDK binder renamed to X5.a fails this.
+    if dumps:
+        chunks = binder_chunks(dumps, mapping)
+        if not chunks:
+            errors.append(f"{apk.name}: StaticLoggerBinder is not in the release dex")
+        for chunk in chunks:
+            if not binder_is_nop(chunk, mapping):
                 errors.append(
-                    f"{apk.name}: dex StaticLoggerBinder is not the NOP binder"
+                    f"{apk.name}: StaticLoggerBinder does not return NOPLoggerFactory"
                 )
     return errors
+
+
+def binder_is_nop(chunk: str, mapping: dict[str, str]) -> bool:
+    if "NOPLoggerFactory" in chunk:
+        return True
+    for desc in re.findall(r"L[^;]+;", chunk):
+        name = descriptor_to_name(desc)
+        if mapping.get(name, name) == "org.slf4j.helpers.NOPLoggerFactory":
+            return True
+    return False
 
 
 def scan_apk(apk: Path, mapping_path: Path) -> tuple[dict[str, set[str]], list[str]]:
     mapping = load_mapping(mapping_path)
     found: dict[str, set[str]] = {}
-    errors: list[str] = []
+    errors = variant_errors(apk, mapping_path)
     dumps: list[str] = []
     with zipfile.ZipFile(apk) as zf, tempfile.TemporaryDirectory() as tmp:
         dexes = [n for n in zf.namelist() if DEX_NAME.fullmatch(n)]
@@ -416,7 +501,7 @@ def scan_apk(apk: Path, mapping_path: Path) -> tuple[dict[str, set[str]], list[s
             dumps.append(dump)
             for cls, kinds in scan_dump(dump, mapping).items():
                 found.setdefault(cls, set()).update(kinds)
-        errors.extend(binding_errors(apk, zf, dumps))
+        errors.extend(binding_errors(apk, zf, dumps, mapping))
     return found, errors
 
 
@@ -459,6 +544,12 @@ class FileOnly {
 class StarWrite {
   static void j2() throws Exception { err.write(new byte[]{1}); }
 }
+class WrappedOut {
+  static void pw() { java.io.PrintWriter w = new java.io.PrintWriter(System.out); }
+  static void stream() { java.io.OutputStream s = System.err; }
+  static void appendable() { java.lang.Appendable a = System.out; }
+  static void fd() { java.io.FileDescriptor f = java.io.FileDescriptor.err; }
+}
 """
     with tempfile.TemporaryDirectory() as tmp:
         src = Path(tmp) / "DexGateSample.java"
@@ -471,7 +562,7 @@ class StarWrite {
         )
         classes = [
             Path(tmp) / name
-            for name in ("DexGateSample.class", "FileOnly.class", "StarWrite.class")
+            for name in ("DexGateSample.class", "FileOnly.class", "StarWrite.class", "WrappedOut.class")
         ]
         subprocess.run(
             [str(d8), "--min-api", "24", "--output", tmp, *[str(c) for c in classes]],
@@ -522,6 +613,34 @@ class StarWrite {
         if not any("not the NOP" in err for err in binder_errs):
             sys.stderr.write(f"non-NOP StaticLoggerBinder was not rejected: {binder_errs}\n")
             return 1
+        renamed_src = Path(tmp) / "X5" / "a.java"
+        renamed_src.parent.mkdir()
+        renamed_src.write_text(
+            "package X5; public class a { public Object getLoggerFactory() { return \"JDK14\"; } }\n"
+        )
+        subprocess.run(
+            [javac, "--release", "8", "-d", tmp, str(renamed_src)],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        renamed_out = Path(tmp) / "renamed"
+        renamed_out.mkdir()
+        subprocess.run(
+            [str(d8), "--min-api", "24", "--output", str(renamed_out), str(Path(tmp) / "X5" / "a.class")],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        renamed_apk = Path(tmp) / "renamed.apk"
+        renamed_map = Path(tmp) / "renamed-mapping.txt"
+        renamed_map.write_text("org.slf4j.impl.StaticLoggerBinder -> X5.a:\n")
+        with zipfile.ZipFile(renamed_apk, "w") as zf:
+            zf.write(renamed_out / "classes.dex", "classes.dex")
+        _, renamed_errs = scan_apk(renamed_apk, renamed_map)
+        if not any("NOPLoggerFactory" in err for err in renamed_errs):
+            sys.stderr.write(f"renamed non-NOP binder was not rejected: {renamed_errs}\n")
+            return 1
         second = Path(tmp) / "classes2.apk"
         with zipfile.ZipFile(second, "w") as zf:
             zf.write(quiet_out / "classes.dex", "classes.dex")
@@ -534,6 +653,7 @@ class StarWrite {
         "DexGateSample": {"PrintStream.println", "PrintStream.printf", "printStackTrace", "android.util.Log.e", "java.util.logging.Logger.info", "Runtime.exec"},
         "FileOnly": {"PrintStream.println"},
         "StarWrite": {"PrintStream.write"},
+        "WrappedOut": {"System.out", "System.err", "FileDescriptor.err"},
     }
     missing = []
     for cls, kinds in needed.items():
@@ -550,7 +670,11 @@ class StarWrite {
     if not any("DexGateSample" in err for err in rejected):
         sys.stderr.write(f"dex allowlist check did not reject DexGateSample: {rejected}\n")
         return 1
-    print("dex self-test ok: PrintStream, Log, JUL, Runtime.exec, J2 write, J3 printf, classes2.dex, zero-dex and a non-NOP binder were flagged")
+    print(
+        "dex self-test ok: PrintStream, Log, JUL, Runtime.exec, J2 write, J3 printf, "
+        "PrintWriter System.out, OutputStream System.err, Appendable, FileDescriptor.err, "
+        "classes2.dex, zero-dex, a non-NOP binder and a renamed non-NOP binder were flagged"
+    )
     return 0
 
 

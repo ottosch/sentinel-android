@@ -210,6 +210,19 @@ android {
     }
 }
 
+// The logcat gates shell out to these scripts. Without declaring them as
+// inputs, a script or allowlist edit leaves testStagingDebugUnitTest
+// UP-TO-DATE and a local run reports the previous result (#576).
+def logcatGates = files(
+        "${rootDir}/scripts/check-release-logcat.py",
+        "${rootDir}/scripts/check-log-backends.py",
+        "${rootDir}/scripts/check-release-dex.py",
+        "${rootDir}/scripts/check-app-libs.py",
+)
+tasks.withType(org.gradle.api.tasks.testing.Test).configureEach {
+    inputs.files(logcatGates)
+}
+
 dependencies {
     api fileTree(include: ['*.jar'], dir: 'libs')
     implementation 'androidx.preference:preference:1.2.1'

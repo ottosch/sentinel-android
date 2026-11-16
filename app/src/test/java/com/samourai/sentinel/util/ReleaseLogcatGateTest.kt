@@ -127,6 +127,69 @@ class ReleaseLogcatGateTest {
         assertTrue(result.out, result.out.contains("zero-dex"))
         assertTrue(result.out, result.out.contains("J2"))
         assertTrue(result.out, result.out.contains("J3"))
+        assertTrue(result.out, result.out.contains("PrintWriter System.out"))
+        assertTrue(result.out, result.out.contains("OutputStream System.err"))
+        assertTrue(result.out, result.out.contains("Appendable"))
+        assertTrue(result.out, result.out.contains("FileDescriptor.err"))
+        assertTrue(result.out, result.out.contains("renamed non-NOP binder"))
+    }
+
+    @Test
+    fun dependencyGateRejectsNopReplacedByTheApi() {
+        val file = tempDir().resolve("stagingReleaseRuntimeClasspath.txt")
+        file.writeText(
+            """
+            +--- org.slf4j:slf4j-api:1.7.36
+            +--- org.slf4j:slf4j-nop:1.7.36 -> org.slf4j:slf4j-api:1.7.36
+            """.trimIndent(),
+        )
+        val result = run("scripts/check-log-backends.py", file.absolutePath)
+        assertNotEquals(result.out, 0, result.code)
+        assertTrue(result.out, result.out.contains("slf4j-nop:1.7.x is not on this runtime classpath"))
+    }
+
+    @Test
+    fun appLibsGateRejectsAnUnlistedJar() {
+        val libs = tempDir()
+        val jar = libs.resolve("slf4j-jdk14.jar")
+        ZipOutputStream(jar.outputStream()).use { zip ->
+            zip.putNextEntry(ZipEntry("org/slf4j/impl/StaticLoggerBinder.class"))
+            zip.write("not-nop".toByteArray())
+            zip.closeEntry()
+            zip.putNextEntry(ZipEntry("META-INF/services/org.slf4j.spi.SLF4JServiceProvider"))
+            zip.write("org.example.Provider\n".toByteArray())
+            zip.closeEntry()
+        }
+        val result = run("scripts/check-app-libs.py", "--libs", libs.absolutePath)
+        assertNotEquals(result.out, 0, result.code)
+        assertTrue(result.out, result.out.contains("not on the reviewed app/libs list"))
+        assertTrue(result.out, result.out.contains("org/slf4j/impl/StaticLoggerBinder.class"))
+        assertTrue(result.out, result.out.contains("META-INF/services/org.slf4j.spi.SLF4JServiceProvider"))
+    }
+
+    @Test
+    fun dexGateRejectsAStagingMappingOnTheProductionApk() {
+        val dir = tempDir()
+        val apk = dir.resolve(
+            "app/build/outputs/apk/production/release/app-production-release-unsigned.apk",
+        )
+        apk.parentFile?.mkdirs()
+        ZipOutputStream(apk.outputStream()).use { zip ->
+            zip.putNextEntry(ZipEntry("AndroidManifest.xml"))
+            zip.write("<manifest/>".toByteArray())
+            zip.closeEntry()
+        }
+        val mapping = dir.resolve("app/build/outputs/mapping/stagingRelease/mapping.txt")
+        mapping.parentFile?.mkdirs()
+        mapping.writeText("")
+        val result = run(
+            "scripts/check-release-dex.py",
+            apk.absolutePath,
+            mapping.absolutePath,
+        )
+        assertNotEquals(result.out, 0, result.code)
+        assertTrue(result.out, result.out.contains("staging mapping"))
+        assertTrue(result.out, result.out.contains("production APK"))
     }
 
     @Test
