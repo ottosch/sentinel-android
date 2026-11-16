@@ -23,7 +23,12 @@ import java.nio.ByteBuffer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class FormatsUtilGeneric {
+
+	private static final Logger log = LoggerFactory.getLogger(FormatsUtilGeneric.class);
 
 	public static final String URI_BECH32 = "(^bitcoin:(tb|bc)1([qpzry9x8gf2tvdw0s3jn54khce6mua7l]+)(\\?amount\\=([0-9.]+))?(?s).*)|(^bitcoin:(TB|BC)1([QPZRY9X8GF2TVDW0S3JN54KHCE6MUA7L]+)(\\?amount\\=([0-9.]+))?(?s).*)";
 	public static final String URI_BECH32_LOWER = "^bitcoin:((tb|bc)1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]+)(\\?amount\\=([0-9.]+))?(?s).*";
@@ -238,7 +243,7 @@ public class FormatsUtilGeneric {
 				}
 			}
 			catch(Exception e)	{
-				e.printStackTrace();
+				log.warn("address-decode {}", e.getClass().getSimpleName());
 			}
 
 		}

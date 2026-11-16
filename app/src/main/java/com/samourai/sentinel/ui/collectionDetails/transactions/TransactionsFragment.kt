@@ -138,13 +138,11 @@ class TransactionsFragment : Fragment() {
             override fun onTabUnselected(tab:
                                          TabLayout.Tab
             ) {
-                println("Tab unselected: " + tab?.text)
             }
 
             override fun onTabReselected(tab:
                                          TabLayout.Tab
             ) {
-                println("Tab reselected: " + tab?.text)
             }
 
         })

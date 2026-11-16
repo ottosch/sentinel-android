@@ -24,9 +24,12 @@ import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.spec.InvalidKeySpecException;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class AESUtil {
 
-//    private static Logger mLogger = LoggerFactory.getLogger(AESUtil.class);
+    private static final Logger log = LoggerFactory.getLogger(AESUtil.class);
 
     private static final RandomUtil randomUtil = RandomUtil.getInstance();
     public static final int DefaultPBKDF2Iterations = 5000;
@@ -179,7 +182,7 @@ public class AESUtil {
         try {
             len2 = cipher.doFinal(outBuf, len1);
         } catch (InvalidCipherTextException icte) {
-            icte.printStackTrace();
+            log.warn("aes-decrypt {}", icte.getClass().getSimpleName());
         }
 
         int actualLength = len1 + len2;
@@ -195,7 +198,7 @@ public class AESUtil {
 
     public static String decryptSHA256(String ciphertext, CharSequenceX password, int iterations) throws BadPaddingException, CharacterCodingException, NoSuchAlgorithmException, IllegalBlockSizeException, InvalidKeyException, NoSuchPaddingException, InvalidAlgorithmParameterException, InvalidKeySpecException {
         KOpenSSL openSSL = new KOpenSSL();
-        return openSSL.decrypt_AES256CBC_PBKDF2_HMAC_SHA256(password.toString(), iterations, ciphertext, false);
+        return openSSL.decrypt_AES256CBC_PBKDF2_HMAC_SHA256(password.toString(), iterations, ciphertext);
     }
 
 
@@ -205,7 +208,7 @@ public class AESUtil {
 
     public static String encryptSHA256(String cleartext, CharSequenceX password, int iterations) throws BadPaddingException, InvalidKeyException, NoSuchAlgorithmException, IllegalBlockSizeException, NoSuchPaddingException, InvalidAlgorithmParameterException, InvalidKeySpecException {
         KOpenSSL openSSL = new KOpenSSL();
-        return openSSL.encrypt_AES256CBC_PBKDF2_HMAC_SHA256(password.toString(), iterations, cleartext, false);
+        return openSSL.encrypt_AES256CBC_PBKDF2_HMAC_SHA256(password.toString(), iterations, cleartext);
     }
 
 

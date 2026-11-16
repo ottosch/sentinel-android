@@ -372,8 +372,7 @@ public class PSBT {
 
         }
         catch(Exception e) {
-            Log("Exception:" + e.getMessage(), true);
-            e.printStackTrace();
+            Log("psbt-entry " + e.getClass().getSimpleName(), true);
             return null;
         }
 
@@ -805,10 +804,8 @@ public class PSBT {
 
         if(bDebug)  {
             sbLog.append(s);
-            System.out.print(s);
             if(eol)    {
                 sbLog.append("\n");
-                System.out.print("\n");
             }
         }
 

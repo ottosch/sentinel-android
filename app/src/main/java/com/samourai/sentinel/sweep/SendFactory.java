@@ -27,6 +27,8 @@ import org.bitcoinj.script.ScriptException;
 import org.bouncycastle.util.encoders.Hex;
 
 import java.math.BigInteger;
+
+import timber.log.Timber;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -62,7 +64,7 @@ public class SendFactory	{
             tx = makeTransaction(accountIdx, receivers, unspent);
         }
         catch(Exception e) {
-            e.printStackTrace();
+            Timber.e("sweep-sign %s", e.getClass().getSimpleName());
         }
 
         return tx;
@@ -85,7 +87,7 @@ public class SendFactory	{
                     ecKey = pk.getKey();
 //                    Log.i("SendFactory", "ECKey address:" + ecKey.toAddress(SentinelState.Companion.getNetworkParam()).toString());
                 } catch (AddressFormatException afe) {
-                    afe.printStackTrace();
+                    Timber.e("sweep-sign %s", afe.getClass().getSimpleName());
                     continue;
                 }
 
@@ -225,14 +227,8 @@ public class SendFactory	{
             if(FormatsUtil.Companion.isValidBech32(address) || Address.fromBase58(SentinelState.Companion.getNetworkParam(), address).isP2SHAddress())    {
 
                 final P2SH_P2WPKH p2shp2wpkh = new P2SH_P2WPKH(key.getPubKey(), SentinelState.Companion.getNetworkParam());
-                System.out.println("pubKey:" + Hex.toHexString(key.getPubKey()));
-//                final Script scriptPubKey = p2shp2wpkh.segWitOutputScript();
-//                System.out.println("scriptPubKey:" + Hex.toHexString(scriptPubKey.getProgram()));
-                System.out.println("to address from script:" + scriptPubKey.getToAddress(SentinelState.Companion.getNetworkParam()).toString());
                 final Script redeemScript = p2shp2wpkh.segWitRedeemScript();
-                System.out.println("redeem script:" + Hex.toHexString(redeemScript.getProgram()));
                 final Script scriptCode = redeemScript.scriptCode();
-                System.out.println("script code:" + Hex.toHexString(scriptCode.getProgram()));
 
                 sig = transaction.calculateWitnessSignature(i, key, scriptCode, connectedOutput.getValue(), Transaction.SigHash.ALL, false);
                 final TransactionWitness witness = new TransactionWitness(2);

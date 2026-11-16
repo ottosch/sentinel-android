@@ -861,7 +861,7 @@ class PreviewBottomSheet : GenericBottomSheet() {
                 hexTx = TxUtil.getInstance().getTxHex(transaction)
             }
         } catch (e: Exception) {
-            println( "issue on making transaction : " + e.message + ":: " + e)
+            Timber.e("sweep-tx %s", e.javaClass.simpleName)
         }
         return hexTx
     }

@@ -119,8 +119,9 @@ public class TransactionForSweepHelper {
                 final DumpedPrivateKey pk = DumpedPrivateKey.fromBase58(params, privKey.getPrivateKeyAsWiF(params));
                 keyBag.put(input.getOutpoint().toString(), pk.getKey());
             }  catch(Exception e) {
-                Timber.e(e,
-                        "cannot process private key for input=" + input);
+                // The input's toString is an outpoint, and the cause can
+                // carry the key. Class name only (#564).
+                Timber.e("sweep-privkey %s", e.getClass().getSimpleName());
             }
         }
 

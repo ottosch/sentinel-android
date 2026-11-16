@@ -8,9 +8,12 @@ import org.bouncycastle.util.encoders.Hex;
 
 import java.math.BigInteger;
 
-//import android.util.Log;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class PrivKeyReader {
+
+    private static final Logger log = LoggerFactory.getLogger(PrivKeyReader.class);
 
     public final static String BASE58 = "base58";
     public final static String BASE64 = "base64";
@@ -84,7 +87,7 @@ public class PrivKeyReader {
                 testBytes = Sha256Hash.hash(data.getBytes("UTF-8"));
             }
             catch (Exception e) {
-                e.printStackTrace();
+                log.warn("privkey-read {}", e.getClass().getSimpleName());
                 return null;
             }
 
@@ -131,7 +134,7 @@ public class PrivKeyReader {
                 // assume uncompressed
                 return decodeHexPK(Hex.toHexString(hash), false);
             } catch (Exception e) {
-                e.printStackTrace();
+                log.warn("privkey-read {}", e.getClass().getSimpleName());
                 return null;
             }
 

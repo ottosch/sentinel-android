@@ -15,6 +15,8 @@ import org.bouncycastle.util.encoders.Hex;
 
 import java.math.BigInteger;
 
+import timber.log.Timber;
+
 //import android.util.Log;
 
 public class PrivKeyReader {
@@ -92,7 +94,7 @@ public class PrivKeyReader {
                 testBytes = Sha256Hash.hash(data.getBytes("UTF-8"));
             }
             catch (Exception e) {
-                e.printStackTrace();
+                Timber.e("privkey-read %s", e.getClass().getSimpleName());
                 return null;
             }
 
@@ -139,7 +141,7 @@ public class PrivKeyReader {
                 // assume uncompressed
                 return decodeHexPK(Hex.toHexString(hash), false);
             } catch (Exception e) {
-                e.printStackTrace();
+                Timber.e("privkey-read %s", e.getClass().getSimpleName());
                 return null;
             }
 

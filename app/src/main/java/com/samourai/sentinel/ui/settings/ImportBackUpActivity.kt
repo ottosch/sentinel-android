@@ -697,7 +697,7 @@ class ImportBackUpActivity : SentinelActivity() {
                                 false
                             )
                         } catch (e: Exception) {
-                            e.printStackTrace()
+                            Timber.e("backup-import %s", e.javaClass.simpleName)
                             throw e
                         }
                     }.invokeOnCompletion {
@@ -826,7 +826,7 @@ class ImportBackUpActivity : SentinelActivity() {
                             throw IllegalStateException("0 public keys found")
                         }
                     } catch (e: Exception) {
-                        e.printStackTrace()
+                        Timber.e("backup-import %s", e.javaClass.simpleName)
                         throw e
                     }
                 }
@@ -987,7 +987,7 @@ class ImportBackUpActivity : SentinelActivity() {
                 // is also the cancellation path, and a suspending hop on
                 // a cancelled job would skip the dismiss.
                 runOnUiThread { kdfOverlay.dismiss() }
-                e.printStackTrace()
+                Timber.e("backup-import %s", e.javaClass.simpleName)
                 throw e
             }
         }.invokeOnCompletion {
@@ -1229,13 +1229,13 @@ class ImportBackUpActivity : SentinelActivity() {
                                 validatePayload(string)
                             }
                         } catch (fn: FileNotFoundException) {
-                            fn.printStackTrace()
+                            Timber.e("backup-read %s", fn.javaClass.simpleName)
                             throw fn
                         } catch (ioe: IOException) {
-                            ioe.printStackTrace()
+                            Timber.e("backup-read %s", ioe.javaClass.simpleName)
                             throw ioe
                         } catch (ex: Exception) {
-                            ex.printStackTrace()
+                            Timber.e("backup-read %s", ex.javaClass.simpleName)
                             throw ex
                         }
                     }

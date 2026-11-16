@@ -210,6 +210,19 @@ android {
     }
 }
 
+// The logcat gates shell out to these scripts. Without declaring them as
+// inputs, a script or allowlist edit leaves testStagingDebugUnitTest
+// UP-TO-DATE and a local run reports the previous result (#576).
+def logcatGates = files(
+        "${rootDir}/scripts/check-release-logcat.py",
+        "${rootDir}/scripts/check-log-backends.py",
+        "${rootDir}/scripts/check-release-dex.py",
+        "${rootDir}/scripts/check-app-libs.py",
+)
+tasks.withType(org.gradle.api.tasks.testing.Test).configureEach {
+    inputs.files(logcatGates)
+}
+
 dependencies {
     api fileTree(include: ['*.jar'], dir: 'libs')
     implementation 'androidx.preference:preference:1.2.1'
@@ -248,6 +261,15 @@ implementation 'it.unimi.dsi:fastutil:8.3.0'   // boltzmann public API exposes f
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutines_version"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:$coroutines_version"
     testImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-test:$coroutines_version"
+
+    // #564 / #576: one slf4j binding, and it writes nothing. 2.x loads a
+    // ServiceLoader provider that can write logcat even from a jar in libs/.
+    implementation 'org.slf4j:slf4j-nop:1.7.36'
+    implementation('org.slf4j:slf4j-api') {
+        version {
+            strictly '[1.7,1.8)'
+        }
+    }
 
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'com.squareup.okhttp3:logging-interceptor:4.12.0'

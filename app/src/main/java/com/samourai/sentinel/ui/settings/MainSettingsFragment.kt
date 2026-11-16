@@ -1017,7 +1017,7 @@ class MainSettingsFragment : PreferenceFragmentCompat() {
             bw.flush()
             bw.close()
         } catch (e: IOException) {
-            e.printStackTrace()
+            Timber.e("backup-write %s", e.javaClass.simpleName)
         }
     }
 

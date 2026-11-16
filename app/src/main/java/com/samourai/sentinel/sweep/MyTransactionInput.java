@@ -10,6 +10,8 @@ import org.bitcoinj.core.TransactionOutPoint;
 
 import java.math.BigInteger;
 
+import timber.log.Timber;
+
 public class MyTransactionInput extends TransactionInput {
 
     private static final long serialVersionUID = 1L;
@@ -41,7 +43,7 @@ public class MyTransactionInput extends TransactionInput {
         try {
             return new Address(params, address);
         } catch (AddressFormatException e) {
-            e.printStackTrace();
+            Timber.e("from-address %s", e.getClass().getSimpleName());
         }
 
         return null;

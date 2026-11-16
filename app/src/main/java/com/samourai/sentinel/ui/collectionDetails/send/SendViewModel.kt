@@ -355,7 +355,7 @@ class SendViewModel : ViewModel() {
         }
         job?.invokeOnCompletion {
             if (it != null) {
-                it.printStackTrace()
+                Timber.e("send-job %s", it.javaClass.simpleName)
                 viewModelScope.launch(Dispatchers.Main) {
 //                    Toast.makeText(requireContext(), it.message, Toast.LENGTH_SHORT).show()
                 }
