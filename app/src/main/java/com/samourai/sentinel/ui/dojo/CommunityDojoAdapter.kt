@@ -13,8 +13,40 @@ import com.samourai.sentinel.R
 
 class CommunityDojoAdapter(
     private val onSelect: (CheckedDojo) -> Unit,
-    private val onCopy: (CheckedDojo) -> Unit
+    private val onCopy: (CheckedDojo) -> Unit,
+    /** "View on PayNym" in an expanded row: the profile URL built from the signed code. */
+    private val onOpenPayNym: (String) -> Unit = {},
 ) : ListAdapter<CheckedDojo, CommunityDojoAdapter.ViewHolder>(DiffCallback) {
+
+    /** Rows whose signer code is expanded ([rowKey]); cleared with the list. */
+    private val expanded = HashSet<String>()
+
+    /** Names used by more than one signer in the current list ([SignerNameCollisions]). */
+    private var collisions: Set<String> = emptySet()
+
+    override fun onCurrentListChanged(previousList: List<CheckedDojo>, currentList: List<CheckedDojo>) {
+        val keys = currentList.mapNotNull { rowKey(it) }.toSet()
+        expanded.retainAll(keys)
+        val now = SignerNameCollisions.names(currentList)
+        if (now != collisions) {
+            collisions = now
+            // DiffUtil skips rows whose own content did not change.
+            notifyDataSetChanged()
+        }
+    }
+
+    /** True when [item]'s name is used by another signer in the current list. */
+    fun nameCollides(item: CheckedDojo): Boolean = SignerNameCollisions.collides(item, collisions)
+
+    fun isExpanded(item: CheckedDojo): Boolean = rowKey(item)?.let { it in expanded } == true
+
+    /** Expands or collapses [item]'s signer code; signed rows only. */
+    fun toggleExpanded(item: CheckedDojo) {
+        val key = rowKey(item) ?: return
+        if (!expanded.remove(key)) expanded.add(key)
+        val index = currentList.indexOf(item)
+        if (index >= 0) notifyItemChanged(index)
+    }
 
     private object DiffCallback : DiffUtil.ItemCallback<CheckedDojo>() {
         override fun areItemsTheSame(oldItem: CheckedDojo, newItem: CheckedDojo) =
@@ -29,6 +61,11 @@ class CommunityDojoAdapter(
         val flag: TextView = view.findViewById(R.id.communityDojoFlag)
         val name: TextView = view.findViewById(R.id.communityDojoName)
         val subtitle: TextView = view.findViewById(R.id.communityDojoSubtitle)
+        val chip: TextView = view.findViewById(R.id.communityDojoUnverifiedChip)
+        val signer: TextView = view.findViewById(R.id.communityDojoSigner)
+        val signerCode: TextView = view.findViewById(R.id.communityDojoSignerCode)
+        val signerLink: TextView = view.findViewById(R.id.communityDojoSignerLink)
+        val warning: TextView = view.findViewById(R.id.communityDojoSignerWarning)
         val copyButton: ImageButton = view.findViewById(R.id.communityDojoCopyButton)
     }
 
@@ -58,19 +95,20 @@ class CommunityDojoAdapter(
             holder.flag.visibility = View.GONE
         }
 
-        // That Dojo's block explorer onion only. A clearnet
-        // explorer shows no address. Same formatter as the
-        // Network Block Explorer row.
-        // Second line: who signed this listing (the code the signature
-        // proves, not the directory's label), or why it can't be paired.
+        // Second line: why it can't be paired. Signed rows show who signed
+        // the listing below it (the code the signature proves, not the
+        // directory's label): collapsed to first 8 … last 8, expanded on tap
+        // to the full grouped code and a PayNym link.
         val verified = item.verified
-        val signature = if (verified != null) {
-            context.getString(R.string.community_dojo_signed_by, DojoBaySignatures.shortCode(verified.paymentCode))
+        holder.subtitle.text = if (verified != null) {
+            communityDojoSubtitle(node)
         } else {
             val failure = (item.check as DojoBaySignatures.NodeCheck.Unverified).failure
-            context.getString(R.string.community_dojo_unverified, context.getString(failureText(failure)))
+            communityDojoSubtitle(node) + "\n" +
+                context.getString(R.string.community_dojo_unverified, context.getString(failureText(failure)))
         }
-        holder.subtitle.text = communityDojoSubtitle(node) + "\n" + signature
+        holder.chip.visibility = if (verified != null) View.VISIBLE else View.GONE
+        bindSigner(holder, item)
         holder.itemView.alpha = if (verified != null) 1f else 0.5f
         holder.copyButton.isEnabled = verified != null
 
@@ -78,7 +116,49 @@ class CommunityDojoAdapter(
         holder.copyButton.setOnClickListener { onCopy(item) }
     }
 
+    private fun bindSigner(holder: ViewHolder, item: CheckedDojo) {
+        val context = holder.itemView.context
+        val code = item.verified?.paymentCode
+        if (code == null) {
+            holder.signer.visibility = View.GONE
+            holder.signerCode.visibility = View.GONE
+            holder.signerLink.visibility = View.GONE
+            holder.warning.visibility = View.GONE
+            holder.signer.setOnClickListener(null)
+            return
+        }
+        val open = isExpanded(item)
+        holder.signer.visibility = View.VISIBLE
+        holder.signer.text = if (open) {
+            context.getString(R.string.community_dojo_signed_by_expanded)
+        } else {
+            context.getString(R.string.community_dojo_signed_by, SignerCodeFormat.collapsedCode(code))
+        }
+        holder.signer.contentDescription =
+            if (open) null else context.getString(R.string.community_dojo_signer_expand_description)
+        holder.signerCode.visibility = if (open) View.VISIBLE else View.GONE
+        holder.signerCode.text = if (open) SignerCodeFormat.displayCode(code) else null
+        val link = PayNymLinks.profileUrl(code)
+        holder.signerLink.visibility = if (open && link != null) View.VISIBLE else View.GONE
+        holder.signerLink.paintFlags = holder.signerLink.paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
+        holder.signerLink.setOnClickListener { link?.let(onOpenPayNym) }
+        // The code lines toggle too, so the row folds back from where it was read.
+        holder.signer.setOnClickListener { toggleExpanded(item) }
+        holder.signerCode.setOnClickListener { toggleExpanded(item) }
+        val warning = rowWarning(context, item)
+        holder.warning.visibility = if (warning != null) View.VISIBLE else View.GONE
+        holder.warning.text = warning
+    }
+
+    /** A signed row's note under the signer, or null. */
+    private fun rowWarning(context: android.content.Context, item: CheckedDojo): String? =
+        if (nameCollides(item)) context.getString(R.string.community_dojo_signer_collision) else null
+
     companion object {
+        /** Expansion key for a signed row: the listing and the code that signed it. */
+        fun rowKey(item: CheckedDojo): String? =
+            item.verified?.paymentCode?.let { (item.node.id ?: item.node.name.orEmpty()) + "|" + it }
+
         fun failureText(failure: DojoBaySignatures.Failure): Int = when (failure) {
             DojoBaySignatures.Failure.MISSING_SIGNATURE -> R.string.community_dojo_failure_missing
             DojoBaySignatures.Failure.UNREADABLE_BLOCK -> R.string.community_dojo_failure_unreadable

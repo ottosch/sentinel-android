@@ -71,6 +71,9 @@ object DojoBaySignatures {
     /** A BIP47 payment code: "PM8T" and 112 more Base58 characters (116 in all). */
     private val PAYMENT_CODE_SHAPE = Regex("^PM8T[1-9A-HJ-NP-Za-km-z]{112}$")
 
+    /** True when [code] is shaped like a payment code (shape only, no decode). */
+    fun isPaymentCodeShape(code: String?): Boolean = code != null && PAYMENT_CODE_SHAPE.matches(code)
+
     private val LISTING_MSG = Regex("BEGIN BITCOIN SIGNED MESSAGE-----\\n([\\s\\S]*?)\\n-----BEGIN BITCOIN SIGNATURE")
     private val LISTING_SIG = Regex("\\n([A-Za-z0-9+/=]{80,})\\n-----END BITCOIN SIGNATURE")
     // verifyOperatorDoc tolerates a swallowed newline after BEGIN and blank lines before END.

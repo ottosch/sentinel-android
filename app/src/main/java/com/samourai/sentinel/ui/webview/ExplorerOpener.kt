@@ -250,6 +250,19 @@ class ExplorerOpener(
     }
 
     companion object {
+        /**
+         * The same screen for a page that isn't an explorer page, such as a
+         * signer's PayNym page ([kind] goes in
+         * [ExplorerWebViewActivity.EXTRA_PAGE]). It loads under the screen's
+         * own Tor rules; the caller builds [url].
+         */
+        fun pageIntent(context: Context, url: String, title: String, kind: String): Intent =
+            Intent(context, ExplorerWebViewActivity::class.java)
+                .putExtra(ExplorerWebViewActivity.EXTRA_URL, url)
+                .putExtra(ExplorerWebViewActivity.EXTRA_TITLE, title)
+                .putExtra(ExplorerWebViewActivity.EXTRA_PAGE, kind)
+                .apply { if (context !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+
         fun startExplorer(context: Context, url: String, title: String?) {
             val intent = Intent(context, ExplorerWebViewActivity::class.java)
                 .putExtra(ExplorerWebViewActivity.EXTRA_URL, url)

@@ -236,6 +236,9 @@ data class DojoDisplaySnapshot(
     // read; the url-match guards keep a stale label out of every
     // dialog and every decision.
     val network: String? = null,
+    // Another listing in the same list used this name under a different
+    // signer when it was picked: the pre-pair dialog warns. Not saved.
+    val nameCollision: Boolean = false,
 )
 
 /**
@@ -855,20 +858,11 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
         val snapshot = pendingSnapshot.forDialog { readDisplaySnapshot() }
         val rows = pairingDetailRows(pairing, snapshot)
         val view = layoutInflater.inflate(R.layout.dialog_dojo_pairing_details, null)
-        val header = directoryHeader(snapshot, pairing.pairing?.url)
-        val headerRow = view.findViewById<View>(R.id.dojoPairingDirectoryHeader)
-        if (header != null) {
-            view.findViewById<TextView>(R.id.dojoPairingDirectoryName).text =
-                header.name ?: getString(R.string.dojo_unnamed)
-            val flagView = view.findViewById<TextView>(R.id.dojoPairingDirectoryFlag)
-            if (header.flag != null) {
-                flagView.text = header.flag
-                flagView.visibility = View.VISIBLE
-            } else {
-                flagView.visibility = View.GONE
-            }
-            headerRow.visibility = View.VISIBLE
-        }
+        val dialogViews = PrePairDialogViews(view)
+        dialogViews.bindHeader(directoryHeader(snapshot, pairing.pairing?.url), getString(R.string.dojo_unnamed))
+        // Who signed the picked listing: the full code its signature proved.
+        val signer = prePairSigner(pendingSignerPin.forDialog(), snapshot, pairing.pairing?.url)
+        dialogViews.bindSigner(signer) { url -> context?.let { PayNymPage.open(it, url) } }
         bindDetailRow(view, R.id.dojoPairingJurisdictionRow, R.id.dojoPairingJurisdictionValue, rows.jurisdiction)
         // #250: the network guard - evidence at dialog time, the
         // decision before the buttons render. Declared rides the

@@ -269,6 +269,22 @@
     <string name="network_directory_default" translatable="false">Default · %1$s</string>
     <string name="network_directory_custom" translatable="false">Custom · %1$s</string>
     <string name="community_dojo_signed_by" translatable="false">Signed by %1$s</string>
+    <string name="signer_unverified_chip" translatable="false">Unverified</string>
+    <string name="dojo_pairing_directory_not_signed" translatable="false">Name and location are set by the directory and are not signed.</string>
+    <string name="dojo_pairing_row_signed_by" translatable="false">Signed by</string>
+    <string name="dojo_pairing_signer_collision" translatable="false">Another listing uses this name with a different signer. Check the full code.</string>
+    <string name="community_dojo_signer_collision" translatable="false">Another listing uses this name with a different signer</string>
+    <string name="community_dojo_signed_by_expanded" translatable="false">Signed by</string>
+    <string name="community_dojo_signer_expand_description" translatable="false">Show the full signer code</string>
+    <string name="paynym_view_link" translatable="false">View on PayNym</string>
+    <string name="paynym_from_caption" translatable="false">from paynym.rs</string>
+    <string name="paynym_avatar_description" translatable="false">PayNym avatar</string>
+    <string name="paynym_avatar_failed_description" translatable="false">PayNym avatar unavailable</string>
+    <string name="paynym_copy_link" translatable="false">Copy link</string>
+    <string name="paynym_link_copied" translatable="false">PayNym link copied</string>
+    <string name="paynym_tor_required_off" translatable="false">PayNym is an onion site, so it opens only through Tor, and Tor is not running. Start Tor, or copy the link to open it elsewhere over Tor.</string>
+    <string name="paynym_tor_required_unsupported" translatable="false">PayNym is an onion site, so it opens only through Tor, and this device\'s WebView cannot route through Tor. It will not load here. Copy the link to open it elsewhere over Tor.</string>
+    <string name="paynym_tor_route_failed" translatable="false">PayNym could not be routed through Tor, so it will not load. Close this screen and try again, or copy the link.</string>
     <string name="community_dojo_unverified" translatable="false">Signature check failed (%1$s) · can\'t pair</string>
     <string name="community_dojo_unverified_toast" translatable="false">This Dojo\'s listing is not signed by its owner\'s payment code, so it can\'t be paired from here</string>
     <string name="community_dojo_failure_missing" translatable="false">no signature</string>

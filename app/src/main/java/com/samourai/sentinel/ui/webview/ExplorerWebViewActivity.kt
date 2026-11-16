@@ -27,6 +27,7 @@ import com.samourai.sentinel.data.Tx
 import com.samourai.sentinel.databinding.ActivityExplorerWebViewBinding
 import com.samourai.sentinel.tor.EnumTorState
 import com.samourai.sentinel.tor.SentinelTorManager
+import com.samourai.sentinel.ui.dojo.PayNymPage
 import com.samourai.sentinel.ui.utils.showFloatingSnackBar
 import org.koin.java.KoinJavaComponent.inject
 import timber.log.Timber
@@ -58,6 +59,12 @@ class ExplorerWebViewActivity : AppCompatActivity() {
      */
     @Volatile
     private var directSession = false
+
+    /**
+     * A PayNym page ("View on PayNym" in Community Dojos): an onion, so Tor
+     * is always required, and every block explains with the link to copy.
+     */
+    private var payNym = false
     private val explorerRepository: ExplorerRepository by inject(ExplorerRepository::class.java)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -71,8 +78,16 @@ class ExplorerWebViewActivity : AppCompatActivity() {
 
         val incoming = intent.getStringExtra(EXTRA_URL)?.takeIf { it.isNotBlank() }
         val explicitTitle = intent.getStringExtra(EXTRA_TITLE)?.takeIf { it.isNotBlank() }
-        val selected = SentinelState.selectedTx
-        if (incoming != null && explicitTitle != null) {
+        payNym = intent.getStringExtra(EXTRA_PAGE) == PayNymPage.PAGE_KIND
+        val selected = if (payNym) null else SentinelState.selectedTx
+        if (payNym) {
+            // Only a link built from a signed code; anything else closes.
+            if (PayNymPage.signedCodeOf(incoming) == null) {
+                finish()
+                return
+            }
+            title = PayNymPage.TITLE
+        } else if (incoming != null && explicitTitle != null) {
             title = explicitTitle
             if (selected != null && selected.hash.split("-")[0] == explicitTitle) {
                 tx = selected
@@ -95,7 +110,7 @@ class ExplorerWebViewActivity : AppCompatActivity() {
         if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) {
             WebSettingsCompat.setForceDark(binding.webView.settings, WebSettingsCompat.FORCE_DARK_ON)
         }
-        if (incoming == null && tx != null &&
+        if (!payNym && incoming == null && tx != null &&
             explorerRepository.pageUrl(ExplorerBinding.ExplorerPage.TX, tx!!.hash.split("-")[0]) == null
         ) {
             // Opened with no URL and nothing bound. Ask here; a confirmed
@@ -126,7 +141,7 @@ class ExplorerWebViewActivity : AppCompatActivity() {
 
     /** Wallet Tor rule, plus any `.onion` host. */
     private fun torRequiredForThisPage(): Boolean =
-        ExplorerBinding.lookupRequiresTor(loadTarget(), SentinelState.isTorRequired())
+        payNym || ExplorerBinding.lookupRequiresTor(loadTarget(), SentinelState.isTorRequired())
 
     /**
      * #472: Tor-required is part of every load decision. #241 already
@@ -151,12 +166,12 @@ class ExplorerWebViewActivity : AppCompatActivity() {
             ExplorerLoadDecision.WAIT_FOR_TOR -> binding.progressWeb.visibility = View.VISIBLE
             ExplorerLoadDecision.BLOCK_TOR_OFF -> showBlocked(
                 getString(R.string.explorer_tor_required_title),
-                getString(R.string.explorer_tor_required_off),
+                getString(torOffMessage()),
                 allowWait = true
             )
             ExplorerLoadDecision.BLOCK_PROXY_UNSUPPORTED -> showBlocked(
                 getString(R.string.explorer_tor_required_title),
-                getString(R.string.explorer_tor_required_unsupported),
+                getString(unsupportedMessage()),
                 allowWait = false
             )
             // Tor optional: going direct is the user's explicit choice.
@@ -176,6 +191,12 @@ class ExplorerWebViewActivity : AppCompatActivity() {
      * screen stays open and the Tor observer loads through the proxy if
      * Tor becomes ready.
      */
+    private fun torOffMessage(): Int =
+        if (payNym) R.string.paynym_tor_required_off else R.string.explorer_tor_required_off
+
+    private fun unsupportedMessage(): Int =
+        if (payNym) R.string.paynym_tor_required_unsupported else R.string.explorer_tor_required_unsupported
+
     private fun showBlocked(title: String, message: String, allowWait: Boolean) {
         if (isFinishing || isDestroyed) return
         binding.progressWeb.visibility = View.INVISIBLE
@@ -190,6 +211,15 @@ class ExplorerWebViewActivity : AppCompatActivity() {
                 binding.progressWeb.visibility = View.VISIBLE
             }
         }
+        // A PayNym page can still be opened elsewhere over Tor: copying
+        // the link is the fallback. Nothing is loaded here.
+        val payNymLink = if (payNym) PayNymPage.urlFor(PayNymPage.signedCodeOf(intent.getStringExtra(EXTRA_URL))) else null
+        if (payNymLink != null) {
+            builder.setNeutralButton(R.string.paynym_copy_link) { _, _ ->
+                copyText(payNymLink, R.string.paynym_link_copied)
+                finish()
+            }
+        }
         blockedDialog = builder.show()
     }
 
@@ -198,7 +228,7 @@ class ExplorerWebViewActivity : AppCompatActivity() {
             // Only reachable if support changed under us; never go direct.
             showBlocked(
                 getString(R.string.explorer_tor_required_title),
-                getString(R.string.explorer_tor_required_unsupported),
+                getString(unsupportedMessage()),
                 allowWait = false
             )
             return
@@ -250,7 +280,7 @@ class ExplorerWebViewActivity : AppCompatActivity() {
         Timber.e(cause, "Explorer proxy override failed (#472)")
         showBlocked(
             getString(R.string.explorer_tor_route_failed_title),
-            getString(R.string.explorer_tor_route_failed),
+            getString(if (payNym) R.string.paynym_tor_route_failed else R.string.explorer_tor_route_failed),
             allowWait = false
         )
     }
@@ -279,10 +309,7 @@ class ExplorerWebViewActivity : AppCompatActivity() {
         val unsupported = !WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)
         showBlocked(
             getString(R.string.explorer_tor_required_title),
-            getString(
-                if (unsupported) R.string.explorer_tor_required_unsupported
-                else R.string.explorer_tor_required_off,
-            ),
+            getString(if (unsupported) unsupportedMessage() else torOffMessage()),
             allowWait = !unsupported,
         )
     }
@@ -398,6 +425,8 @@ class ExplorerWebViewActivity : AppCompatActivity() {
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.web_explorer, menu)
+        // A PayNym page has no transaction to copy.
+        if (payNym) menu.findItem(R.id.menu_web_copy_tx)?.isVisible = false
         SentinelTorManager.getTorStateLiveData().observe(this) {
             menu.findItem(R.id.menu_web_tor).icon =
                 ContextCompat.getDrawable(applicationContext, R.drawable.ic_tor_on)
@@ -440,7 +469,7 @@ class ExplorerWebViewActivity : AppCompatActivity() {
                     ) {
                         showBlocked(
                             getString(R.string.explorer_tor_required_title),
-                            getString(R.string.explorer_tor_required_off),
+                            getString(torOffMessage()),
                             allowWait = true,
                         )
                     }
@@ -486,13 +515,13 @@ class ExplorerWebViewActivity : AppCompatActivity() {
         }
     }
 
-    private fun copyText(string: String) {
+    private fun copyText(string: String, toast: Int = R.string.copied_to_clipboard) {
         val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager?
         val clipData = ClipData
                 .newPlainText("", string)
         if (cm != null) {
             cm.setPrimaryClip(clipData)
-            Toast.makeText(applicationContext, getString(R.string.copied_to_clipboard), Toast.LENGTH_SHORT).show()
+            Toast.makeText(applicationContext, getString(toast), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -505,5 +534,11 @@ class ExplorerWebViewActivity : AppCompatActivity() {
          */
         const val EXTRA_URL = "com.samourai.sentinel.ui.webview.EXTRA_URL"
         const val EXTRA_TITLE = "com.samourai.sentinel.ui.webview.EXTRA_TITLE"
+
+        /**
+         * What kind of page [EXTRA_URL] is, when it isn't an explorer page:
+         * [PayNymPage.PAGE_KIND] for a signer's PayNym page.
+         */
+        const val EXTRA_PAGE = "com.samourai.sentinel.ui.webview.EXTRA_PAGE"
     }
 }

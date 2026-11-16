@@ -100,7 +100,7 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
      * stream), on a fresh Tor circuit: see CommunityDojoFetchPolicy.
      */
 
-    private val adapter = CommunityDojoAdapter(
+    private val adapter: CommunityDojoAdapter = CommunityDojoAdapter(
         onSelect = { item ->
             val node = item.node
             // Only a listing signed by its owner's payment code pairs, and it
@@ -130,6 +130,9 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
                     // directory's unsigned label, so a relabelled listing can
                     // never bless a pairing for the wrong network.
                     network = item.network.directoryName(),
+                    // Another listing in this list uses the same name under
+                    // a different signer: the dialog says so.
+                    nameCollision = adapter.nameCollides(item),
                 )
                 // #221: the configure sheet is the parent. onScanPayload
                 // validates, stores the payload, and moves to the connect
@@ -139,7 +142,8 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
                 dismiss()
             }
         },
-        onCopy = { item -> copyPairingJson(item) }
+        onCopy = { item -> copyPairingJson(item) },
+        onOpenPayNym = { url -> context?.let { PayNymPage.open(it, url) } },
     )
 
     override fun onCreateView(

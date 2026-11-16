@@ -8,9 +8,9 @@
     app:layout_behavior="com.google.android.material.bottomsheet.BottomSheetBehavior"
     tools:ignore="HardcodedText">
 
-    <!-- The title is its own TextView so it can wrap to two lines: the
-         toolbar's built-in title is one line and was cut off on narrow
-         screens. -->
+    <!-- The title is its own TextView: one line at 19sp, which fits
+         "Community Dojos (DojoBay.org)" on a 412dp-wide screen; on a
+         narrower one it shrinks (autosize) instead of being cut off. -->
     <com.google.android.material.appbar.MaterialToolbar
         android:id="@+id/communityDojoToolbar"
         android:layout_width="match_parent"
@@ -19,15 +19,19 @@
         app:navigationIcon="@drawable/ic_baseline_arrow_back_24"
         app:menu="@menu/community_dojo_list_menu">
 
-        <TextView
+        <androidx.appcompat.widget.AppCompatTextView
             android:id="@+id/communityDojoTitle"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:ellipsize="end"
-            android:maxLines="2"
-            android:paddingVertical="8dp"
+            android:layout_height="?attr/actionBarSize"
+            android:gravity="center_vertical"
+            android:maxLines="1"
             android:text="@string/community_dojo_toolbar_title"
-            android:textAppearance="?attr/textAppearanceHeadline6" />
+            android:textAppearance="?attr/textAppearanceHeadline6"
+            android:textSize="19sp"
+            app:autoSizeMaxTextSize="19sp"
+            app:autoSizeMinTextSize="14sp"
+            app:autoSizeStepGranularity="1sp"
+            app:autoSizeTextType="uniform" />
     </com.google.android.material.appbar.MaterialToolbar>
 
     <!-- Shown over a saved list: refreshing, Dojo Bay unreachable, or no operator statement. -->

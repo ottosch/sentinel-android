@@ -189,4 +189,10 @@
         <item name="android:background">?attr/listChoiceBackgroundIndicator</item>
     </style>
 
+    <!-- The PayNym avatar in the pre-pair dialog: 8dp rounded corners. -->
+    <style name="SignerAvatarShape" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">8dp</item>
+    </style>
+
 </resources>

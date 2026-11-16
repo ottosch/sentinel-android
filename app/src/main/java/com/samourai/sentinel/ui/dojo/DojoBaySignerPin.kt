@@ -65,6 +65,9 @@ class PendingSignerPin {
         pending = signerCode?.takeIf { it.isNotBlank() }
     }
 
+    /** The picked listing's signer code, for the pre-pair dialog; null for a scan or paste. */
+    fun forDialog(): String? = pending
+
     /**
      * The pairing to [pairedUrl] committed: the pin to save, or null for a
      * pairing that did not come from a listing (which clears any old pin).

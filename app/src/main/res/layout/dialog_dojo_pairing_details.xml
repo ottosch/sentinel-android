@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -45,7 +46,34 @@
             android:textSize="16sp"
             android:textStyle="bold"
             tools:text="Community Dojo" />
+
+        <!-- The directory's name and flag are not signed. -->
+        <TextView
+            android:id="@+id/dojoPairingDirectoryChip"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:background="@drawable/signer_unverified_chip"
+            android:fontFamily="sans-serif-medium"
+            android:letterSpacing="0.04"
+            android:paddingHorizontal="6dp"
+            android:paddingVertical="3dp"
+            android:text="@string/signer_unverified_chip"
+            android:textAllCaps="true"
+            android:textColor="#9A9A9A"
+            android:textSize="10sp" />
     </LinearLayout>
+
+    <TextView
+        android:id="@+id/dojoPairingDirectoryCaption"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:text="@string/dojo_pairing_directory_not_signed"
+        android:textColor="#9A9A9A"
+        android:textSize="12sp"
+        android:visibility="gone"
+        tools:visibility="visible" />
 
     <LinearLayout
         android:id="@+id/dojoPairingJurisdictionRow"
@@ -171,6 +199,136 @@
             android:textColor="@color/white"
             android:textSize="13sp"
             tools:text="http://explorer.example" />
+    </LinearLayout>
+
+    <!--
+      Who signed the listing: the full payment code the listing's signature
+      proved, never the directory's paymentCode or paynym fields. Shown only
+      for a pick from the Community Dojos list. The avatar and +name come
+      from PayNym over Tor (PayNymLookup) and stay hidden until they load.
+    -->
+    <LinearLayout
+        android:id="@+id/dojoPairingSignerSection"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:orientation="vertical"
+        android:visibility="gone"
+        tools:visibility="visible">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/dojo_pairing_row_signed_by"
+            android:textColor="#9A9A9A"
+            android:textSize="12sp" />
+
+        <LinearLayout
+            android:id="@+id/dojoPairingSignerIdentity"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="4dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:visibility="gone"
+            tools:visibility="visible">
+
+            <com.google.android.material.imageview.ShapeableImageView
+                android:id="@+id/dojoPairingSignerAvatar"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="#303030"
+                android:contentDescription="@string/paynym_avatar_description"
+                android:scaleType="centerCrop"
+                app:shapeAppearanceOverlay="@style/SignerAvatarShape" />
+
+            <LinearLayout
+                android:id="@+id/dojoPairingSignerMeta"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:visibility="gone"
+                tools:visibility="visible">
+
+                <TextView
+                    android:id="@+id/dojoPairingSignerNym"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="@color/white"
+                    android:textSize="15sp"
+                    tools:text="+examplenym" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="@string/paynym_from_caption"
+                    android:textColor="#9A9A9A"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/dojoPairingSignerCode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:breakStrategy="simple"
+            android:fontFamily="@font/roboto_mono"
+            android:lineSpacingExtra="2dp"
+            android:textColor="@color/white"
+            android:textIsSelectable="true"
+            android:textSize="12sp"
+            tools:text="PM8T JUJH kfdj kb5g 5XaJ uvnC 63rU z7LX" />
+
+        <TextView
+            android:id="@+id/dojoPairingSignerLink"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="?attr/selectableItemBackground"
+            android:drawablePadding="6dp"
+            android:fontFamily="sans-serif-medium"
+            android:gravity="center_vertical"
+            android:text="@string/paynym_view_link"
+            android:textColor="@color/green_ui_2"
+            android:textSize="14sp"
+            app:drawableEndCompat="@drawable/ic_open_in_new_16"
+            app:drawableTint="@color/green_ui_2" />
+
+        <!-- Another listing in the list uses this name with a different signer. -->
+        <LinearLayout
+            android:id="@+id/dojoPairingSignerCollision"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:background="@drawable/signer_collision_background"
+            android:orientation="horizontal"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="10dp"
+            android:visibility="gone"
+            tools:visibility="visible">
+
+            <ImageView
+                android:layout_width="10dp"
+                android:layout_height="10dp"
+                android:layout_marginTop="4dp"
+                android:layout_marginEnd="10dp"
+                android:importantForAccessibility="no"
+                android:src="@drawable/signer_warning_dot" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/dojo_pairing_signer_collision"
+                android:textColor="@color/white"
+                android:textSize="13sp" />
+        </LinearLayout>
     </LinearLayout>
 
 </LinearLayout>
