@@ -47,7 +47,11 @@ REFLECTION = re.compile(
     r"|java\.util\.logging\.Logger|kotlin\.io\.ConsoleKt)\""
 )
 STATIC_IMPORT = re.compile(
-    r"import\s+static\s+(?:android\.util\.Log\b|java\.lang\.System\.(?:out|err)\b)"
+    r"import\s+static\s+(?:android\.util\.Log\b|java\.lang\.System\.(?:\*|out|err)\b)"
+)
+STREAM_CALL = re.compile(
+    r"\b(?:System\.out|System\.err|err)\.(?:printf|write|append|format|print|println)\s*\("
+    r"|\bprintf\s*\("
 )
 KOTLIN_IO_IMPORT = re.compile(r"import\s+kotlin\.io\.(?:println|print)\b")
 LOG_ALIAS_IMPORT = re.compile(r"import\s+android\.util\.Log\s+as\s+(\w+)")
@@ -123,6 +127,7 @@ def line_hits(masked_line: str, aliases: set[str]) -> bool:
         or LOG_TYPEALIAS.search(masked_line)
         or LOG_MEMBER_IMPORT.search(masked_line)
         or CONSOLE_KT.search(masked_line)
+        or STREAM_CALL.search(masked_line)
     ):
         return True
     for alias in aliases:
@@ -210,16 +215,6 @@ def repo_sources() -> dict[str, str]:
 
 def gated_errors(sources: dict[str, str], found: dict[str, list[tuple[int, str]]]) -> list[str]:
     errors = []
-    kpath = "extlibj/src/main/java/com/samourai/wallet/crypto/KOpenSSL.kt"
-    if kpath in sources:
-        text = sources[kpath]
-        if "printDetails: Boolean = true" in text or "printDetails = true" in text:
-            errors.append("KOpenSSL printDetails must stay default false")
-        raw = text.splitlines()
-        for lineno, _text in found.get(kpath, []):
-            window = "\n".join(raw[max(0, lineno - 4) : lineno])
-            if "printDetails" not in window:
-                errors.append(f"{kpath}:{lineno}: println is not inside printDetails")
     for psbt in (
         "extlibj/src/main/java/com/samourai/wallet/psbt/PSBT.java",
         "extlibj/src/main/java/com/samourai/wallet/cahoots/psbt/PSBT.java",
@@ -342,33 +337,6 @@ _ALLOW: dict[str, tuple[str, tuple[str, ...]]] = {
             "e.printStackTrace();",
         ),
     ),
-    "extlibj/src/main/java/com/samourai/wallet/cahoots/psbt/PSBT.java": (
-        "PSBT dump. System.out.print runs only inside if (bDebug); the default is false.",
-        (
-            "System.out.print(s);",
-            'System.out.print("\\n");',
-        ),
-    ),
-    "extlibj/src/main/java/com/samourai/wallet/crypto/KOpenSSL.kt": (
-        "Key, IV, salt and plaintext. printDetails defaults to false; no caller passes true.",
-        (
-            'println("Salt: ${salt.joinToString("") { "%02X".format(it) }}")',
-            'println("Key: ${components.key.joinToString("") { "%02X".format(it) }}")',
-            'println("IV: ${components.iv.joinToString("") { "%02X".format(it) }}")',
-            "println(it)",
-            'println("Salt: ${salt.joinToString("") { "%02X".format(it) }}")',
-            'println("Key: ${components.key.joinToString("") { "%02X".format(it) }}")',
-            'println("IV: ${components.iv.joinToString("") { "%02X".format(it) }}")',
-            "println(it)",
-        ),
-    ),
-    "extlibj/src/main/java/com/samourai/wallet/psbt/PSBT.java": (
-        "PSBT dump. System.out.print runs only inside if (bDebug); the default is false.",
-        (
-            "System.out.print(s);",
-            'System.out.print("\\n");',
-        ),
-    ),
     "hummingbird-android/src/main/java/com/invertedx/hummingbird/QrCodeAnalyzer.kt": (
         "Image-format int and a fixed success line. The QR text is not logged.",
         (
@@ -409,7 +377,7 @@ def main(argv: list[str]) -> int:
         for err in extra:
             print(f"! {err}")
         return 0
-    errors = evaluate(found, sources, strict=args.strict or bool(args.sources))
+    errors = evaluate(found, sources, strict=args.strict)
     if errors:
         sys.stderr.write("release logcat source gate failed (#564):\n")
         for err in errors:

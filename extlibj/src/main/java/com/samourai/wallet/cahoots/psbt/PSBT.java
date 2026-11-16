@@ -804,10 +804,8 @@ public class PSBT {
 
         if(bDebug)  {
             sbLog.append(s);
-            System.out.print(s);
             if(eol)    {
                 sbLog.append("\n");
-                System.out.print("\n");
             }
         }
 

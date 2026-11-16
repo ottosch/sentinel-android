@@ -9,7 +9,9 @@
 
 -keepattributes Signature,InnerClasses,EnclosingMethod,RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations,AnnotationDefault,Exceptions
 
--keep class com.samourai.** { *; }
+# Application is the Boltzmann CLI. It must not survive into the release dex.
+-keep class !com.samourai.boltzmann.Application,com.samourai.** { *; }
+-checkdiscard class com.samourai.boltzmann.Application
 -keep interface com.samourai.** { *; }
 -keep class com.invertedx.** { *; }
 -keep class org.bitcoinj.** { *; }

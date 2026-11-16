@@ -249,9 +249,14 @@ implementation 'it.unimi.dsi:fastutil:8.3.0'   // boltzmann public API exposes f
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:$coroutines_version"
     testImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-test:$coroutines_version"
 
-    // #564: one slf4j binding, and it writes nothing. logback-classic used
-    // to ride boltzmann-java and open a DEBUG console appender on logcat.
+    // #564 / #576: one slf4j binding, and it writes nothing. 2.x loads a
+    // ServiceLoader provider that can write logcat even from a jar in libs/.
     implementation 'org.slf4j:slf4j-nop:1.7.36'
+    implementation('org.slf4j:slf4j-api') {
+        version {
+            strictly '[1.7,1.8)'
+        }
+    }
 
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'com.squareup.okhttp3:logging-interceptor:4.12.0'

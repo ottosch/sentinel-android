@@ -4,11 +4,15 @@
 Scans every classes*.dex in the APK with dexdump. A class is a hit when
 one of its methods does any of:
 
-- PrintStream print/println in a method that also reads System.out or System.err
+- any java.io.PrintStream method, wherever the receiver came from
 - Throwable.printStackTrace (any receiver, any overload)
-- android.util.Log v/d/i/w/e/wtf/println
+- any android.util.Log method, plus LogPrinter and EventLog
+- java.lang.Runtime.exec
 - java.util.logging Logger or Handler
 - kotlin.io.ConsoleKt print/println
+
+An APK with no classes*.dex fails. META-INF/services/org.slf4j.spi.SLF4JServiceProvider
+fails. org.slf4j.impl.StaticLoggerBinder fails unless it is the NOP binder.
 
 mapping.txt restores R8 names. A hit whose original class is not listed
 below fails the build, so a new first-party or third-party site cannot
@@ -63,9 +67,11 @@ ALLOW: dict[str, str] = {
     'androidx.camera.camera2.internal.Camera2PresenceSource$startMonitoring$1': 'Third-party library logging. No wallet data. A class that is not in this list fails the build.',
     'androidx.camera.camera2.internal.compat.workaround.RequestMonitor': 'Third-party library logging. No wallet data. A class that is not in this list fails the build.',
     'androidx.camera.core.ImageCapture': 'Third-party library logging. No wallet data. A class that is not in this list fails the build.',
+    'androidx.camera.core.ImageProcessingUtil': 'Third-party library logging. No wallet data. A class that is not in this list fails the build.',
     'androidx.camera.core.Logger': 'Third-party library logging. No wallet data. A class that is not in this list fails the build.',
     'androidx.camera.core.imagecapture.TakePictureManagerImpl': 'Third-party library logging. No wallet data. A class that is not in this list fails the build.',
     'androidx.camera.core.impl.AbstractCameraPresenceSource': 'Third-party library logging. No wallet data. A class that is not in this list fails the build.',
+    'androidx.camera.core.impl.DeferrableSurface': 'Third-party library logging. No wallet data. A class that is not in this list fails the build.',
     'androidx.camera.core.internal.CameraUseCaseAdapter': 'Third-party library logging. No wallet data. A class that is not in this list fails the build.',
     'androidx.camera.core.processing.OpenGlRenderer': 'Third-party library logging. No wallet data. A class that is not in this list fails the build.',
     'androidx.camera.core.processing.util.GLUtils': 'Third-party library logging. No wallet data. A class that is not in this list fails the build.',
@@ -199,22 +205,23 @@ ALLOW: dict[str, str] = {
     'com.google.protobuf.UnsafeUtil': 'Third-party library logging. No wallet data. A class that is not in this list fails the build.',
     'com.invertedx.hummingbird.QrCodeAnalyzer': 'Image-format int and a fixed success line. No QR text.',
     'com.invertedx.hummingbird.QrPerf': 'Counters and part indexes. No frame bytes or wallet data.',
-    'com.samourai.boltzmann.Application': 'CLI report. The method is private, so the library API cannot call it. -keep com.samourai.** leaves the class in the dex.',
     'com.samourai.sentinel.SentinelApplication$CrashReportingTree': 'Release tree. Redacted ExplorerProbe Log.println only.',
     'com.samourai.sentinel.SentinelApplication$CrashReportingTree$log$1': 'Coroutine that writes error_dump.log. The only Log call is the fixed dump-failure string.',
     'com.samourai.sentinel.util.OkHttpLogRedaction': "JUL filter. It redacts OkHttp records before Android's log bridge.",
-    'com.samourai.wallet.cahoots.psbt.PSBT': 'System.out.print only when bDebug is true. The default is false.',
-    'com.samourai.wallet.crypto.KOpenSSL': 'printDetails defaults to false. No caller passes true.',
-    'com.samourai.wallet.psbt.PSBT': 'System.out.print only when bDebug is true. The default is false.',
     'com.sparrowwallet.hummingbird.fountain.FountainDecoder': 'Third-party hummingbird decoder. Not edited in this PR.',
     'io.matthewnelson.kmp.file.internal.fs.FsJvmAndroid$Companion': 'kmp-tor / kmp-file logging. Known follow-up, not this PR.',
     'io.matthewnelson.kmp.file.internal.fs.FsJvmAndroid$__O_CLOEXEC$2': 'kmp-tor / kmp-file logging. Known follow-up, not this PR.',
     'io.matthewnelson.kmp.file.internal.fs.ParcelFileDescriptor$Companion$INSTANCE$2': 'kmp-tor / kmp-file logging. Known follow-up, not this PR.',
+    'io.matthewnelson.kmp.tor.common.core.OSInfo': 'kmp-tor / kmp-file logging. Known follow-up, not this PR.',
+    'io.matthewnelson.kmp.tor.common.core.internal.ProcessRunner$Default': 'kmp-tor / kmp-file logging. Known follow-up, not this PR.',
     'io.matthewnelson.kmp.tor.runtime.core.UncaughtException$Handler$Companion$PRINT$1': 'kmp-tor / kmp-file logging. Known follow-up, not this PR.',
     'io.reactivex.exceptions.CompositeException': 'RxJava error plugin. Known follow-up, not this PR.',
+    'io.reactivex.exceptions.CompositeException$WrappedPrintStream': 'RxJava error plugin. Known follow-up, not this PR.',
     'io.reactivex.plugins.RxJavaPlugins': 'RxJava error plugin. Known follow-up, not this PR.',
     'kotlin.ExceptionsKt__ExceptionsKt': 'Kotlin stdlib stack-trace helper. Not an app call site.',
+    'net.zetetic.database.DatabaseUtils': 'SQLCipher logcat target. Known follow-up, not this PR.',
     'net.zetetic.database.LogcatTarget': 'SQLCipher logcat target. Known follow-up, not this PR.',
+    'net.zetetic.database.sqlcipher.SQLiteDatabase': 'SQLCipher logcat target. Known follow-up, not this PR.',
     'net.zetetic.database.sqlcipher.CloseGuard$DefaultReporter': 'SQLCipher logcat target. Known follow-up, not this PR.',
     'okhttp3.internal.concurrent.TaskLoggerKt': 'Third-party library logging. No wallet data. A class that is not in this list fails the build.',
     'okhttp3.internal.concurrent.TaskQueue': 'Third-party library logging. No wallet data. A class that is not in this list fails the build.',
@@ -258,8 +265,9 @@ INVOKE = re.compile(
     r"invoke-\w+\s+\{[^}]*\},\s+L([^;]+);\.([A-Za-z0-9_$<>]+):"
 )
 CLASS_DESC = re.compile(r"Class descriptor\s*:\s+'(L[^']+;)'")
-STDIO = ("Ljava/lang/System;.out:Ljava/io/PrintStream;", "Ljava/lang/System;.err:Ljava/io/PrintStream;")
-LOG_METHODS = {"v", "d", "i", "w", "e", "wtf", "println"}
+DEX_NAME = re.compile(r"classes\d*\.dex")
+SERVICE_PROVIDER = "META-INF/services/org.slf4j.spi.SLF4JServiceProvider"
+BINDER = "org/slf4j/impl/StaticLoggerBinder"
 
 
 def descriptor_to_name(desc: str) -> str:
@@ -281,14 +289,19 @@ def load_mapping(path: Path) -> dict[str, str]:
 
 def method_hits(text: str) -> list[str]:
     hits = []
-    stdio = any(token in text for token in STDIO)
     for owner, name in INVOKE.findall(text):
-        if name in {"print", "println"} and owner == "java/io/PrintStream" and stdio:
-            hits.append("System.out/err PrintStream." + name)
+        if owner == "java/io/PrintStream":
+            hits.append("PrintStream." + name)
         elif name.startswith("printStackTrace"):
             hits.append("printStackTrace")
-        elif owner == "android/util/Log" and name in LOG_METHODS:
+        elif owner == "android/util/Log":
             hits.append("android.util.Log." + name)
+        elif owner == "android/util/LogPrinter":
+            hits.append("android.util.LogPrinter." + name)
+        elif owner == "android/util/EventLog":
+            hits.append("android.util.EventLog." + name)
+        elif owner == "java/lang/Runtime" and name == "exec":
+            hits.append("Runtime.exec")
         elif owner.startswith("java/util/logging/Logger") or owner.startswith(
             "java/util/logging/Handler"
         ) or owner.startswith("java/util/logging/ConsoleHandler") or owner.startswith(
@@ -360,18 +373,51 @@ def find_dexdump() -> Path:
     return tool
 
 
-def scan_apk(apk: Path, mapping_path: Path) -> dict[str, set[str]]:
+def binding_errors(apk: Path, zf: zipfile.ZipFile, dumps: list[str]) -> list[str]:
+    """SLF4J 2.x service providers and any StaticLoggerBinder that is not NOP."""
+    errors = []
+    for name in zf.namelist():
+        norm = name.replace("\\", "/").lstrip("./")
+        if norm == SERVICE_PROVIDER or norm.endswith("/" + SERVICE_PROVIDER):
+            errors.append(f"{apk.name}: {norm} is an SLF4J 2.x provider")
+        if BINDER in norm and not norm.endswith("/"):
+            blob = zf.read(name)
+            if b"NOPLoggerFactory" not in blob:
+                errors.append(f"{apk.name}: {norm} is not the NOP StaticLoggerBinder")
+    for dump in dumps:
+        chunks = dump.split("Class descriptor")
+        for chunk in chunks[1:]:
+            if "Lorg/slf4j/impl/StaticLoggerBinder;" not in chunk.split("\n", 1)[0]:
+                continue
+            if "NOPLoggerFactory" not in chunk:
+                errors.append(
+                    f"{apk.name}: dex StaticLoggerBinder is not the NOP binder"
+                )
+    return errors
+
+
+def scan_apk(apk: Path, mapping_path: Path) -> tuple[dict[str, set[str]], list[str]]:
     mapping = load_mapping(mapping_path)
     found: dict[str, set[str]] = {}
+    errors: list[str] = []
+    dumps: list[str] = []
     with zipfile.ZipFile(apk) as zf, tempfile.TemporaryDirectory() as tmp:
-        for name in zf.namelist():
-            if not (name.startswith("classes") and name.endswith(".dex")):
-                continue
+        dexes = [n for n in zf.namelist() if DEX_NAME.fullmatch(n)]
+        if not dexes:
+            errors.append(f"{apk.name}: release APK contains no classes*.dex")
+        for name in dexes:
             dest = Path(tmp) / Path(name).name
             dest.write_bytes(zf.read(name))
-            for cls, kinds in scan_dump(dexdump(dest), mapping).items():
+            try:
+                dump = dexdump(dest)
+            except subprocess.CalledProcessError:
+                errors.append(f"{apk.name}: {name} is not a readable dex")
+                continue
+            dumps.append(dump)
+            for cls, kinds in scan_dump(dump, mapping).items():
                 found.setdefault(cls, set()).update(kinds)
-    return found
+        errors.extend(binding_errors(apk, zf, dumps))
+    return found, errors
 
 
 def evaluate(found: dict[str, set[str]]) -> list[str]:
@@ -395,15 +441,23 @@ def self_test() -> int:
         sys.stderr.write("self-test needs javac, d8 and platforms/android-35\n")
         return 2
     sample = r"""
+import static java.lang.System.*;
 public class DexGateSample {
-  public static void leak() {
+  public static void leak() throws Exception {
     System.out.println("secret");
+    System.out.printf("%s", "x");
     try { throw new RuntimeException("x"); }
     catch (RuntimeException e) { e.printStackTrace(); }
     android.util.Log.e("t", "m");
     java.util.logging.Logger.getLogger("a").info("b");
+    Runtime.getRuntime().exec("log");
   }
-  public static void fileOnly(java.io.PrintStream ps) { ps.println("file"); }
+}
+class FileOnly {
+  static void file(java.io.PrintStream ps) { ps.println("file"); }
+}
+class StarWrite {
+  static void j2() throws Exception { err.write(new byte[]{1}); }
 }
 """
     with tempfile.TemporaryDirectory() as tmp:
@@ -415,23 +469,88 @@ public class DexGateSample {
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+        classes = [
+            Path(tmp) / name
+            for name in ("DexGateSample.class", "FileOnly.class", "StarWrite.class")
+        ]
         subprocess.run(
-            [str(d8), "--min-api", "24", "--output", tmp, str(Path(tmp) / "DexGateSample.class")],
+            [str(d8), "--min-api", "24", "--output", tmp, *[str(c) for c in classes]],
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        found = scan_dump(dexdump(Path(tmp) / "classes.dex"), {})
-    kinds = found.get("DexGateSample", set())
-    needed = {"System.out/err PrintStream.println", "printStackTrace", "android.util.Log.e", "java.util.logging.Logger.info"}
-    missing = needed - kinds
-    if missing or "DexGateSample" not in found:
-        sys.stderr.write(f"dex self-test did not flag the planted calls: missing {missing}, got {found}\n")
+        leak_dex = Path(tmp) / "classes.dex"
+        found = scan_dump(dexdump(leak_dex), {})
+        mapping = Path(tmp) / "mapping.txt"
+        mapping.write_text("")
+        quiet_src = Path(tmp) / "Quiet.java"
+        quiet_src.write_text("public class Quiet { public static void nop() {} }\n")
+        subprocess.run(
+            [javac, "--release", "8", "-d", tmp, str(quiet_src)],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        quiet_out = Path(tmp) / "quiet"
+        quiet_out.mkdir()
+        subprocess.run(
+            [str(d8), "--min-api", "24", "--output", str(quiet_out), str(Path(tmp) / "Quiet.class")],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        zero = Path(tmp) / "zero.apk"
+        with zipfile.ZipFile(zero, "w") as zf:
+            zf.writestr("AndroidManifest.xml", "<manifest/>")
+        _, zero_errs = scan_apk(zero, mapping)
+        if not any("no classes*.dex" in err for err in zero_errs):
+            sys.stderr.write(f"zero-dex APK was not rejected: {zero_errs}\n")
+            return 1
+        r1 = Path(tmp) / "r1.apk"
+        with zipfile.ZipFile(r1, "w") as zf:
+            zf.write(leak_dex, "classes.dex")
+            zf.writestr(SERVICE_PROVIDER, "org.example.Provider\n")
+        _, r1_errs = scan_apk(r1, mapping)
+        if not any("SLF4J 2.x provider" in err for err in r1_errs):
+            sys.stderr.write(f"SLF4J 2.x provider was not rejected: {r1_errs}\n")
+            return 1
+        binder = Path(tmp) / "binder.apk"
+        with zipfile.ZipFile(binder, "w") as zf:
+            zf.write(quiet_out / "classes.dex", "classes.dex")
+            zf.writestr(BINDER + ".class", b"not-the-nop-binder")
+        _, binder_errs = scan_apk(binder, mapping)
+        if not any("not the NOP" in err for err in binder_errs):
+            sys.stderr.write(f"non-NOP StaticLoggerBinder was not rejected: {binder_errs}\n")
+            return 1
+        second = Path(tmp) / "classes2.apk"
+        with zipfile.ZipFile(second, "w") as zf:
+            zf.write(quiet_out / "classes.dex", "classes.dex")
+            zf.write(leak_dex, "classes2.dex")
+        second_found, _ = scan_apk(second, mapping)
+        if "DexGateSample" not in second_found:
+            sys.stderr.write(f"classes2.dex was not scanned: {second_found}\n")
+            return 1
+    needed = {
+        "DexGateSample": {"PrintStream.println", "PrintStream.printf", "printStackTrace", "android.util.Log.e", "java.util.logging.Logger.info", "Runtime.exec"},
+        "FileOnly": {"PrintStream.println"},
+        "StarWrite": {"PrintStream.write"},
+    }
+    missing = []
+    for cls, kinds in needed.items():
+        got = found.get(cls, set())
+        if not kinds <= got:
+            missing.append(f"{cls} missing {kinds - got} got {got}")
+    if missing:
+        sys.stderr.write("dex self-test did not flag the planted calls:\n")
+        for line in missing:
+            sys.stderr.write(f"  {line}\n")
         return 1
-    # A PrintStream that is not System.out must not be enough on its own.
-    # fileOnly shares the class with leak(), so the class is flagged. The
-    # method filter is what keeps fileOnly from being a reason by itself.
-    print("dex self-test ok: planted System.out, printStackTrace, Log.e and JUL were flagged")
+    # Unknown classes must fail the allowlist. Neutering evaluate() fails this.
+    rejected = evaluate(found)
+    if not any("DexGateSample" in err for err in rejected):
+        sys.stderr.write(f"dex allowlist check did not reject DexGateSample: {rejected}\n")
+        return 1
+    print("dex self-test ok: PrintStream, Log, JUL, Runtime.exec, J2 write, J3 printf, classes2.dex, zero-dex and a non-NOP binder were flagged")
     return 0
 
 
@@ -450,12 +569,16 @@ def main(argv: list[str]) -> int:
     for i in range(0, len(args.pairs), 2):
         apk = Path(args.pairs[i])
         mapping = Path(args.pairs[i + 1])
-        found = scan_apk(apk, mapping)
+        found, apk_errors = scan_apk(apk, mapping)
         if args.report:
             print(f"# {apk}")
+            for err in apk_errors:
+                print(f"! {err}")
             for cls, kinds in sorted(found.items()):
                 print(f"{cls}: {', '.join(sorted(kinds))}")
             continue
+        for err in apk_errors:
+            errors.append(err)
         for err in evaluate(found):
             errors.append(f"{apk.name}: {err}")
     if args.report:

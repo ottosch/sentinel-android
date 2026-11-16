@@ -5,6 +5,8 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 /**
  * #576. These tests drive the real gate scripts against planted bypasses.
@@ -80,9 +82,108 @@ class ReleaseLogcatGateTest {
     }
 
     @Test
+    fun dependencyGateRejectsSlf4jApi2() {
+        val file = tempDir().resolve("stagingReleaseRuntimeClasspath.txt")
+        file.writeText(
+            NOP_ONLY + "\n+--- org.slf4j:slf4j-api:2.0.4\n",
+        )
+        val result = run("scripts/check-log-backends.py", file.absolutePath)
+        assertNotEquals(result.out, 0, result.code)
+        assertTrue(result.out, result.out.contains("slf4j-api:2.0.4"))
+    }
+
+    @Test
+    fun sourceAllowlistRejectsAFileThatIsNotListed() {
+        val root = tempDir()
+        val leak = root.resolve("app/src/main/java/com/example/NewLeak.java")
+        leak.parentFile?.mkdirs()
+        leak.writeText("class NewLeak { void j() { System.out.println(\"x\"); } }\n")
+        val result = run("scripts/check-release-logcat.py", "--sources", root.absolutePath)
+        assertNotEquals(result.out, 0, result.code)
+        assertTrue(result.out, result.out.contains("NewLeak.java"))
+    }
+
+    @Test
+    fun b10RuleRejectsARenamedBoltzmannPrint() {
+        val dir = tempDir()
+        dir.resolve("Leak.kt").writeText(
+            "fun b10() { val r = engine.process(txos); r.print() }\n",
+        )
+        val result = run(
+            "scripts/check-release-logcat.py",
+            "--sources",
+            dir.absolutePath,
+            "--strict",
+        )
+        assertNotEquals(result.out, 0, result.code)
+        assertTrue(result.out, result.out.contains("(B10)"))
+    }
+
+    @Test
     fun dexScannerFlagsPlantedSystemOutAndJul() {
         val result = run("scripts/check-release-dex.py", "--self-test")
         assertEquals(result.out, 0, result.code)
+        assertTrue(result.out, result.out.contains("classes2.dex"))
+        assertTrue(result.out, result.out.contains("zero-dex"))
+        assertTrue(result.out, result.out.contains("J2"))
+        assertTrue(result.out, result.out.contains("J3"))
+    }
+
+    @Test
+    fun releaseApkRejectsAnSlf4j2ProviderEntry() {
+        val dir = tempDir()
+        val apk = dir.resolve("r1.apk")
+        ZipOutputStream(apk.outputStream()).use { zip ->
+            zip.putNextEntry(ZipEntry("META-INF/services/org.slf4j.spi.SLF4JServiceProvider"))
+            zip.write("org.example.Provider\n".toByteArray())
+            zip.closeEntry()
+        }
+        val mapping = dir.resolve("mapping.txt").apply { writeText("") }
+        val result = run(
+            "scripts/check-release-dex.py",
+            apk.absolutePath,
+            mapping.absolutePath,
+        )
+        assertNotEquals(result.out, 0, result.code)
+        assertTrue(result.out, result.out.contains("SLF4J 2.x provider"))
+    }
+
+    @Test
+    fun releaseApkRejectsANonNopStaticLoggerBinder() {
+        val dir = tempDir()
+        val apk = dir.resolve("binder.apk")
+        ZipOutputStream(apk.outputStream()).use { zip ->
+            zip.putNextEntry(ZipEntry("org/slf4j/impl/StaticLoggerBinder.class"))
+            zip.write("not-the-nop-binder".toByteArray())
+            zip.closeEntry()
+        }
+        val mapping = dir.resolve("mapping.txt").apply { writeText("") }
+        val result = run(
+            "scripts/check-release-dex.py",
+            apk.absolutePath,
+            mapping.absolutePath,
+        )
+        assertNotEquals(result.out, 0, result.code)
+        assertTrue(result.out, result.out.contains("not the NOP"))
+    }
+
+    @Test
+    fun releaseApkRejectsZeroDex() {
+        val dir = tempDir()
+        val apk = dir.resolve("empty.apk")
+        ZipOutputStream(apk.outputStream()).use { zip ->
+            zip.putNextEntry(ZipEntry("AndroidManifest.xml"))
+            zip.write("<manifest/>".toByteArray())
+            zip.closeEntry()
+        }
+        val mapping = dir.resolve("mapping.txt").apply { writeText("") }
+        val result = run(
+            "scripts/check-release-dex.py",
+            apk.absolutePath,
+            mapping.absolutePath,
+        )
+        assertNotEquals(result.out, 0, result.code)
+        assertTrue(result.out, result.out.contains("no classes*.dex"))
     }
 
     private fun run(script: String, vararg args: String): Result {
@@ -130,8 +231,8 @@ class ReleaseLogcatGateTest {
             "B9" to "fun b9(t: Throwable) { val ref = t::printStackTrace }\n",
             "B10" to "fun b10() { val r = engine.process(txos); r.print() }\n",
             "J1" to "import static java.lang.System.out;\nclass J1 { void j() { out.println(\"x\"); } }\n",
-            "J2" to "import static java.lang.System.err;\nclass J2 { void j() { err.print(\"x\"); } }\n",
-            "J3" to "class J3 { void j(Exception e) { e.printStackTrace(System.out); } }\n",
+            "J2" to "import static java.lang.System.*;\nclass J2 { void j() throws Exception { err.write(new byte[]{1}); } }\n",
+            "J3" to "class J3 { void j() { System.out.printf(\"%s\", \"x\"); } }\n",
             "J4" to "import java.util.logging.Logger;\nclass J4 { void j() { Logger.getLogger(\"a\").info(\"b\"); } }\n",
             "J5" to "class J5 { void j() throws Exception { System.out.getClass().getDeclaredMethod(\"println\", String.class); } }\n",
         )

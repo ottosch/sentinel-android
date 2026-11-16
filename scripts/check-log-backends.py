@@ -16,8 +16,14 @@ import re
 import sys
 from pathlib import Path
 
-COORD = re.compile(r"([A-Za-z0-9_.-]+):([A-Za-z0-9_.-]+):")
+COORD = re.compile(
+    r"([A-Za-z0-9_.-]+):([A-Za-z0-9_.-]+):(\d[^|\s]*)(?:\s*->\s*(\d\S+))?"
+)
 ALLOWED = {("org.slf4j", "slf4j-api"), ("org.slf4j", "slf4j-nop")}
+
+
+def is_17(version: str) -> bool:
+    return version == "1.7" or version.startswith("1.7.")
 
 
 def is_backend(group: str, artifact: str) -> bool:
@@ -42,10 +48,20 @@ def check_text(text: str, label: str) -> list[str]:
     found = []
     seen = set()
     has_nop = False
+    saw_api = False
     for match in COORD.finditer(text):
         group, artifact = match.group(1), match.group(2)
-        if group == "org.slf4j" and artifact == "slf4j-nop":
-            has_nop = True
+        requested, resolved = match.group(3), match.group(4)
+        if group == "org.slf4j" and artifact in {"slf4j-api", "slf4j-nop"}:
+            for ver in (requested, resolved):
+                if ver and not is_17(ver):
+                    found.append(f"{label}: {group}:{artifact}:{ver} is not the 1.7.x line")
+            chosen = resolved or requested
+            if is_17(chosen):
+                if artifact == "slf4j-api":
+                    saw_api = True
+                if artifact == "slf4j-nop":
+                    has_nop = True
         if not is_backend(group, artifact):
             continue
         key = f"{group}:{artifact}"
@@ -53,8 +69,25 @@ def check_text(text: str, label: str) -> list[str]:
             continue
         seen.add(key)
         found.append(f"{label}: logging backend {key} is not slf4j-nop")
+    # `slf4j-api:{strictly [1.7,1.8)} -> 1.7.36` does not match COORD.
+    for match in re.finditer(
+        r"org\.slf4j:(slf4j-api|slf4j-nop):(?:\{[^}]+\}|(\d\S+))(?:\s*->\s*(\d\S+))?",
+        text,
+    ):
+        artifact = match.group(1)
+        chosen = match.group(3) or match.group(2)
+        if not chosen:
+            continue
+        if not is_17(chosen):
+            found.append(f"{label}: org.slf4j:{artifact}:{chosen} is not the 1.7.x line")
+        elif artifact == "slf4j-api":
+            saw_api = True
+        elif artifact == "slf4j-nop":
+            has_nop = True
     if not has_nop:
-        found.append(f"{label}: org.slf4j:slf4j-nop is not on this runtime classpath")
+        found.append(f"{label}: org.slf4j:slf4j-nop:1.7.x is not on this runtime classpath")
+    if not saw_api:
+        found.append(f"{label}: org.slf4j:slf4j-api:1.7.x is not on this runtime classpath")
     return found
 
 

@@ -198,7 +198,7 @@ public class AESUtil {
 
     public static String decryptSHA256(String ciphertext, CharSequenceX password, int iterations) throws BadPaddingException, CharacterCodingException, NoSuchAlgorithmException, IllegalBlockSizeException, InvalidKeyException, NoSuchPaddingException, InvalidAlgorithmParameterException, InvalidKeySpecException {
         KOpenSSL openSSL = new KOpenSSL();
-        return openSSL.decrypt_AES256CBC_PBKDF2_HMAC_SHA256(password.toString(), iterations, ciphertext, false);
+        return openSSL.decrypt_AES256CBC_PBKDF2_HMAC_SHA256(password.toString(), iterations, ciphertext);
     }
 
 
@@ -208,7 +208,7 @@ public class AESUtil {
 
     public static String encryptSHA256(String cleartext, CharSequenceX password, int iterations) throws BadPaddingException, InvalidKeyException, NoSuchAlgorithmException, IllegalBlockSizeException, NoSuchPaddingException, InvalidAlgorithmParameterException, InvalidKeySpecException {
         KOpenSSL openSSL = new KOpenSSL();
-        return openSSL.encrypt_AES256CBC_PBKDF2_HMAC_SHA256(password.toString(), iterations, cleartext, false);
+        return openSSL.encrypt_AES256CBC_PBKDF2_HMAC_SHA256(password.toString(), iterations, cleartext);
     }
 
 

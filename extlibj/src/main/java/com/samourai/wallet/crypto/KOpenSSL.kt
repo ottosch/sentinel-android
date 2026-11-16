@@ -115,27 +115,18 @@ class KOpenSSL {
             NoSuchAlgorithmException::class,
             NoSuchPaddingException::class
     )
-    @JvmOverloads
     fun decrypt_AES256CBC_PBKDF2_HMAC_SHA256(
             password: String,
             hashIterations: Int,
-            stringToDecrypt: String,
-            printDetails: Boolean = false
+            stringToDecrypt: String
     ): String {
         val encryptedBytes = Base64.decode(stringToDecrypt.lines().joinToString(""))
 
         // Salt is bytes 8 - 15
         val salt = encryptedBytes.copyOfRange(8, 16)
-        if (printDetails) {
-            println("Salt: ${salt.joinToString("") { "%02X".format(it) }}")
-        }
 
         // Derive 48 byte key
         val components = getSecretKeyComponents(password, salt, hashIterations)
-        if (printDetails) {
-            println("Key: ${components.key.joinToString("") { "%02X".format(it) }}")
-            println("IV: ${components.iv.joinToString("") { "%02X".format(it) }}")
-        }
 
         // Cipher Text is bytes 16 - end of the encrypted bytes
         val cipherText = encryptedBytes.copyOfRange(16, encryptedBytes.size)
@@ -157,11 +148,6 @@ class KOpenSSL {
         val plaintext = decrypted.copyOfRange(0, decrypted.size - decrypted.last().toInt())
 
         return plaintext.toString(Charsets.UTF_8).trim()
-                .also {
-                    if (printDetails) {
-                        println(it)
-                    }
-                }
     }
 
     /**
@@ -198,24 +184,15 @@ class KOpenSSL {
             NoSuchAlgorithmException::class,
             NoSuchPaddingException::class
     )
-    @JvmOverloads
     fun encrypt_AES256CBC_PBKDF2_HMAC_SHA256(
             password: String,
             hashIterations: Int,
-            stringToEncrypt: String,
-            printDetails: Boolean = false
+            stringToEncrypt: String
     ): String {
         val salt = SecureRandom().generateSeed(8)
-        if (printDetails) {
-            println("Salt: ${salt.joinToString("") { "%02X".format(it) }}")
-        }
 
         // Derive 48 byte key
         val components = getSecretKeyComponents(password, salt, hashIterations)
-        if (printDetails) {
-            println("Key: ${components.key.joinToString("") { "%02X".format(it) }}")
-            println("IV: ${components.iv.joinToString("") { "%02X".format(it) }}")
-        }
 
         val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
         cipher.init(Cipher.ENCRYPT_MODE, components.getSecretKeySpec(), components.getIvParameterSpec())
@@ -227,11 +204,6 @@ class KOpenSSL {
 
         return String(Base64.encode(SALTED.toByteArray() + salt + cipherText))
                 .replace("(.{64})".toRegex(), "$1\n")
-                .also {
-                    if (printDetails) {
-                        println(it)
-                    }
-                }
     }
 
     private class SecretKeyComponents(val key: ByteArray, val iv: ByteArray) {
