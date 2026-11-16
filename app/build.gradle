@@ -301,7 +301,7 @@ implementation 'it.unimi.dsi:fastutil:8.3.0'   // boltzmann public API exposes f
 
     // tor dependency
     implementation "io.matthewnelson.kmp-tor:runtime:2.6.0"
-    implementation "io.github.rodvar.kmp-tor:resource-noexec-tor:409.14.0"
+    implementation "io.github.rodvar.kmp-tor:resource-noexec-tor:409.16.0"
     implementation (project(':hummingbird-android'))
     implementation ('com.sparrowwallet:hummingbird:1.7.4')
     implementation "com.mikepenz:itemanimators:1.1.0"
