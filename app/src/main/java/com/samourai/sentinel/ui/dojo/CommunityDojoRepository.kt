@@ -34,6 +34,13 @@ object CommunityDojoRepository {
     const val MAX_DIRECTORY_BYTES = 2 * 1024 * 1024
     const val MAX_OPERATOR_BYTES = 16 * 1024
 
+    /**
+     * The most listings one directory may have. Every listing's signature is
+     * checked each time the list is shown; a directory with more is refused
+     * as [Failure.BAD_RESPONSE]. The default directory lists 17.
+     */
+    const val MAX_LISTINGS = 256
+
     /** Dojo Bay probes every listed node before answering - see #135. */
     const val TIMEOUT_SECONDS = CommunityDojoFetchPolicy.NORMAL_TIMEOUT_SECONDS
 
@@ -274,14 +281,18 @@ object CommunityDojoRepository {
 
     /**
      * Parses a directory body with the strict reader ([DojoBayJson]): blank,
-     * not strict JSON, nested deeper than [DojoBayJson.NESTING_LIMIT], or
-     * not a directory object is [Failure.BAD_RESPONSE].
+     * not strict JSON, nested deeper than [DojoBayJson.NESTING_LIMIT], not a
+     * directory object, or more than [MAX_LISTINGS] listings is
+     * [Failure.BAD_RESPONSE]. The count is checked before any listing's
+     * signature is.
      */
     fun parseDirectory(body: String?): List<CommunityDojoNode> {
         if (body.isNullOrBlank()) throw FetchException(Failure.BAD_RESPONSE)
         val directory = DojoBayJson.parse(body, CommunityDojoDirectory::class.java)
             ?: throw FetchException(Failure.BAD_RESPONSE)
-        return directory.nodes.orEmpty().filterNotNull()
+        val nodes = directory.nodes.orEmpty()
+        if (nodes.size > MAX_LISTINGS) throw FetchException(Failure.BAD_RESPONSE)
+        return nodes.filterNotNull()
     }
 
     /**

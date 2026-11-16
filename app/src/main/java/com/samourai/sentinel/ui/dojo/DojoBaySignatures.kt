@@ -59,6 +59,18 @@ object DojoBaySignatures {
         val signature: String,
     )
 
+    /**
+     * The longest signed block read, in characters. The block regexes below
+     * are kept exactly as crypto.ts has them, and they backtrack, so time
+     * grows with the square of the input; real blocks are well under 1 KB
+     * (the longest in the vectors is 693 characters). A longer block is
+     * refused before any regex runs.
+     */
+    const val MAX_SIGNED_CHARS = 4 * 1024
+
+    /** A BIP47 payment code: "PM8T" and 112 more Base58 characters (116 in all). */
+    private val PAYMENT_CODE_SHAPE = Regex("^PM8T[1-9A-HJ-NP-Za-km-z]{112}$")
+
     private val LISTING_MSG = Regex("BEGIN BITCOIN SIGNED MESSAGE-----\\n([\\s\\S]*?)\\n-----BEGIN BITCOIN SIGNATURE")
     private val LISTING_SIG = Regex("\\n([A-Za-z0-9+/=]{80,})\\n-----END BITCOIN SIGNATURE")
     // verifyOperatorDoc tolerates a swallowed newline after BEGIN and blank lines before END.
@@ -70,7 +82,7 @@ object DojoBaySignatures {
 
     /** A listing block: message trimmed, as parseSignedBlock does. */
     fun parseListingBlock(text: String?): SignedBlock? {
-        if (text.isNullOrEmpty()) return null
+        if (text.isNullOrEmpty() || text.length > MAX_SIGNED_CHARS) return null
         val t = text.replace("\r\n", "\n")
         val msg = LISTING_MSG.find(t)?.groupValues?.get(1) ?: return null
         val addr = ADDRESS.find(t)?.groupValues?.get(1) ?: return null
@@ -80,7 +92,7 @@ object DojoBaySignatures {
 
     /** An operator/URL claim block: trailing newlines dropped, as verifyOperatorDoc does. */
     fun parseClaimBlock(text: String?): SignedBlock? {
-        if (text.isNullOrEmpty()) return null
+        if (text.isNullOrEmpty() || text.length > MAX_SIGNED_CHARS) return null
         val t = text.replace("\r\n", "\n")
         val msg = CLAIM_MSG.find(t)?.groupValues?.get(1) ?: return null
         val addr = ADDRESS.find(t)?.groupValues?.get(1) ?: return null
@@ -90,11 +102,18 @@ object DojoBaySignatures {
 
     // ---- primitives ------------------------------------------------------
 
-    /** Mainnet and testnet notification addresses of [paymentCode]; empty if it is not a valid code. */
+    /**
+     * Mainnet and testnet notification addresses of [paymentCode]; empty if
+     * it is not a valid code. Anything not shaped like a payment code
+     * ([PAYMENT_CODE_SHAPE]) is refused before the Base58 decode, which takes
+     * time growing with the square of the input length.
+     */
     fun notificationAddresses(paymentCode: String?): List<String> {
         if (paymentCode.isNullOrBlank()) return emptyList()
+        val trimmed = paymentCode.trim()
+        if (!PAYMENT_CODE_SHAPE.matches(trimmed)) return emptyList()
         val code = try {
-            PaymentCode(paymentCode.trim()).takeIf { it.isValid }
+            PaymentCode(trimmed).takeIf { it.isValid }
         } catch (e: Exception) {
             null
         } ?: return emptyList()

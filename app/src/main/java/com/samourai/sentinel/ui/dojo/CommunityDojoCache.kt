@@ -81,6 +81,8 @@ class CommunityDojoCache(private val file: File) {
         // Gson leaves non-null Kotlin fields null when they are missing.
         @Suppress("SENSELESS_COMPARISON")
         if (entry.source == null || entry.nodes == null) return null
+        // Never written with more (a directory with more is refused).
+        if (entry.nodes.size > CommunityDojoRepository.MAX_LISTINGS) return null
         return entry
     }
 
