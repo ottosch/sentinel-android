@@ -72,6 +72,9 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
 
     private var fetchInFlight = false
 
+    /** True while "Tor is still starting (n%)…" is shown after the Tor wait limit. */
+    private var torStillStarting = false
+
     /** The directory this sheet reads; re-read when the address changes. */
     private var source: String = DojoBayConstants.BASE_URL
 
@@ -276,6 +279,7 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
 
     private fun connectTorThenFetch() {
         if (fetchInFlight) return
+        torStillStarting = false
         directoryLoads++
         // State can say ON from a stale LiveData while the proxy object
         // is not (yet) available; require both to take the fast path.
@@ -311,11 +315,17 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
             // late ready still starts the fetch.
             delay(CommunityDojoTorWait.READY_LIMIT_MS - CommunityDojoTorWait.START_GRACE_MS)
             if (CommunityDojoTorWait.failsAfterReadyLimit(SentinelTorManager.isTorReady(), fetchInFlight)) {
-                renderTorFailure()
+                renderTorWaitLimit()
             }
         }
         liveData.observe(viewLifecycleOwner) { state ->
             sawStart = CommunityDojoTorWait.sawStart(state.state, sawStart)
+            // Keep the "still starting" percentage live until Tor is ready
+            // (the fetch replaces it) or stops (the failure replaces it).
+            if (torStillStarting && !fetchInFlight) {
+                CommunityDojoTorWait.stillStartingProgress(state.state, state.progressIndicator)
+                    ?.let { renderTorStillStarting(it) }
+            }
             when (CommunityDojoTorWait.onState(state.state, sawStart)) {
                 CommunityDojoTorWait.Action.FETCH_WHEN_READY -> {
                     // #135: this sheet has no transition dedupe, so every ON
@@ -347,9 +357,52 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
         }
     }
 
+    /**
+     * The "Waiting for Tor…" limit passed with no fetch. A bootstrap that is
+     * past 0 % is still running (a first start can take minutes, #581), so
+     * say so with its percentage instead of "Tor is not connected". The
+     * observer keeps listening and fetches as soon as Tor is ready.
+     */
+    private fun renderTorWaitLimit() {
+        val tor = SentinelTorManager.getTorState()
+        val progress = CommunityDojoTorWait.stillStartingProgress(tor.state, tor.progressIndicator)
+        if (progress == null) renderTorFailure() else renderTorStillStarting(progress)
+    }
+
+    /** Same layout and buttons as the Tor failure, with the live bootstrap percentage. */
+    private fun renderTorStillStarting(progress: Int) {
+        if (!isAdded) return
+        torStillStarting = true
+        val display = CommunityDojoDisplay.afterFailure(
+            CommunityDojoRepository.Failure.TOR_UNAVAILABLE,
+            cached,
+            source,
+            prefsUtil.dojoBayPinnedCode,
+            currentNetwork(),
+            attempts = 0,
+        )
+        if (display is CommunityDojoDisplay.Cached) {
+            showList(
+                display.dojos,
+                bannerMessage = getString(
+                    R.string.community_dojo_cached_tor_starting,
+                    formatDate(display.fetchedAtMs),
+                    progress,
+                ),
+            )
+        } else {
+            showMessage(
+                getString(R.string.community_dojo_tor_still_starting, progress),
+                canRetry = true,
+                canChangeAddress = true,
+            )
+        }
+    }
+
     /** Tor is not available: the saved list, if any, stays up with the indicator. */
     private fun renderTorFailure() {
         if (!isAdded) return
+        torStillStarting = false
         render(
             CommunityDojoDisplay.afterFailure(
                 CommunityDojoRepository.Failure.TOR_UNAVAILABLE,
@@ -366,6 +419,7 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
         if (fetchInFlight) return
         if (refusedWithoutCode()) return
         fetchInFlight = true
+        torStillStarting = false
         val forSource = source
         val gen = generation
         val store = cacheStore()

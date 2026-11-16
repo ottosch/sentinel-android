@@ -45,4 +45,19 @@ object CommunityDojoTorWait {
     /** At [READY_LIMIT_MS]: fail if Tor is still not ready and no fetch began, whether or not it started. */
     fun failsAfterReadyLimit(torReady: Boolean, fetchStarted: Boolean): Boolean =
         !torReady && !fetchStarted
+
+    /**
+     * At [READY_LIMIT_MS], when [failsAfterReadyLimit] holds: the bootstrap
+     * percentage to show as "Tor is still starting (n%)…" while Tor is past
+     * 0 % and not yet ready (a slow first bootstrap can sit at one step for
+     * minutes, #581). Null when Tor is off, stopping or still at 0 %: the
+     * sheet then shows the real "Tor is not connected" failure. Retry and
+     * Change Dojo Bay address stay available either way.
+     */
+    fun stillStartingProgress(state: EnumTorState, progress: Int): Int? =
+        if ((state == EnumTorState.STARTING || state == EnumTorState.ON) && progress in 1..99) {
+            progress
+        } else {
+            null
+        }
 }
