@@ -97,6 +97,13 @@ class SendFragment : Fragment() {
     // pinned coins' total while a manual selection is in force.
     private var accountSpendable: Long = 0L
 
+    // #385: one open per destination. A second tap while the first
+    // screen is still opening used to start another transform (or
+    // another activity) on top of the first.
+    private val unsignedScreen = ScreenLatch()
+    private val broadcastScreen = ScreenLatch()
+    private val exportMenu = ScreenLatch()
+
     // #350: the shared scan-gate state, the #247/#248 shape - payload and
     // clock stamp of the last admitted decode (valid or not). The sheet's
     // decode callback re-fires while the same QR sits in frame; the gate
@@ -118,6 +125,11 @@ class SendFragment : Fragment() {
     }
 
     override fun onResume() {
+        // #385: Broadcast is its own activity. The latch stays held from
+        // the tap until this fragment is on screen again, so a second
+        // tap before the activity covers us is ignored, and a tap after
+        // Back is a new broadcast.
+        broadcastScreen.tryClose()
         if (indexPubSelector != -1 && indexPubSelector != 0)
             setBalance(mCollection!!.pubs[indexPubSelector-1])
         else
@@ -209,10 +221,6 @@ class SendFragment : Fragment() {
             fragmentSpendBinding.btcAddress.setText(string)
         }
 
-        fragmentSpendBinding.composeBtn.setOnClickListener {
-            containerTransform(fragmentSpendBinding.fragmentBroadcastTx.unsignedTxView, fragmentSpendBinding.composeBtn)
-        }
-
         setBalance(mCollection!!.pubs[findFirstNonAddressPubkey()-1])
 
         if (isAdded) {
@@ -226,7 +234,16 @@ class SendFragment : Fragment() {
         setUpFee()
 
         fragmentSpendBinding.fragmentBroadcastTx.broadCastTransactionBtn.setOnClickListener {
-            startActivity(Intent(context, BroadcastTx::class.java))
+            // #385: same latch as COMPOSE. startActivity does not cover
+            // the button until the new window is up, so a second tap
+            // stacked a second Broadcast screen.
+            if (!broadcastScreen.tryOpen()) return@setOnClickListener
+            val host = context
+            if (host == null) {
+                broadcastScreen.tryClose()
+                return@setOnClickListener
+            }
+            startActivity(Intent(host, BroadcastTx::class.java))
         }
 
         viewModel.psbtLive.observe(viewLifecycleOwner) {
@@ -272,7 +289,12 @@ class SendFragment : Fragment() {
         }
 
         fragmentSpendBinding.fragmentBroadcastTx.psbtShareBtn.setOnClickListener { view1 ->
+            // #385: a second tap before the menu window is up showed
+            // another menu on top of the first. Dismiss (item chosen
+            // or cancelled) releases it, so Export works again.
+            if (!exportMenu.tryOpen()) return@setOnClickListener
             val popup = PopupMenu(requireContext(), view1)
+            popup.setOnDismissListener { _ -> exportMenu.tryClose() }
             popup.menuInflater.inflate(R.menu.send_share_menu, popup.menu)
             popup.setOnMenuItemClickListener {
                 when (it.itemId) {
@@ -321,10 +343,18 @@ class SendFragment : Fragment() {
 
         fragmentSpendBinding.composeBtn.setOnClickListener {
             it.hideKeyboard()
-            if (viewModel.makeTx()) {
-                requireActivity().window.statusBarColor = ContextCompat.getColor(requireContext(), R.color.v3_accent)
-                containerTransform(fragmentSpendBinding.fragmentBroadcastTx.unsignedTxView, fragmentSpendBinding.composeBtn)
+            // #385: one Unsigned Transaction screen. The second tap of a
+            // double tap used to call makeTx() and containerTransform
+            // again while the first transform was still running; Back
+            // then left that second screen up. A compose that produces
+            // no PSBT releases the latch so the form can be retried.
+            if (!unsignedScreen.tryOpen()) return@setOnClickListener
+            if (!viewModel.makeTx()) {
+                unsignedScreen.tryClose()
+                return@setOnClickListener
             }
+            requireActivity().window.statusBarColor = ContextCompat.getColor(requireContext(), R.color.v3_accent)
+            containerTransform(fragmentSpendBinding.fragmentBroadcastTx.unsignedTxView, fragmentSpendBinding.composeBtn)
         }
 
         setUpToolbar()
@@ -354,7 +384,7 @@ class SendFragment : Fragment() {
 
     private fun setUpToolbar() {
         fragmentSpendBinding.fragmentBroadcastTx.unsignedTxToolbar.setNavigationOnClickListener {
-            containerTransform(fragmentSpendBinding.composeBtn, fragmentSpendBinding.fragmentBroadcastTx.unsignedTxView)
+            closeUnsignedScreen()
         }
         fragmentSpendBinding.sendAppBar.setBackgroundColor(ContextCompat.getColor(requireContext(), R.color.mpm_black))
         (activity as SentinelActivity).window.navigationBarColor = ContextCompat.getColor(requireContext(), R.color.grey_homeActivity)
@@ -371,8 +401,7 @@ class SendFragment : Fragment() {
                 ) {
                     this.askCameraPermission()
                 } else {
-                    CameraFragmentBottomSheet.newInstance(REQUEST_SCAN_PAYMENT)
-                        .show(parentFragmentManager, TAG_SCAN)
+                    showScanner(REQUEST_SCAN_PAYMENT)
                 }
             }
             true
@@ -411,9 +440,19 @@ class SendFragment : Fragment() {
     }
 
     private fun showAddressScanner() {
-        // Guard against the fragment being detached while the permission dialog was up.
+        showScanner(REQUEST_SCAN_ADDRESS)
+    }
+
+    /**
+     * #385: the scan icon is showAsAction=always, so a double tap can
+     * arrive before the sheet's window takes the gesture. One sheet
+     * per tag, the same guard the coin picker already uses. isAdded
+     * covers the permission dialog outliving the fragment.
+     */
+    private fun showScanner(requestKey: String) {
         if (!isAdded) return
-        CameraFragmentBottomSheet.newInstance(REQUEST_SCAN_ADDRESS)
+        if (parentFragmentManager.findFragmentByTag(TAG_SCAN) != null) return
+        CameraFragmentBottomSheet.newInstance(requestKey)
             .show(parentFragmentManager, TAG_SCAN)
     }
 
@@ -561,7 +600,29 @@ class SendFragment : Fragment() {
             decimalFormatBTC.format(availableBalance.div(1e8)).toString() + " BTC"
     }
 
+    /**
+     * #385: leave the Unsigned Transaction screen once. The toolbar
+     * close and system Back both come through here, so a double tap
+     * on close does not start a second return transform. Visibility
+     * is checked as well as the latch: a screen that is showing must
+     * still close if the two ever diverge.
+     */
+    private fun closeUnsignedScreen() {
+        val unsigned = fragmentSpendBinding.fragmentBroadcastTx.unsignedTxView
+        val wasOpen = unsignedScreen.tryClose()
+        if (!wasOpen && unsigned.visibility != VISIBLE) return
+        containerTransform(fragmentSpendBinding.composeBtn, unsigned)
+    }
+
     private fun containerTransform(enter: View, leaving: View) {
+        val sceneRoot = view as ViewGroup
+        // #385: an in-flight MaterialContainerTransform adds a
+        // full-screen overlay and, on end, reveals its end view. Back
+        // during the 400ms compose animation has to finish that
+        // transform first, or its end puts the Unsigned Transaction
+        // screen back up after the user has left it.
+        TransitionManager.endTransitions(sceneRoot)
+
         val transform = MaterialContainerTransform()
         transform.scrimColor = Color.TRANSPARENT
         transform.drawingViewId = R.id.sendRootLayout
@@ -572,7 +633,7 @@ class SendFragment : Fragment() {
         transition.endView = enter
 
         transition.addTarget(enter)
-        TransitionManager.beginDelayedTransition(view as ViewGroup, transition)
+        TransitionManager.beginDelayedTransition(sceneRoot, transition)
         enter.visibility = VISIBLE
         leaving.visibility = GONE
         if (leaving.id == fragmentSpendBinding.fragmentBroadcastTx.unsignedTxView.id) {
@@ -690,8 +751,11 @@ class SendFragment : Fragment() {
 
 
     fun onBackPressed(): Boolean {
-        if (fragmentSpendBinding.fragmentBroadcastTx.unsignedTxView.visibility == VISIBLE) {
-            containerTransform(fragmentSpendBinding.composeBtn, fragmentSpendBinding.fragmentBroadcastTx.unsignedTxView)
+        val unsigned = fragmentSpendBinding.fragmentBroadcastTx.unsignedTxView
+        // isOpen covers the open animation, where the end view is not
+        // a reliable VISIBLE the whole way through. #385
+        if (unsignedScreen.isOpen || unsigned.visibility == VISIBLE) {
+            closeUnsignedScreen()
             return false
         }
         Timber.i("onBackPressed: ")
