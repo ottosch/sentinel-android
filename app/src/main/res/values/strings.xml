@@ -286,6 +286,13 @@
     <string name="paynym_avatar_failed_description" translatable="false">PayNym avatar unavailable</string>
     <string name="paynym_copy_link" translatable="false">Copy link</string>
     <string name="paynym_link_copied" translatable="false">PayNym link copied</string>
+    <string name="paynym_connecting_title" translatable="false">Connecting over Tor…</string>
+    <string name="paynym_connecting_message" translatable="false">PayNym opens only through Tor. The page loads as soon as Tor is ready.</string>
+    <string name="paynym_loading_title" translatable="false">Loading PayNym over Tor…</string>
+    <string name="paynym_loading_message" translatable="false">Onion pages can take a little while to answer.</string>
+    <string name="paynym_unreachable_title" translatable="false">Couldn\'t reach PayNym over Tor</string>
+    <string name="paynym_unreachable_message" translatable="false">The page didn\'t load. Tor may still be connecting, or PayNym may be busy. Try again, or copy the link to open it elsewhere over Tor.</string>
+    <string name="paynym_retry" translatable="false">Retry</string>
     <string name="paynym_page_not_found" translatable="false">No PayNym page to open: PayNym has no name for this code, or it couldn\'t be reached over Tor.</string>
     <string name="paynym_tor_required_off" translatable="false">PayNym is an onion site, so it opens only through Tor, and Tor is not running. Start Tor, or copy the link to open it elsewhere over Tor.</string>
     <string name="paynym_tor_required_unsupported" translatable="false">PayNym is an onion site, so it opens only through Tor, and this device\'s WebView cannot route through Tor. It will not load here. Copy the link to open it elsewhere over Tor.</string>

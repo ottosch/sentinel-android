@@ -6,17 +6,21 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.webkit.ConsoleMessage
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.annotation.VisibleForTesting
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.webkit.*
@@ -65,6 +69,22 @@ class ExplorerWebViewActivity : AppCompatActivity() {
      * is always required, and every block explains with the link to copy.
      */
     private var payNym = false
+
+    /** Where a PayNym page is ([PayNymLoad]); unused for explorer pages. */
+    @VisibleForTesting
+    internal var payNymPhase = PayNymLoadPhase.IDLE
+        private set
+
+    /**
+     * True when the app itself refused the current main-frame request
+     * (an onion off Tor). That gets the Tor block dialog, not the error screen.
+     */
+    @Volatile
+    private var mainFrameBlockedByApp = false
+
+    private val payNymTimer = Handler(Looper.getMainLooper())
+    private val payNymTimeout = Runnable { onPayNymEvent(PayNymLoadEvent.TIMED_OUT) }
+
     private val explorerRepository: ExplorerRepository by inject(ExplorerRepository::class.java)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -163,7 +183,10 @@ class ExplorerWebViewActivity : AppCompatActivity() {
             // STARTING / ON-before-listener: defer, show the same progress
             // the page load uses - fetch nothing. The Tor observer's ON arm
             // completes the load once the listener is live.
-            ExplorerLoadDecision.WAIT_FOR_TOR -> binding.progressWeb.visibility = View.VISIBLE
+            ExplorerLoadDecision.WAIT_FOR_TOR -> {
+                binding.progressWeb.visibility = View.VISIBLE
+                if (payNym) onPayNymEvent(PayNymLoadEvent.WAIT_FOR_TOR)
+            }
             ExplorerLoadDecision.BLOCK_TOR_OFF -> showBlocked(
                 getString(R.string.explorer_tor_required_title),
                 getString(torOffMessage()),
@@ -200,6 +223,7 @@ class ExplorerWebViewActivity : AppCompatActivity() {
     private fun showBlocked(title: String, message: String, allowWait: Boolean) {
         if (isFinishing || isDestroyed) return
         binding.progressWeb.visibility = View.INVISIBLE
+        if (payNym) onPayNymEvent(PayNymLoadEvent.BLOCKED)
         blockedDialog?.dismiss()
         val builder = MaterialAlertDialogBuilder(this)
             .setTitle(title)
@@ -355,6 +379,31 @@ class ExplorerWebViewActivity : AppCompatActivity() {
                 super.onPageCommitVisible(view, url)
                 Timber.i("onPageCommitVisible: ")
                 binding.progressWeb.visibility = View.INVISIBLE
+                if (payNym) onPayNymEvent(PayNymLoadEvent.PAGE_SHOWN)
+            }
+
+            /** PayNym: a main-frame network error gets the app's error screen, not Chromium's. */
+            override fun onReceivedError(
+                view: WebView,
+                request: WebResourceRequest,
+                error: WebResourceError,
+            ) {
+                super.onReceivedError(view, request, error)
+                if (payNym && PayNymLoad.failsPage(request.isForMainFrame, null, mainFrameBlockedByApp)) {
+                    onPayNymEvent(PayNymLoadEvent.MAIN_FRAME_ERROR)
+                }
+            }
+
+            /** PayNym: a 4xx or 5xx main frame gets the same screen. */
+            override fun onReceivedHttpError(
+                view: WebView,
+                request: WebResourceRequest,
+                errorResponse: WebResourceResponse,
+            ) {
+                super.onReceivedHttpError(view, request, errorResponse)
+                if (payNym && PayNymLoad.failsPage(request.isForMainFrame, errorResponse.statusCode, mainFrameBlockedByApp)) {
+                    onPayNymEvent(PayNymLoadEvent.MAIN_FRAME_ERROR)
+                }
             }
 
             /**
@@ -388,6 +437,7 @@ class ExplorerWebViewActivity : AppCompatActivity() {
                 request: WebResourceRequest,
             ): WebResourceResponse? {
                 val decision = followupFor(request)
+                if (request.isForMainFrame) mainFrameBlockedByApp = decision != ExplorerFollowup.ALLOW
                 if (decision == ExplorerFollowup.ALLOW) return null
                 if (decision == ExplorerFollowup.BLOCK_AND_EXPLAIN) {
                     runOnUiThread { explainOnionBlocked() }
@@ -419,8 +469,73 @@ class ExplorerWebViewActivity : AppCompatActivity() {
         }
         url = target
         pageLoaded = true
+        mainFrameBlockedByApp = false
+        if (payNym) onPayNymEvent(PayNymLoadEvent.LOAD_STARTED)
         binding.webView.loadUrl(url)
 
+    }
+
+    /**
+     * A PayNym page's phase changed ([PayNymLoad.next]): restart its time
+     * limit and show the matching screen. While waiting, loading or after
+     * a failure the WebView is hidden, so Chromium's own error page (which
+     * prints the URL) is never shown.
+     */
+    @VisibleForTesting
+    internal fun onPayNymEvent(event: PayNymLoadEvent) {
+        if (!payNym || isFinishing || isDestroyed) return
+        val before = payNymPhase
+        val after = PayNymLoad.next(before, event)
+        payNymPhase = after
+        if (after != before || event == PayNymLoadEvent.LOAD_STARTED || event == PayNymLoadEvent.WAIT_FOR_TOR) {
+            payNymTimer.removeCallbacks(payNymTimeout)
+            PayNymLoad.limitFor(after)?.let { payNymTimer.postDelayed(payNymTimeout, it) }
+        }
+        if (after == PayNymLoadPhase.FAILED && before != PayNymLoadPhase.FAILED) {
+            binding.webView.stopLoading()
+        }
+        showPayNymPhase(after)
+    }
+
+    private fun showPayNymPhase(phase: PayNymLoadPhase) {
+        val status = binding.payNymStatus
+        when (phase) {
+            PayNymLoadPhase.IDLE, PayNymLoadPhase.LOADED -> {
+                status.visibility = View.GONE
+                binding.webView.visibility = View.VISIBLE
+                return
+            }
+            PayNymLoadPhase.WAITING_FOR_TOR -> bindPayNymStatus(
+                R.string.paynym_connecting_title, R.string.paynym_connecting_message, failed = false,
+            )
+            PayNymLoadPhase.LOADING -> bindPayNymStatus(
+                R.string.paynym_loading_title, R.string.paynym_loading_message, failed = false,
+            )
+            PayNymLoadPhase.FAILED -> {
+                binding.progressWeb.visibility = View.INVISIBLE
+                bindPayNymStatus(R.string.paynym_unreachable_title, R.string.paynym_unreachable_message, failed = true)
+            }
+        }
+        binding.webView.visibility = View.INVISIBLE
+        status.visibility = View.VISIBLE
+    }
+
+    private fun bindPayNymStatus(title: Int, message: Int, failed: Boolean) {
+        binding.payNymStatusTitle.setText(title)
+        binding.payNymStatusMessage.setText(message)
+        binding.payNymStatusProgress.visibility = if (failed) View.GONE else View.VISIBLE
+        binding.payNymStatusActions.visibility = if (failed) View.VISIBLE else View.GONE
+        binding.payNymRetry.setOnClickListener { retryPayNym() }
+        binding.payNymCopyLink.setOnClickListener {
+            PayNymPage.urlFor(PayNymPage.nymOf(intent.getStringExtra(EXTRA_URL)))
+                ?.let { copyText(it, R.string.paynym_link_copied) }
+        }
+    }
+
+    /** Retry: the same routing as opening the screen, so still Tor only. */
+    private fun retryPayNym() {
+        if (payNymPhase != PayNymLoadPhase.FAILED) return
+        beginRouting()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -483,6 +598,7 @@ class ExplorerWebViewActivity : AppCompatActivity() {
 
 
     override fun onDestroy() {
+        payNymTimer.removeCallbacks(payNymTimeout)
         blockedDialog?.dismiss()
         blockedDialog = null
         binding.webView.stopLoading()
