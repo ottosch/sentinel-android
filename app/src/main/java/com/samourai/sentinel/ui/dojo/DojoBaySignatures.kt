@@ -14,7 +14,6 @@ import org.bitcoinj.core.NetworkParameters
 import org.bitcoinj.params.MainNetParams
 import org.bitcoinj.params.TestNet3Params
 import org.bouncycastle.util.encoders.Base64
-import java.math.BigDecimal
 
 /**
  * Client-side checks of the BIP47 signatures a Dojo Bay publishes, so the app
@@ -201,8 +200,13 @@ object DojoBaySignatures {
             listedRaw?.get("pairing")?.let { o.add("pairing", it) }
             listedRaw?.get("explorer")?.let { o.add("explorer", it) }
         }
+        // A number the comparison can't take (stable() is null) refuses the
+        // listing: in the signed text it is not a pairing we read, in the
+        // listed copy it can't match what was signed.
+        val signedKey = stable(signedTree) ?: return NodeCheck.Unverified(Failure.NOT_A_PAIRING)
+        val listedKey = stable(expected) ?: return NodeCheck.Unverified(Failure.PAYLOAD_MISMATCH)
         var drift = false
-        if (stable(signedTree) != stable(expected)) {
+        if (signedKey != listedKey) {
             if (isVersionDrift(signedTree, expected)) {
                 drift = true
             } else {
@@ -221,17 +225,46 @@ object DojoBaySignatures {
      */
     internal fun parseStrictJson(text: String): JsonElement? = DojoBayJson.parseTree(text)
 
+    /** The longest number literal [stable] reads; real pairings carry no numbers at all. */
+    const val MAX_NUMBER_CHARS = 32
+
+    /** At most 3 exponent digits: |exponent| < 1000, past anything a double holds. */
+    const val MAX_EXPONENT_DIGITS = 3
+
+    /**
+     * A number literal by value, as a JavaScript number (an IEEE double):
+     * "1", "1.0" and "1e0" are the same, and -0 is 0, as JSON.stringify
+     * writes them. The literal is converted straight to a double, never
+     * expanded into decimal digits, so "1e100000000" costs nothing. Null for
+     * a literal longer than [MAX_NUMBER_CHARS], with an exponent of more than
+     * [MAX_EXPONENT_DIGITS] digits, or one that is not a finite double
+     * (JavaScript would turn 1e400 into Infinity, which JSON.stringify writes
+     * as null): such numbers are refused, not compared.
+     */
+    internal fun numberKey(literal: String): String? {
+        if (literal.length > MAX_NUMBER_CHARS) return null
+        val exponent = literal.substringAfter('e', literal.substringAfter('E', "")).trimStart('+', '-').trimStart('0')
+        if (exponent.length > MAX_EXPONENT_DIGITS) return null
+        val d = literal.toDoubleOrNull()?.takeIf { it.isFinite() } ?: return null
+        return if (d == 0.0) "0" else d.toString()
+    }
+
     /**
      * stableStringify (crypto.ts): keys sorted at every level, values typed.
-     * Numbers compare by value, like JavaScript numbers.
+     * Numbers compare by value, like JavaScript numbers ([numberKey]). Null
+     * when the tree holds a number [numberKey] refuses.
      */
-    internal fun stable(e: JsonElement?): String = when {
-        e == null || e is JsonNull -> "null"
-        e is JsonArray -> e.joinToString(",", "[", "]") { stable(it) }
-        e is JsonObject -> e.keySet().sorted().joinToString(",", "{", "}") { k -> JsonPrimitive(k).toString() + ":" + stable(e.get(k)) }
-        e is JsonPrimitive && e.isNumber -> "n:" + (runCatching { BigDecimal(e.asString).stripTrailingZeros().toPlainString() }.getOrNull() ?: e.asString)
-        e is JsonPrimitive && e.isBoolean -> "b:" + e.asBoolean
-        else -> "s:" + JsonPrimitive(e.asString).toString()
+    internal fun stable(e: JsonElement?): String? {
+        return when {
+            e == null || e is JsonNull -> "null"
+            e is JsonArray -> e.map { stable(it) ?: return null }.joinToString(",", "[", "]")
+            e is JsonObject -> e.keySet().sorted()
+                .map { k -> JsonPrimitive(k).toString() + ":" + (stable(e.get(k)) ?: return null) }
+                .joinToString(",", "{", "}")
+            e is JsonPrimitive && e.isNumber -> numberKey(e.asString)?.let { "n:$it" }
+            e is JsonPrimitive && e.isBoolean -> "b:" + e.asBoolean
+            else -> "s:" + JsonPrimitive(e.asString).toString()
+        }
     }
 
     /** Only pairing.version differs, and it is a string on both sides. */
@@ -244,7 +277,8 @@ object DojoBaySignatures {
         fun withoutVersion(o: JsonObject, p: JsonObject) = o.deepCopy().also { c ->
             c.add("pairing", p.deepCopy().also { it.remove("version") })
         }
-        return stable(withoutVersion(signed, sp)) == stable(withoutVersion(listed, lp))
+        val a = stable(withoutVersion(signed, sp)) ?: return false
+        return a == stable(withoutVersion(listed, lp))
     }
 
     // ---- the directory's own identity (data/operator.json) ---------------
