@@ -60,10 +60,12 @@ class ExplorerProbeCoordinatorTest {
                 releaseKeepsExplorerProbe(android.util.Log.INFO, ExplorerProbeLog.TAG, it, null)
             }
             assertEquals(1, kept.size)
-            assertTrue(kept[0].contains("outcome=UNCONFIRMED"))
-            assertTrue(kept[0].contains("status=TimeoutCancellationException"))
-            assertTrue(kept[0].startsWith("result "))
+            assertTrue(RELEASE_RESULT.matches(kept[0]))
+            assertTrue(kept[0].startsWith("result outcome=UNCONFIRMED status=TimeoutCancellationException elapsedMs="))
+            assertFalse(kept[0].contains("host="))
+            assertFalse(kept[0].contains("onion"))
             assertFalse(kept[0].contains(onionHost))
+            assertFalse(kept[0].contains("127.0.0.1"))
             assertTrue(lines.any { it.contains("done ") })
             assertTrue(kept.none { it.contains("done ") })
         } finally {

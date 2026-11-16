@@ -218,8 +218,8 @@ object CommunityDojoRepository {
             .followRedirects(false)
             .followSslRedirects(false)
         // Dojo Bay probes every listed node over Tor before answering, so the
-        // request can take a while to build a response: 120 s, or longer for
-        // the first fetch after a Tor start (CommunityDojoFetchPolicy).
+        // request can take a while to build a response: 120 s per attempt
+        // (CommunityDojoFetchPolicy).
         builder.connectTimeout(timeoutSeconds, TimeUnit.SECONDS)
             .readTimeout(timeoutSeconds, TimeUnit.SECONDS)
             .callTimeout(timeoutSeconds, TimeUnit.SECONDS)

@@ -238,7 +238,7 @@ implementation 'it.unimi.dsi:fastutil:8.3.0'   // boltzmann public API exposes f
 
     implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
     implementation 'org.apache.commons:commons-lang3:3.22.0'
-    implementation 'com.google.code.gson:gson:2.9.0'
+    implementation 'com.google.code.gson:gson:2.15.0'
     implementation 'com.google.android.material:material:1.4.0-beta01'
     implementation('com.google.zxing:core:3.4.1') {
         transitive = true

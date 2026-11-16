@@ -1,14 +1,10 @@
 package com.samourai.sentinel.ui.dojo
 
-import com.samourai.sentinel.tor.SentinelTorManager
-import com.samourai.sentinel.ui.dojo.CommunityDojoFetchPolicy.FIRST_AFTER_TOR_START_TIMEOUT_SECONDS
 import com.samourai.sentinel.ui.dojo.CommunityDojoFetchPolicy.NORMAL_TIMEOUT_SECONDS
 import com.samourai.sentinel.ui.dojo.CommunityDojoRepository.Failure
-import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Test
 import java.net.ConnectException
 import java.net.Proxy
@@ -17,12 +13,6 @@ import java.net.SocketException
 import java.net.SocketTimeoutException
 
 class CommunityDojoFetchPolicyTest {
-
-    @Before
-    fun setUp() = CommunityDojoFetchPolicy.resetForTest()
-
-    @After
-    fun tearDown() = CommunityDojoFetchPolicy.resetForTest()
 
     private fun retriesAfter(e: Exception, attempt: Int = 1) =
         CommunityDojoFetchPolicy.shouldRetry(CommunityDojoRepository.classify(e).failure, attempt)
@@ -59,35 +49,33 @@ class CommunityDojoFetchPolicyTest {
     }
 
     @Test
-    fun `the first attempt after a Tor start gets the longer limit, the retry and later fetches the normal one`() {
-        assertEquals(FIRST_AFTER_TOR_START_TIMEOUT_SECONDS, CommunityDojoFetchPolicy.timeoutFor(attempt = 1, socksGeneration = 4))
-        // The automatic retry is a normal attempt.
-        assertEquals(NORMAL_TIMEOUT_SECONDS, CommunityDojoFetchPolicy.timeoutFor(attempt = 2, socksGeneration = 4))
-        CommunityDojoFetchPolicy.settle(4)
-        // Same Tor session: normal.
-        assertEquals(NORMAL_TIMEOUT_SECONDS, CommunityDojoFetchPolicy.timeoutFor(attempt = 1, socksGeneration = 4))
-        // Tor restarted (new SOCKS session): longer again.
-        assertEquals(FIRST_AFTER_TOR_START_TIMEOUT_SECONDS, CommunityDojoFetchPolicy.timeoutFor(attempt = 1, socksGeneration = 6))
-        assertEquals(NORMAL_TIMEOUT_SECONDS, CommunityDojoFetchPolicy.timeoutFor(attempt = 2, socksGeneration = 6))
-    }
-
-    @Test
-    fun `limits - normal stays 120 s, the first fetch 240 s, and Tor never gives up before the app`() {
+    fun `every attempt gets 120 s - Tor's default SOCKS timeout - and the retry is the only extra wait`() {
         assertEquals(120L, NORMAL_TIMEOUT_SECONDS)
-        assertEquals(240L, FIRST_AFTER_TOR_START_TIMEOUT_SECONDS)
         assertEquals(NORMAL_TIMEOUT_SECONDS, CommunityDojoRepository.TIMEOUT_SECONDS)
-        assertTrue(SentinelTorManager.SOCKS_TIMEOUT_SECONDS > FIRST_AFTER_TOR_START_TIMEOUT_SECONDS)
-        assertEquals(363L, CommunityDojoFetchPolicy.WORST_CASE_SECONDS)
+        assertEquals(243L, CommunityDojoFetchPolicy.WORST_CASE_SECONDS)
     }
 
     @Test
-    fun `the chosen limit reaches the client`() {
+    fun `Tor's SocksTimeout is left at its default`() {
+        val path = "java/com/samourai/sentinel/tor/SentinelTorManager.kt"
+        val src = listOf(java.io.File("src/main/$path"), java.io.File("app/src/main/$path")).first { it.isFile }.readText()
+        assertFalse(src.contains("SocksTimeout"))
+    }
+
+    @Test
+    fun `the limit reaches the client`() {
         val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress.createUnresolved("127.0.0.1", 9050))
-        val first = CommunityDojoRepository.buildClient(proxy, FIRST_AFTER_TOR_START_TIMEOUT_SECONDS)
-        assertEquals(240_000, first.callTimeoutMillis)
-        assertEquals(240_000, first.connectTimeoutMillis)
-        assertEquals(240_000, first.readTimeoutMillis)
-        val normal = CommunityDojoRepository.buildClient(proxy)
-        assertEquals(120_000, normal.callTimeoutMillis)
+        val client = CommunityDojoRepository.buildClient(proxy)
+        assertEquals(120_000, client.callTimeoutMillis)
+        assertEquals(120_000, client.connectTimeoutMillis)
+        assertEquals(120_000, client.readTimeoutMillis)
+    }
+
+    @Test
+    fun `each attempt gets its own isolation, so the retry gets a fresh circuit`() {
+        val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress.createUnresolved("127.0.0.1", 9050))
+        val first = TorIsolatedSocks.fromProxy(proxy)
+        val retry = TorIsolatedSocks.fromProxy(proxy)
+        assertTrue(first.isolationToken != retry.isolationToken)
     }
 }
