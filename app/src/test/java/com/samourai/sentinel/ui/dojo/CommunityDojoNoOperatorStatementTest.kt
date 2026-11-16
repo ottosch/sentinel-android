@@ -125,4 +125,15 @@ class CommunityDojoNoOperatorStatementTest {
         val line = xml.lines().single { it.contains("name=\"community_dojo_cached_no_operator\"") }
         assertTrue(line, line.contains(">Saved list from %1\$s · Dojo Bay has no operator statement, so it can\\'t be re-checked<"))
     }
+
+    @Test
+    fun `the banner date is day and month, with the year only when it isn't this year`() {
+        val utc = java.util.TimeZone.getTimeZone("UTC")
+        val oct12 = 1_791_763_200_000L // 12 Oct 2026, 00:00 UTC
+        val nov16 = 1_794_787_200_000L // 16 Nov 2026
+        assertEquals("dMMM", CommunityDojoDisplay.savedDateSkeleton(oct12, nov16, utc))
+        assertEquals("dMMMyyyy", CommunityDojoDisplay.savedDateSkeleton(oct12 - 365L * 86_400_000, nov16, utc))
+        val f = java.text.SimpleDateFormat("d MMM", java.util.Locale.UK).apply { timeZone = utc }
+        assertEquals("12 Oct", f.format(java.util.Date(oct12)))
+    }
 }

@@ -177,4 +177,41 @@ class DojoBaySignerPinTest {
         prefs.apiEndPointTor = null
         assertNull(DojoBaySignerPin.read(prefs))
     }
+
+    @Test
+    fun `signer changed - Review opens the changed listing, and trusting it moves the pin`() {
+        commit(PendingSignerPin().apply { select(owner.code) }, urlA, "Dojo")
+        val lookalikeByName = listing(other, urlB, "Dojo")
+        val sameOnion = listing(other, urlA, "Renamed")
+        val unrelated = listing(other, urlB, "Elsewhere")
+        val shown = listOf(unrelated, lookalikeByName, sameOnion)
+        val pin = DojoBaySignerPin.read(prefs)
+
+        // The rows that get the note, and the one Review opens: same onion first.
+        assertEquals(listOf(lookalikeByName, sameOnion), DojoBayPairedCheck.signerChangedRows(shown, pin))
+        assertEquals(sameOnion, DojoBayPairedCheck.repairTarget(shown, pin))
+        assertEquals(lookalikeByName, DojoBayPairedCheck.repairTarget(listOf(unrelated, lookalikeByName), pin))
+
+        // Review -> the full pre-pair flow: the sheet hands the listing's
+        // signed code over (onScanPayload), the user taps PAIR, it commits.
+        val target = DojoBayPairedCheck.repairTarget(shown, pin)!!
+        val pending = PendingSignerPin().apply { select(target.verified!!.paymentCode) }
+        commit(pending, DojoBayPairedCheck.signedUrl(target)!!, target.node.name)
+        assertEquals(other.code, prefs.dojoTrustedSignerCode)
+        assertEquals(Status.Present, DojoBayPairedCheck.status(shown, DojoBaySignerPin.read(prefs)))
+        assertEquals(emptyList<CheckedDojo>(), DojoBayPairedCheck.signerChangedRows(shown, DojoBaySignerPin.read(prefs)))
+    }
+
+    @Test
+    fun `signer changed - DON'T PAIR in the re-pair flow keeps the old pin and the state`() {
+        commit(PendingSignerPin().apply { select(owner.code) }, urlA, "Dojo")
+        val shown = listOf(listing(other, urlA, "Dojo"))
+        val pending = PendingSignerPin().apply { select(DojoBayPairedCheck.repairTarget(shown, DojoBaySignerPin.read(prefs))!!.verified!!.paymentCode) }
+        pending.discard()
+        assertEquals(owner.code, prefs.dojoTrustedSignerCode)
+        assertTrue(DojoBayPairedCheck.status(shown, DojoBaySignerPin.read(prefs)) is Status.SignerChanged)
+        // No pin, or the trusted listing still there: nothing to review.
+        assertNull(DojoBayPairedCheck.repairTarget(shown, null))
+        assertNull(DojoBayPairedCheck.repairTarget(shown + listing(owner, urlA, "Dojo"), DojoBaySignerPin.read(prefs)))
+    }
 }

@@ -101,50 +101,57 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
      */
 
     private val adapter: CommunityDojoAdapter = CommunityDojoAdapter(
-        onSelect = { item ->
-            val node = item.node
-            // Only a listing signed by its owner's payment code pairs, and it
-            // pairs with the details from inside the signature, never the
-            // directory's unsigned copy.
-            val json = item.verified?.signedPayloadJson
-            if (json == null) {
-                showUnverifiedNotice()
-            } else {
-                // Snapshot directory display metadata now: past this callback
-                // only the pairing JSON travels, and the stored payload has no
-                // name/flag/jurisdiction. The node object is already in memory
-                // from the directory fetch (over Tor) - nothing new is requested.
-                // The snapshot rides with the payload and is saved only when
-                // the pairing commits: DON'T PAIR leaves nothing behind.
-                val snapshot = DojoDisplaySnapshot(
-                    url = fromJSON<DojoPairing>(json)?.pairing?.url,
-                    name = node.name?.takeIf { it.isNotBlank() },
-                    flag = node.flagEmoji,
-                    // #256: jurisdiction rides the same snapshot - a directory
-                    // datum, display-only, cleared with the pairing (see
-                    // DojoUtility.clearDojo).
-                    jurisdiction = node.jurisdiction?.takeIf { it.isNotBlank() },
-                    // #250: the network rides the same snapshot - the source
-                    // the pre-pair dialog's guard reads. It comes from the
-                    // signed URL only (CheckedDojo.network), never from the
-                    // directory's unsigned label, so a relabelled listing can
-                    // never bless a pairing for the wrong network.
-                    network = item.network.directoryName(),
-                    // Another listing in this list uses the same name under
-                    // a different signer: the dialog says so.
-                    nameCollision = adapter.nameCollides(item),
-                )
-                // #221: the configure sheet is the parent. onScanPayload
-                // validates, stores the payload, and moves to the connect
-                // page, and it toasts on an invalid payload.
-                val host = parentFragment as? DojoConfigureBottomSheet
-                host?.onScanPayload(json, snapshot, signerCode = item.verified?.paymentCode)
-                dismiss()
-            }
-        },
+        onSelect = { item -> selectListing(item) },
         onCopy = { item -> copyPairingJson(item) },
         onOpenPayNym = { url -> context?.let { PayNymPage.open(it, url) } },
     )
+
+    /**
+     * A listing picked (a row, or the signer-changed banner's Review): a
+     * verified one goes to the full pre-pair flow, an unverified one gets
+     * the notice.
+     */
+    private fun selectListing(item: CheckedDojo) {
+        val node = item.node
+        // Only a listing signed by its owner's payment code pairs, and it
+        // pairs with the details from inside the signature, never the
+        // directory's unsigned copy.
+        val json = item.verified?.signedPayloadJson
+        if (json == null) {
+            showUnverifiedNotice()
+        } else {
+            // Snapshot directory display metadata now: past this callback
+            // only the pairing JSON travels, and the stored payload has no
+            // name/flag/jurisdiction. The node object is already in memory
+            // from the directory fetch (over Tor) - nothing new is requested.
+            // The snapshot rides with the payload and is saved only when
+            // the pairing commits: DON'T PAIR leaves nothing behind.
+            val snapshot = DojoDisplaySnapshot(
+                url = fromJSON<DojoPairing>(json)?.pairing?.url,
+                name = node.name?.takeIf { it.isNotBlank() },
+                flag = node.flagEmoji,
+                // #256: jurisdiction rides the same snapshot - a directory
+                // datum, display-only, cleared with the pairing (see
+                // DojoUtility.clearDojo).
+                jurisdiction = node.jurisdiction?.takeIf { it.isNotBlank() },
+                // #250: the network rides the same snapshot - the source
+                // the pre-pair dialog's guard reads. It comes from the
+                // signed URL only (CheckedDojo.network), never from the
+                // directory's unsigned label, so a relabelled listing can
+                // never bless a pairing for the wrong network.
+                network = item.network.directoryName(),
+                // Another listing in this list uses the same name under
+                // a different signer: the dialog says so.
+                nameCollision = adapter.nameCollides(item),
+            )
+            // #221: the configure sheet is the parent. onScanPayload
+            // validates, stores the payload, and moves to the connect
+            // page, and it toasts on an invalid payload.
+            val host = parentFragment as? DojoConfigureBottomSheet
+            host?.onScanPayload(json, snapshot, signerCode = item.verified?.paymentCode)
+            dismiss()
+        }
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -248,6 +255,14 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
 
     private fun formatDate(ms: Long): String =
         DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(ms))
+
+    /** Day and month in the user's locale ("12 Oct"), with the year when it isn't this year. */
+    private fun formatSavedDate(ms: Long): String {
+        val locale = resources.configuration.locales[0]
+        val skeleton = CommunityDojoDisplay.savedDateSkeleton(ms, System.currentTimeMillis())
+        val pattern = android.text.format.DateFormat.getBestDateTimePattern(locale, skeleton)
+        return java.text.SimpleDateFormat(pattern, locale).format(Date(ms))
+    }
 
     private fun connectTorThenFetch() {
         if (fetchInFlight) return
@@ -462,15 +477,14 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
                 showMessage(getString(R.string.community_dojo_empty, display.network), canRetry = true)
             is CommunityDojoDisplay.Cached -> showList(
                 display.dojos,
-                bannerMessage = getString(
-                    when (display.banner) {
-                        CommunityDojoDisplay.SavedListBanner.NO_OPERATOR_STATEMENT ->
-                            R.string.community_dojo_cached_no_operator
-                        CommunityDojoDisplay.SavedListBanner.UNREACHABLE ->
-                            R.string.community_dojo_cached_unreachable
-                    },
-                    formatDate(display.fetchedAtMs),
-                ),
+                bannerMessage = when (display.banner) {
+                    // "Saved list from 12 Oct · ...": the day and month (and
+                    // the year when it isn't this year), as in the design.
+                    CommunityDojoDisplay.SavedListBanner.NO_OPERATOR_STATEMENT ->
+                        getString(R.string.community_dojo_cached_no_operator, formatSavedDate(display.fetchedAtMs))
+                    CommunityDojoDisplay.SavedListBanner.UNREACHABLE ->
+                        getString(R.string.community_dojo_cached_unreachable, formatDate(display.fetchedAtMs))
+                },
             )
             is CommunityDojoDisplay.Failed -> showMessage(
                 if (CommunityDojoFetchPolicy.failedAfterRetry(display.failure, display.attempts)) {
@@ -596,19 +610,41 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
         recyclerView.visibility = View.GONE
     }
 
-    /** [bannerMessage] null: a fresh list, no banner. Otherwise the unreachable indicator with Retry. */
+    /**
+     * [bannerMessage] null: a fresh list, no banner, unless the paired Dojo's
+     * signer changed (below). Otherwise the saved-list banner with Retry.
+     */
     private fun showList(nodes: List<CheckedDojo>, bannerMessage: String?) {
         stopElapsedTicker()
         progressBar.visibility = View.GONE
         statusText.visibility = View.GONE
         retryButton.visibility = View.GONE
         changeAddressButton.visibility = View.GONE
-        if (bannerMessage == null) {
-            banner.visibility = View.GONE
-        } else {
+        // The paired Dojo's listing is now signed by a different code
+        // (DojoBayPairedCheck.SignerChanged): its rows say so, and over a
+        // fresh list the banner does too. Review opens the full pre-pair
+        // flow for that listing; pairing it replaces the trusted code.
+        val pin = DojoBaySignerPin.read(prefsUtil)
+        val changed = DojoBayPairedCheck.signerChangedRows(nodes, pin)
+        adapter.setSignerChanged(changed)
+        val repair = DojoBayPairedCheck.repairTarget(nodes, pin)
+        bannerRetry.setText(R.string.community_dojo_retry)
+        bannerRetry.setOnClickListener { connectTorThenFetch() }
+        if (bannerMessage != null) {
             banner.visibility = View.VISIBLE
             bannerText.text = bannerMessage
             bannerRetry.visibility = View.VISIBLE
+        } else if (repair != null) {
+            banner.visibility = View.VISIBLE
+            bannerText.text = getString(
+                R.string.community_dojo_signer_changed_banner,
+                pin?.name?.takeIf { it.isNotBlank() } ?: getString(R.string.community_dojo_signer_changed_unnamed),
+            )
+            bannerRetry.setText(R.string.community_dojo_signer_changed_action)
+            bannerRetry.setOnClickListener { selectListing(repair) }
+            bannerRetry.visibility = View.VISIBLE
+        } else {
+            banner.visibility = View.GONE
         }
         recyclerView.visibility = View.VISIBLE
         adapter.submitList(nodes)

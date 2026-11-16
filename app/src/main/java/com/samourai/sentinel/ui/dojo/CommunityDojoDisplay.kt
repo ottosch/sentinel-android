@@ -100,6 +100,16 @@ sealed class CommunityDojoDisplay {
     data class Refused(val reason: DojoBayTrust.RefusalReason, val operatorCode: String?) : CommunityDojoDisplay()
 
     companion object {
+        /**
+         * The date pattern skeleton for the no-operator-statement banner's
+         * "Saved list from <date>": day and month ("12 Oct"), plus the year
+         * when the list was saved in another year (there is no age limit).
+         */
+        fun savedDateSkeleton(savedAtMs: Long, nowMs: Long, zone: java.util.TimeZone = java.util.TimeZone.getDefault()): String {
+            fun year(ms: Long) = java.util.Calendar.getInstance(zone).apply { timeInMillis = ms }.get(java.util.Calendar.YEAR)
+            return if (year(savedAtMs) == year(nowMs)) "dMMM" else "dMMMyyyy"
+        }
+
         fun networkName(testnet: Boolean): String = if (testnet) "testnet" else "mainnet"
 
         /**

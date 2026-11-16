@@ -203,4 +203,25 @@ class SignerIdentityUiTest {
         assertNull(PayNymAvatarImage.decode(null))
         assertNull(PayNymAvatarImage.decode("GIF89a".toByteArray()))
     }
+
+    @Test
+    fun `a row whose signer changed since pairing says so`() {
+        val adapter = CommunityDojoAdapter(onSelect = {}, onCopy = {})
+        val rows = listOf(checked("Mine", other), checked("Elsewhere", qa))
+        adapter.submitList(rows)
+        adapter.setSignerChanged(listOf(rows[0]))
+        val row = bound(adapter, 0)
+        assertEquals(View.VISIBLE, row.warning.visibility)
+        assertEquals("The signer changed since you paired · check with the owner", row.warning.text.toString())
+        assertEquals(View.GONE, bound(adapter, 1).warning.visibility)
+        adapter.setSignerChanged(emptyList())
+        assertEquals(View.GONE, bound(adapter, 0).warning.visibility)
+    }
+
+    @Test
+    fun `the signer-changed banner text is neutral`() {
+        val text = context.getString(R.string.community_dojo_signer_changed_banner, "QA valid (signed)")
+        assertEquals("The signer of QA valid (signed) changed. Check with the owner before you pair it again.", text)
+        assertEquals("Review", context.getString(R.string.community_dojo_signer_changed_action))
+    }
 }

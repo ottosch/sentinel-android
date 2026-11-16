@@ -35,6 +35,19 @@ class CommunityDojoAdapter(
         }
     }
 
+    /** Rows ([rowKey]) that look like the paired Dojo under a new signer (DojoBayPairedCheck). */
+    private var signerChanged: Set<String> = emptySet()
+
+    fun setSignerChanged(items: List<CheckedDojo>) {
+        val keys = items.mapNotNull { rowKey(it) }.toSet()
+        if (keys != signerChanged) {
+            signerChanged = keys
+            notifyDataSetChanged()
+        }
+    }
+
+    fun isSignerChanged(item: CheckedDojo): Boolean = rowKey(item)?.let { it in signerChanged } == true
+
     /** True when [item]'s name is used by another signer in the current list. */
     fun nameCollides(item: CheckedDojo): Boolean = SignerNameCollisions.collides(item, collisions)
 
@@ -151,8 +164,11 @@ class CommunityDojoAdapter(
     }
 
     /** A signed row's note under the signer, or null. */
-    private fun rowWarning(context: android.content.Context, item: CheckedDojo): String? =
-        if (nameCollides(item)) context.getString(R.string.community_dojo_signer_collision) else null
+    private fun rowWarning(context: android.content.Context, item: CheckedDojo): String? = when {
+        isSignerChanged(item) -> context.getString(R.string.community_dojo_signer_changed_row)
+        nameCollides(item) -> context.getString(R.string.community_dojo_signer_collision)
+        else -> null
+    }
 
     companion object {
         /** Expansion key for a signed row: the listing and the code that signed it. */
