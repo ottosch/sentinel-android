@@ -24,6 +24,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.google.zxing.Result
 import com.sparrowwallet.hummingbird.ResultType
 import com.sparrowwallet.hummingbird.URDecoder
+import timber.log.Timber
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -315,7 +316,7 @@ class QRScanner : FrameLayout, DefaultLifecycleObserver {
                     }
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                Timber.e("ur-decode %s", e.javaClass.simpleName)
                 withContext(Dispatchers.Main){
                     _progressIndicator?.setProgressCompat(
                         0,

@@ -412,7 +412,7 @@ class LoadingFragment : Fragment() {
 
                 onSelect()
             } catch (e: Exception) {
-                println("Error: ${e.message}")
+                Timber.e("pairing-import %s", e.javaClass.simpleName)
             }
         }
     }

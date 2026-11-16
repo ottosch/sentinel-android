@@ -169,7 +169,7 @@ public class SendFactoryGeneric {
             try {
                 this.signInput(key, transaction, i, bipFormatSupplier);
             } catch (Exception e) {
-                log.error("Signing input #"+i+" failed", e);
+                log.error("sign-input-failed {}", e.getClass().getSimpleName());
                 throw new SignTxException("Signing input #"+i+" failed", e);
             }
         }
@@ -195,9 +195,6 @@ public class SendFactoryGeneric {
         String inputAddress = bipFormatSupplier.getToAddress(connectedOutput);
         BipFormat addressFormat = bipFormatSupplier.findByAddress(inputAddress, tx.getParams());
 
-        if (log.isDebugEnabled()) {
-            log.debug("signInput #"+inputIndex+": value="+txInput.getValue()+", addressType="+addressFormat+", address="+inputAddress);
-        }
         addressFormat.sign(tx, inputIndex, key);
     }
 
@@ -210,7 +207,7 @@ public class SendFactoryGeneric {
                 keyBag.put(input.getOutpoint().toString(), ecKey);
             }
             catch(Exception e) {
-                log.error("cannot process private key for input="+input, e);
+                log.error("sweep-privkey {}", e.getClass().getSimpleName());
             }
         }
 

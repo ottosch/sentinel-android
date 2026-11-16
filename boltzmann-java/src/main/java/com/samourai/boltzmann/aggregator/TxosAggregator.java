@@ -318,7 +318,7 @@ public class TxosAggregator {
       long currTime = System.currentTimeMillis();
       long deltaTimeSeconds = (currTime - startTime) / 1000;
       if (maxDuration != null && deltaTimeSeconds >= maxDuration) {
-        System.out.println("maxDuration limit reached!");
+        log.info("maxDuration limit reached");
         // #107 guard: join the txos-cap sentinel state (nbCmbn=0 +
         // zero matrix) instead of returning null - TxosLinker hands
         // the matrix to findDtrmLinks unguarded and null NPEs there

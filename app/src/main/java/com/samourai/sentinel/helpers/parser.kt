@@ -33,7 +33,10 @@ inline fun <reified T> fromJSON(payload: String, type: Type? = null): T? {
             gson.fromJson(payload, T::class.java)
         }
     } catch (Ex: Exception) {
-        Ex.printStackTrace()
+        // Gson puts the rejected value in the message (a zpub, a payload).
+        // The class name does not. Release CrashReportingTree drops a line
+        // with no throwable, so this stays off release logcat and error_dump.
+        Timber.e("fromJSON %s", Ex.javaClass.simpleName)
         null
     }
 }

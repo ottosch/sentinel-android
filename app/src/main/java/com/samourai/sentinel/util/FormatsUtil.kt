@@ -11,6 +11,7 @@ import org.bitcoinj.core.Base58
 import org.bitcoinj.core.WrongNetworkException
 import org.bitcoinj.uri.BitcoinURI
 import org.bitcoinj.uri.BitcoinURIParseException
+import timber.log.Timber
 import java.nio.ByteBuffer
 import java.util.regex.Pattern
 
@@ -137,7 +138,7 @@ class FormatsUtil private constructor() {
                         ret = true
                     }
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    Timber.e("address-decode %s", e.javaClass.simpleName)
                 }
             } else {
                 try {

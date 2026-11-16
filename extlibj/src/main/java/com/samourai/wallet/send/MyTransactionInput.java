@@ -10,7 +10,12 @@ import org.bitcoinj.core.TransactionOutPoint;
 
 import java.math.BigInteger;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class MyTransactionInput extends TransactionInput {
+
+    private static final Logger log = LoggerFactory.getLogger(MyTransactionInput.class);
 
     private static final long serialVersionUID = 1L;
 
@@ -41,7 +46,7 @@ public class MyTransactionInput extends TransactionInput {
         try {
             return new Address(params, address);
         } catch (AddressFormatException e) {
-            e.printStackTrace();
+            log.warn("from-address {}", e.getClass().getSimpleName());
         }
 
         return null;

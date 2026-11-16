@@ -29,6 +29,8 @@ import androidx.annotation.RequiresApi;
 
 import com.samourai.sentinel.R;
 
+import timber.log.Timber;
+
 
 public class CircleImageView extends androidx.appcompat.widget.AppCompatImageView {
 
@@ -385,7 +387,7 @@ public class CircleImageView extends androidx.appcompat.widget.AppCompatImageVie
             drawable.draw(canvas);
             return bitmap;
         } catch (Exception e) {
-            e.printStackTrace();
+            Timber.e("circle-bitmap %s", e.getClass().getSimpleName());
             return null;
         }
     }

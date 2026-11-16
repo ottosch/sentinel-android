@@ -14,7 +14,9 @@ dependencies {
     implementation 'com.google.guava:guava:32.1.3-android'
     implementation 'it.unimi.dsi:fastutil:8.3.0'
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.23.0'
-    implementation 'ch.qos.logback:logback-classic:1.2.10'
+    // slf4j-api only. logback-classic's default console appender wrote every
+    // debug line to Android logcat (#564). The app binds slf4j-nop.
+    implementation 'org.slf4j:slf4j-api:1.7.36'
 
     testImplementation 'junit:junit:4.13.2'
 }
