@@ -34,7 +34,7 @@ import org.bitcoinj.core.NetworkParameters
 import org.bitcoinj.core.Transaction
 import org.bitcoinj.params.MainNetParams
 import org.bitcoinj.script.ScriptBuilder
-import org.json.JSONObject
+import com.samourai.sentinel.helpers.SafeJson
 import org.koin.java.KoinJavaComponent
 import timber.log.Timber
 import java.math.BigInteger
@@ -526,7 +526,7 @@ class TransactionComposer {
         }
         val hex = try {
             val body = response.body?.string()
-            val json = body?.let { JSONObject(it) }
+            val json = body?.let { SafeJson.parseObject(it) }
             if (json != null && json.has("data")) json.getString("data") else null
         } catch (e: Exception) {
             null

@@ -23,6 +23,7 @@ import com.samourai.sentinel.data.whirlpool.BadbankLabeler
 import com.samourai.sentinel.data.whirlpool.WhirlpoolTxAdapter
 import com.samourai.sentinel.data.whirlpool.WhirlpoolTxView
 import com.samourai.sentinel.data.whirlpool.WhirlpoolLabelSink
+import com.samourai.sentinel.helpers.SafeJson
 import com.samourai.sentinel.helpers.fromJSON
 import com.samourai.sentinel.ui.utils.logThreadInfo
 import com.samourai.sentinel.ui.utils.PrefsUtil
@@ -37,7 +38,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.Response
-import org.json.JSONObject
 import org.koin.java.KoinJavaComponent.inject
 import timber.log.Timber
 
@@ -92,6 +92,7 @@ sealed interface CollectionTxSyncResult {
 }
 
 internal fun syncFailureKind(error: Throwable): SyncFailureKind = when {
+    error is ApiService.DojoReplyTooLarge -> SyncFailureKind.OVERSIZE
     error is java.io.IOException -> SyncFailureKind.TRANSPORT
     error is ApiService.DojoApiError -> SyncFailureKind.DOJO
     error is UnusableWalletResponse -> SyncFailureKind.DOJO
@@ -243,7 +244,7 @@ class TransactionsRepository {
                         val resString = it.string()
                         val pubKeyAssociated = collection.pubs[index]
                         val jsonObject = try {
-                            JSONObject(resString)
+                            SafeJson.parseObject(resString)
                         } catch (_: org.json.JSONException) {
                             if (res.isSuccessful) {
                                 Timber.e(

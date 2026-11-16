@@ -8,11 +8,11 @@ import com.samourai.sentinel.api.ApiService
 import com.samourai.sentinel.data.PubKeyModel
 import com.samourai.sentinel.data.repository.TransactionsRepository
 import com.samourai.sentinel.ui.utils.PrefsUtil
+import com.samourai.sentinel.helpers.SafeJson
 import com.samourai.sentinel.util.apiScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
 import org.koin.java.KoinJavaComponent.inject
 import timber.log.Timber
 
@@ -107,7 +107,7 @@ object PubKeyRescanner {
                     val response = apiService.rescanPubKey(key.pubKey, key.type)
                     val body = response.body?.string()
                     if (response.isSuccessful && body != null &&
-                        JSONObject(body).optString("status") == "ok"
+                        SafeJson.parseObject(body).optString("status") == "ok"
                     ) {
                         succeeded++
                         startCooldown(key)
@@ -250,7 +250,7 @@ object PubKeyRescanner {
     private fun dojoErrorOf(code: Int, body: String?): String {
         if (body.isNullOrBlank()) return "HTTP $code"
         return try {
-            JSONObject(body).optString("error").ifBlank { "HTTP $code" }
+            SafeJson.parseObject(body).optString("error").ifBlank { "HTTP $code" }
         } catch (e: Exception) {
             "HTTP $code"
         }

@@ -7,7 +7,7 @@ import org.bitcoinj.core.NetworkParameters
 import org.bitcoinj.core.Sha256Hash
 import org.bitcoinj.core.Transaction
 import org.bouncycastle.util.encoders.Hex
-import org.json.JSONObject
+import com.samourai.sentinel.helpers.SafeJson
 
 /**
  * #477 (leg 4): chain verification for the sweep path's claimed utxos.
@@ -102,7 +102,7 @@ suspend fun fetchPrevTxHexViaApi(apiService: ApiService, txid: String): String? 
             null
         } else {
             val body = response.body?.string()
-            val json = body?.let { runCatching { JSONObject(it) }.getOrNull() }
+            val json = body?.let { runCatching { SafeJson.parseObject(it) }.getOrNull() }
             if (json?.has("data") == true) json.getString("data") else null
         }
     } catch (e: CancellationException) {

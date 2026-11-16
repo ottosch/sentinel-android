@@ -7,12 +7,14 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * Transport: the Dojo host never answered (socket, SOCKS, timeout).
  * Dojo: the host answered with an error, a non-2xx, or an unusable body.
+ * Oversize: the host answered and the body was over the socket cap.
  * Local: a gate miss or bookkeeping, with no Dojo verdict for that collection.
  */
 internal enum class SyncFailureKind {
     TRANSPORT,
     DOJO,
     LOCAL,
+    OVERSIZE,
 }
 
 /**
@@ -47,6 +49,7 @@ internal fun combineSyncFailures(kinds: List<SyncFailureKind>): SyncFailureKind 
     kinds.all { it == SyncFailureKind.TRANSPORT } -> SyncFailureKind.TRANSPORT
     kinds.all { it == SyncFailureKind.DOJO } -> SyncFailureKind.DOJO
     kinds.all { it == SyncFailureKind.LOCAL } -> SyncFailureKind.LOCAL
+    kinds.all { it == SyncFailureKind.OVERSIZE } -> SyncFailureKind.OVERSIZE
     kinds.any { it == SyncFailureKind.DOJO } -> SyncFailureKind.DOJO
     kinds.any { it == SyncFailureKind.TRANSPORT } -> SyncFailureKind.TRANSPORT
     else -> SyncFailureKind.LOCAL
