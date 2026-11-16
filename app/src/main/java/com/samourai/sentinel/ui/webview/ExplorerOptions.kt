@@ -194,8 +194,9 @@ object ExplorerOptions {
      * True when Settings must not save this Custom template.
      * The check is [ExplorerBinding.customTemplateRejected]: http(s)
      * only, no userinfo, no backslash or control character, no
-     * placeholder in the host, no non-canonical IPv4 host. A blank
-     * value is a separate "nothing entered" error.
+     * placeholder that changes the host, no non-ASCII host, and no
+     * odd IPv4 host. A blank value is a separate "nothing entered"
+     * error.
      */
     fun customTemplateRejected(url: String): Boolean =
         ExplorerBinding.customTemplateRejected(url)

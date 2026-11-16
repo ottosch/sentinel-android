@@ -109,9 +109,19 @@ class ExplorerOnionGateTest {
         assertFalse(
             ExplorerBinding.lookupRequiresTor("https://evil.example/x.oni%6fn", walletRequiresTor = false),
         )
-        // Nothing parsed, so Tor is required. A null URL still adds nothing.
-        assertTrue(ExplorerBinding.lookupRequiresTor("not a uri", walletRequiresTor = false))
-        assertTrue(ExplorerBinding.lookupRequiresTor("javascript:alert(1)", walletRequiresTor = false))
+        // A network URL with no host fails closed. Hostless schemes do not:
+        // data: images and mailto: links on a clearnet page must still load.
+        assertTrue(ExplorerBinding.lookupRequiresTor("https://", walletRequiresTor = false))
+        assertTrue(ExplorerBinding.lookupRequiresTor("https://bad host/x", walletRequiresTor = false))
+        assertTrue(ExplorerBinding.lookupRequiresTor("ws://", walletRequiresTor = false))
+        assertTrue(ExplorerBinding.lookupRequiresTor("wss://custom.onion/socket", walletRequiresTor = false))
+        assertFalse(ExplorerBinding.lookupRequiresTor("ws://explorer.example/ws", walletRequiresTor = false))
+        assertFalse(ExplorerBinding.lookupRequiresTor("data:image/png,aaaa", walletRequiresTor = false))
+        assertFalse(ExplorerBinding.lookupRequiresTor("about:blank", walletRequiresTor = false))
+        assertFalse(ExplorerBinding.lookupRequiresTor("mailto:user@example.com", walletRequiresTor = false))
+        assertFalse(ExplorerBinding.lookupRequiresTor("intent://scan/#Intent;end", walletRequiresTor = false))
+        assertFalse(ExplorerBinding.lookupRequiresTor("javascript:alert(1)", walletRequiresTor = false))
+        assertFalse(ExplorerBinding.lookupRequiresTor("not a uri", walletRequiresTor = false))
         assertFalse(ExplorerBinding.lookupRequiresTor(null, walletRequiresTor = false))
         assertFalse(ExplorerBinding.lookupRequiresTor("   ", walletRequiresTor = false))
         assertFalse(ExplorerBinding.lookupRequiresTor("https://evil.example/tx/$txid", walletRequiresTor = false))

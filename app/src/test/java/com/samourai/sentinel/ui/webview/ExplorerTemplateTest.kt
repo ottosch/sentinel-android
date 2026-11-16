@@ -38,9 +38,13 @@ class ExplorerTemplateTest {
         assertTrue(rejected("https:user@evil.example/tx/{txid}"))
         assertTrue(rejected("https://@evil.example/tx/{txid}"))
         assertTrue(rejected("https://:pass@evil.example/tx/{txid}"))
-        assertTrue(rejected("https://explorer.example/tx/{txid}?next=https://evil.example"))
+        // A link in the query is not a second scheme. One in the path is.
+        assertFalse(rejected("https://explorer.example/tx/{txid}?next=https://evil.example"))
+        assertFalse(rejected("https://explorer.example/tx/{txid}#https://evil.example"))
+        assertTrue(rejected("https://evil.example/https://attacker.example/tx/{txid}"))
 
         assertTrue(rejected("https://{txid}.example/tx/{txid}"))
+        assertTrue(rejected("https:{txid}"))
         assertTrue(rejected("https://explorer.{address}/tx/1"))
         assertFalse(rejected("https://explorer.example/tx/{txid}"))
         assertFalse(rejected("https://explorer.example/{address}"))
@@ -51,6 +55,40 @@ class ExplorerTemplateTest {
         assertTrue(rejected("http://0x7f000001/"))
         assertTrue(rejected("http://127.1/tx/{txid}"))
         assertTrue(rejected("http://127.0.0.01/"))
+        // A name that contains the letters 0x is not a hex IPv4 address.
+        assertFalse(rejected("https://my0xnode.example/tx/{txid}"))
+        assertFalse(rejected("https://0xdead.example/tx/{txid}"))
+    }
+
+    @Test
+    fun `a non ascii host is refused and punycode is kept`() {
+        assertTrue(rejected("https://fa\u00df.de/tx/{txid}"))
+        assertTrue(rejected("http://\uFF58.\uFF4F\uFF4E\uFF49\uFF4F\uFF4E/tx/{txid}"))
+        assertFalse(rejected("https://xn--fa-hia.de/tx/{txid}"))
+    }
+
+    @Test
+    fun `a txid placeholder is filled only with 64 hex characters`() {
+        val template = "https://explorer.example/tx/{txid}"
+        val bound = ExplorerBinding.resolve(
+            ExplorerBinding.ExplorerFacts(
+                savedSelection = ExplorerBinding.CHOICE_CUSTOM,
+                customUrl = template,
+                publishedUrl = null,
+                appIsTestnet = false,
+                dojoDeclaredNetwork = null,
+                dojoApiUrl = null,
+            ),
+        )
+        val txid = "ab".repeat(32)
+        assertEquals(
+            "https://explorer.example/tx/$txid",
+            ExplorerBinding.pageUrl(bound, ExplorerBinding.ExplorerPage.TX, txid),
+        )
+        assertEquals(null, ExplorerBinding.pageUrl(bound, ExplorerBinding.ExplorerPage.TX, "not-a-txid"))
+        assertEquals(null, ExplorerBinding.pageUrl(bound, ExplorerBinding.ExplorerPage.TX, "ab".repeat(31)))
+        assertTrue(ExplorerBinding.isHexTxid(txid))
+        assertFalse(ExplorerBinding.isHexTxid("evil.example"))
     }
 
     @Test

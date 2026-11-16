@@ -77,19 +77,54 @@ enum class ExplorerFollowup {
     BLOCK_SILENT,
 }
 
+private val NETWORK_SCHEMES = setOf("http", "https", "ws", "wss")
+
 /**
  * True when [url]'s host, or [host] when one was supplied, is an
  * `.onion` name after percent-decoding and IDN mapping. A trailing
  * dot is still that host. Userinfo and path are not the host.
- * A value that was supplied and does not parse fails closed: it
- * is treated as requiring Tor. A null URL with no host does not.
+ *
+ * Fail closed only for http, https, ws, and wss when that host
+ * cannot be parsed. `data:`, `about:`, `mailto:`, `intent:`, and
+ * any other hostless scheme are not onion loads.
  */
 fun onionAuthority(url: String?, host: String? = null): Boolean {
     if (onionHost(host)) return true
-    if (!url.isNullOrBlank() && TxFactsResolver.isOnionHost(url)) return true
-    if (TxFactsResolver.normalizedHost(url) != null) return false
+    if (url.isNullOrBlank()) return false
+    val parsed = networkHost(url)
+    if (parsed != null) return TxFactsResolver.hostIsOnion(parsed)
     if (!host.isNullOrBlank()) return false
-    return !url.isNullOrBlank()
+    val scheme = urlScheme(url)
+    return scheme != null && scheme in NETWORK_SCHEMES
+}
+
+/** Scheme of [url], or null when it does not start with one. */
+internal fun urlScheme(url: String?): String? {
+    if (url.isNullOrBlank()) return null
+    val trimmed = url.trim()
+    val colon = trimmed.indexOf(':')
+    if (colon <= 0) return null
+    val scheme = trimmed.substring(0, colon)
+    if (!scheme[0].isLetter()) return null
+    if (scheme.any { !(it.isLetterOrDigit() || it == '+' || it == '-' || it == '.') }) return null
+    return scheme.lowercase()
+}
+
+/**
+ * Host of an http(s)/ws(s) URL. ws and wss are read as http and
+ * https so the host check does not depend on OkHttp refusing them.
+ * Null for any other scheme, and for a network URL with no host.
+ */
+private fun networkHost(url: String): String? {
+    val scheme = urlScheme(url) ?: return null
+    if (scheme !in NETWORK_SCHEMES) return null
+    val trimmed = url.trim()
+    val asHttp = when (scheme) {
+        "ws" -> "http" + trimmed.substring(scheme.length)
+        "wss" -> "https" + trimmed.substring(scheme.length)
+        else -> trimmed
+    }
+    return TxFactsResolver.normalizedHost(asHttp)
 }
 
 fun onionHost(host: String?): Boolean = TxFactsResolver.hostIsOnion(host)
