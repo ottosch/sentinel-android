@@ -16,6 +16,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.annotation.VisibleForTesting
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -100,6 +101,14 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
      * stream), on a fresh Tor circuit: see CommunityDojoFetchPolicy.
      */
 
+    /**
+     * How many times this sheet has loaded or fetched the list. A test
+     * reads it to show that coming back from DON'T PAIR loads nothing.
+     */
+    @VisibleForTesting
+    internal var directoryLoads = 0
+        private set
+
     private val adapter: CommunityDojoAdapter = CommunityDojoAdapter(
         onSelect = { item -> selectListing(item) },
         onCopy = { item -> copyPairingJson(item) },
@@ -145,10 +154,11 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
             )
             // #221: the configure sheet is the parent. onScanPayload
             // validates, stores the payload, and moves to the connect
-            // page, and it toasts on an invalid payload.
+            // page, and it toasts on an invalid payload. This list stays
+            // open under the pre-pair dialog: DON'T PAIR comes back to it
+            // as it is, and Pair closes it (DojoConfigureBottomSheet).
             val host = parentFragment as? DojoConfigureBottomSheet
             host?.onScanPayload(json, snapshot, signerCode = item.verified?.paymentCode)
-            dismiss()
         }
     }
 
@@ -193,6 +203,7 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
 
     /** Reads the saved list off the main thread, shows it if it has Dojos for this network, then fetches. */
     private fun loadCacheThenFetch() {
+        directoryLoads++
         source = DojoBaySource.effectiveBaseUrl(prefsUtil.dojoBayUrl)
         val store = cacheStore()
         val forSource = source
@@ -265,6 +276,7 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
 
     private fun connectTorThenFetch() {
         if (fetchInFlight) return
+        directoryLoads++
         // State can say ON from a stale LiveData while the proxy object
         // is not (yet) available; require both to take the fast path.
         // #135: ON alone is NOT enough - it is published at boot=5, before

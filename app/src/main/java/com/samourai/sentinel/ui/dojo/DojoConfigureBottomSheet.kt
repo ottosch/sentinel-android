@@ -182,6 +182,7 @@ enum class PairingAckDecision { SHOW_CONFIRMATION, START_CONNECT, DISCARD_AND_DI
 class PairingAckGate {
     private var awaitingConfirmation = false
     private var spent = false
+    private var declined = false
 
     @Synchronized
     fun onPairingSelected(): PairingAckDecision = when {
@@ -205,11 +206,38 @@ class PairingAckGate {
     fun onUserDeclined(): PairingAckDecision = when {
         awaitingConfirmation && !spent -> {
             spent = true
+            declined = true
             PairingAckDecision.DISCARD_AND_DISMISS
         }
         else -> PairingAckDecision.NOOP
     }
+
+    /**
+     * DON'T PAIR on a listing picked from the still-open Community Dojos
+     * list: the user is back on the list and may pick again, so the gate
+     * arms once more. Only after a decline (nothing was sent); a gate
+     * spent by Pair never re-arms. True when it re-armed.
+     */
+    @Synchronized
+    fun rearmAfterDecline(): Boolean {
+        if (!declined) return false
+        declined = false
+        spent = false
+        awaitingConfirmation = false
+        return true
+    }
 }
+
+/**
+ * Where DON'T PAIR goes. A listing picked from the Community Dojos list
+ * that is still open goes back to that list, as it was: no refetch, no
+ * reload. Anything else (a scan, a paste, a passed payload, or a list
+ * that has gone) closes the pairing sheet as before.
+ */
+enum class PairingDeclineOutcome { BACK_TO_LIST, CLOSE_SHEET }
+
+fun pairingDeclineOutcome(pickedFromList: Boolean, listShowing: Boolean): PairingDeclineOutcome =
+    if (pickedFromList && listShowing) PairingDeclineOutcome.BACK_TO_LIST else PairingDeclineOutcome.CLOSE_SHEET
 
 // ---- #256: the pairing dialogs' display data, made pure ----
 //
@@ -387,6 +415,9 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
     /** The picked listing's signer code, saved as the pairing's pin only on commit. */
     private val pendingSignerPin = PendingSignerPin()
 
+    /** The payload came from the Community Dojos list, which stays open behind the pre-pair dialog. */
+    private var pickedFromList = false
+
     // #234/#261: the decision gate. #261 moved it before the first
     // network contact: selection arms the dialog, the taps spend it.
     // The pendingPairing/pendingAuthBody staging fields died with the
@@ -461,6 +492,7 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
                 payload = it
                 pendingSnapshot.select(null)
                 pendingSignerPin.select(null)
+                pickedFromList = false
                 binding.pager.setCurrentItem(2, true)
             } else {
                 // #181: the old scanFragment.resetCamera() here no-op'd
@@ -507,6 +539,7 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
             payload = jsonDojo
             pendingSnapshot.select(null)
             pendingSignerPin.select(null)
+            pickedFromList = false
             binding.pager.setCurrentItem(2, true)
         } else
             Toast.makeText(requireContext(), getString(R.string.invalid_pairing_payload), Toast.LENGTH_SHORT).show()
@@ -563,6 +596,7 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
             payload = scanned
             pendingSnapshot.select(snapshot)
             pendingSignerPin.select(signerCode)
+            pickedFromList = snapshot != null
             binding.pager.setCurrentItem(2, true)
             return true
         }
@@ -1003,6 +1037,8 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
      */
     private fun onPairingConfirmTapped() {
         if (pairingAckGate.onUserConfirmed() != PairingAckDecision.START_CONNECT) return
+        // Pair: the list has done its job; the connect page shows the progress.
+        if (pickedFromList) communityDojoList()?.dismiss()
         dojoProgressShown = true
         renderConnectPageState()
         setDojo()
@@ -1125,12 +1161,19 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
      * pending-nulls died with the staging fields). The listener never
      * fires: the holders see a declined pairing exactly the way they
      * see a failed one (#159), and the xpub registration burst never
-     * starts.
+     * starts. A listing picked from the Community Dojos list goes back
+     * to that list instead of closing the sheet
+     * ([pairingDeclineOutcome], [backToCommunityDojoList]).
      */
     private fun onPairingDeclineTapped() {
         if (pairingAckGate.onUserDeclined() != PairingAckDecision.DISCARD_AND_DISMISS) return
         pendingSnapshot.discard()
         pendingSignerPin.discard()
+        val listShowing = communityDojoList()?.dialog?.isShowing == true
+        if (pairingDeclineOutcome(pickedFromList, listShowing) == PairingDeclineOutcome.BACK_TO_LIST) {
+            backToCommunityDojoList()
+            return
+        }
         mainHandler.post {
             dismiss()
             if (context != null)
@@ -1197,7 +1240,25 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
     }
 
     private fun showCommunityDojoList() {
-        CommunityDojoListBottomSheet().show(childFragmentManager, "community_dojo_list")
+        CommunityDojoListBottomSheet().show(childFragmentManager, COMMUNITY_DOJO_LIST_TAG)
+    }
+
+    private fun communityDojoList(): CommunityDojoListBottomSheet? =
+        childFragmentManager.findFragmentByTag(COMMUNITY_DOJO_LIST_TAG) as? CommunityDojoListBottomSheet
+
+    /**
+     * DON'T PAIR on a listing from the Community Dojos list: only the
+     * pre-pair dialog closes. The list stays open as it was (nothing is
+     * fetched or reloaded), nothing was sent and nothing is saved, and
+     * the sheet goes back to its first page so another listing can be
+     * picked, which opens a fresh pre-pair dialog.
+     */
+    private fun backToCommunityDojoList() {
+        payload = ""
+        pickedFromList = false
+        connectStarted = false
+        pairingAckGate.rearmAfterDecline()
+        binding.pager.setCurrentItem(0, false)
     }
 
     private fun setUpTor() {
@@ -1282,6 +1343,9 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
         const val ARG_REQUEST_KEY = "dojo_configure_arg_request_key"
         const val ARG_PAIRING_SCAN = "dojo_configure_arg_pairing_scan"
         const val RESULT_PAIRED = "dojo_configure_result_paired"
+
+        /** The Community Dojos list, a child sheet of this one. */
+        internal const val COMMUNITY_DOJO_LIST_TAG = "community_dojo_list"
 
         /**
          * [pairingScan] is true when this sheet's camera will scan a
