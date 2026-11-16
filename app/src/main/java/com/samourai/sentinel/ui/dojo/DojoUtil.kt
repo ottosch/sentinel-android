@@ -13,8 +13,11 @@ import com.samourai.sentinel.ui.utils.PrefsUtil
 import kotlinx.coroutines.*
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Response
+import org.json.JSONArray
+import org.json.JSONException
 import org.json.JSONObject
 import org.koin.java.KoinJavaComponent.inject
+import java.math.BigDecimal
 
 /**
  * sentinel-android
@@ -121,10 +124,14 @@ class DojoUtility {
      * The existing refresh token is preserved when the response omits it.
      */
     fun setAuthToken(body: String) {
-        val payload = SafeJson.parseObject(body).getJSONObject("authorizations")
-        prefsUtil.authorization = payload.getString("access_token")
-        val refreshToken = payload.optString("refresh_token", "")
-        if (refreshToken.isNotEmpty()) {
+        applyAuthTokens(readDojoAuthTokens(body))
+    }
+
+    /** Writes tokens that [readDojoAuthTokens] already extracted. */
+    internal fun applyAuthTokens(tokens: DojoAuthTokens) {
+        prefsUtil.authorization = tokens.accessToken
+        val refreshToken = tokens.refreshToken
+        if (!refreshToken.isNullOrEmpty()) {
             prefsUtil.refreshToken = refreshToken
         }
         isAuthenticated = true
@@ -214,6 +221,60 @@ class DojoUtility {
          * [Dispatchers.Default].
          */
         internal var skipAsyncPayloadRead: Boolean = false
+    }
+}
+
+/**
+ * Access token and, when the body includes one, the refresh token.
+ * Pulled out before any pairing setting is written.
+ */
+internal data class DojoAuthTokens(
+    val accessToken: String,
+    val refreshToken: String?,
+)
+
+/**
+ * Tokens from an /auth/login or /auth/refresh body.
+ *
+ * Runs before settings are saved. [JSONObject.getJSONObject] throws when
+ * `authorizations` is missing or not an object, and [JSONObject.getString]
+ * throws when `access_token` is missing. AOSP [JSONObject.toString] returns
+ * null when a value is not finite (`1e400` becomes Infinity); that null used
+ * to be passed into [DojoUtility.setAuthToken] on the main thread and NPE.
+ * The null check and the non-finite walk both happen here.
+ */
+internal fun readDojoAuthTokens(body: String): DojoAuthTokens {
+    val parsed = SafeJson.parseObject(body)
+    if (parsed.toString() == null) {
+        throw JSONException("non-finite number")
+    }
+    rejectNonFinite(parsed)
+    val payload = parsed.getJSONObject("authorizations")
+    val access = payload.getString("access_token")
+    val refresh = payload.optString("refresh_token", "").ifEmpty { null }
+    return DojoAuthTokens(access, refresh)
+}
+
+private fun rejectNonFinite(value: Any?) {
+    when (value) {
+        is Double -> if (!value.isFinite()) throw JSONException("non-finite number")
+        is Float -> if (!value.isFinite()) throw JSONException("non-finite number")
+        is BigDecimal -> {
+            if (value.abs() > BigDecimal.valueOf(Double.MAX_VALUE)) {
+                throw JSONException("non-finite number")
+            }
+        }
+        is JSONObject -> {
+            val keys = value.keys()
+            while (keys.hasNext()) {
+                rejectNonFinite(value.get(keys.next()))
+            }
+        }
+        is JSONArray -> {
+            for (index in 0 until value.length()) {
+                rejectNonFinite(value.opt(index))
+            }
+        }
     }
 }
 

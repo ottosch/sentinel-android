@@ -15,7 +15,7 @@
  */
 
 // Test-only copy of AOSP libcore org.json (Apache-2.0).
-// Package renamed to aosp.json and Android annotations removed so the
+// The package is aosp.json, not org.json. Android annotations are removed so the
 // unit tests can run the platform parser beside org.json:json.
 // Behavior is otherwise unchanged. Do not use this from production code.
 

@@ -45,6 +45,15 @@ class AospOrgJsonTest {
     }
 
     @Test
+    fun aospToStringReturnsNullWhenANumberIsNotFinite() {
+        val parsed = aosp.json.JSONObject(
+            """{"authorizations":{"access_token":"a"},"x":[1e400]}"""
+        )
+        assertEquals("a", parsed.getJSONObject("authorizations").getString("access_token"))
+        assertNull(parsed.toString())
+    }
+
+    @Test
     fun aospToStringOfADeepTreeOverflowsOutsideTheParse() {
         var inner = JSONArray()
         repeat(10_000) {

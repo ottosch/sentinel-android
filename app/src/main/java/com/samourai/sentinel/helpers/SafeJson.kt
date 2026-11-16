@@ -303,7 +303,7 @@ object SafeJson {
 
         private fun literal() {
             val c = text[i]
-            if (c == '-' || c.isDigit()) {
+            if (c == '-' || c.isAsciiDigit()) {
                 number()
                 return
             }
@@ -319,25 +319,25 @@ object SafeJson {
         private fun number() {
             if (text[i] == '-') {
                 i++
-                if (i >= text.length || !text[i].isDigit()) syntax()
+                if (i >= text.length || !text[i].isAsciiDigit()) syntax()
             }
-            if (i >= text.length || !text[i].isDigit()) syntax()
+            if (i >= text.length || !text[i].isAsciiDigit()) syntax()
             if (text[i] == '0') {
                 i++
-                if (i < text.length && text[i].isDigit()) syntax()
+                if (i < text.length && text[i].isAsciiDigit()) syntax()
             } else {
-                while (i < text.length && text[i].isDigit()) i++
+                while (i < text.length && text[i].isAsciiDigit()) i++
             }
             if (i < text.length && text[i] == '.') {
                 i++
-                if (i >= text.length || !text[i].isDigit()) syntax()
-                while (i < text.length && text[i].isDigit()) i++
+                if (i >= text.length || !text[i].isAsciiDigit()) syntax()
+                while (i < text.length && text[i].isAsciiDigit()) i++
             }
             if (i < text.length && (text[i] == 'e' || text[i] == 'E')) {
                 i++
                 if (i < text.length && (text[i] == '+' || text[i] == '-')) i++
-                if (i >= text.length || !text[i].isDigit()) syntax()
-                while (i < text.length && text[i].isDigit()) i++
+                if (i >= text.length || !text[i].isAsciiDigit()) syntax()
+                while (i < text.length && text[i].isAsciiDigit()) i++
             }
         }
 
@@ -358,6 +358,9 @@ object SafeJson {
 }
 
 private fun Char.isJsonWs(): Boolean = this == ' ' || this == '\t' || this == '\n' || this == '\r'
+
+/** RFC 8259 digits. [Char.isDigit] is true for Arabic-Indic digits too. */
+private fun Char.isAsciiDigit(): Boolean = this in '0'..'9'
 
 /**
  * Reads at most [maxBytes] and decodes them as UTF-8. Byte

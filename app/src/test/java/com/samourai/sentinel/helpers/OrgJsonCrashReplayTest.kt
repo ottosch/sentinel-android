@@ -217,9 +217,9 @@ class OrgJsonCrashReplayTest {
      * [com.samourai.sentinel.api.TokenAuthenticator.authenticate] call
      * [ApiService.refreshDojoAuth], then performDojoRefresh, then
      * [DojoUtility.setAuthToken]. The refresh body is about 4000 nested
-     * arrays. On a device the parse runs on OkHttp's 1 MiB dispatcher
-     * stack, and that document is enough to overflow Android's org.json
-     * there. This call is made on a 256 KiB stack. The refresh must fail
+     * arrays. On a device the parse runs on OkHttp's dispatcher and then
+     * Dispatchers.IO, not on the thread that started the call. This
+     * test starts that call on a 256 KiB stack. The refresh must fail
      * cleanly, and the failure that was caught must be the pre-scan.
      */
     @Test(timeout = 30_000)

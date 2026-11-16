@@ -61,7 +61,6 @@ import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
-import org.json.JSONObject
 import org.koin.java.KoinJavaComponent
 import timber.log.Timber
 import java.io.IOException
@@ -750,21 +749,23 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
                             dismissAllOrToast(false)
                         }
                         else if (response.isSuccessful) {
-                            // #567: parse here, on the callback thread. A
-                            // throw inside mainHandler.post is uncaught on
-                            // the main looper and kills the process at the
-                            // Pair tap. The failure toast is the same one
-                            // a rejected key uses.
-                            val parsed = SafeJson.parseObject(body)
+                            // #567: tokens are strings before anything is
+                            // saved, and before the main looper runs.
+                            // A missing authorizations object, a non-object
+                            // authorizations value, or a non-finite number
+                            // (AOSP toString() returns null) throws here.
+                            // The catch below is the same failure toast as
+                            // a rejected key, and commitPairing is not called.
+                            val tokens = readDojoAuthTokens(body)
                             // #261: consent is already spent - the Pair tap
                             // preceded this response - so a 200 commits
                             // directly. The gate has nothing left to decide
                             // here (its old arm was the dialog, which now
                             // opens on selection); the pairing and the auth
-                            // body ride the mainHandler closure into
+                            // tokens ride the mainHandler closure into
                             // commitPairing(), the exact commit body #234
                             // gated and #256 receipted.
-                            mainHandler.post { commitPairing(pairing, parsed) }
+                            mainHandler.post { commitPairing(pairing, tokens) }
                         }  else {
                             dismissAllOrToast(false)
                         }
@@ -997,7 +998,7 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
      * consented to, not a decision trailing an exchange that
      * already succeeded.
      */
-    private fun commitPairing(pairing: DojoPairing, authBody: JSONObject) {
+    private fun commitPairing(pairing: DojoPairing, tokens: DojoAuthTokens) {
         val node = pairing.pairing ?: return
         // #250: the consented network set - the empty-keychain arm of
         // the guard. The pairing IS the network's establishment
@@ -1017,7 +1018,7 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
         // Operator name and flag were snapshotted from the community
         // list at select time and stay in prefs. The Block Explorer
         // row reads them. Nothing here fetches the directory.
-        dojoUtil.setAuthToken(authBody.toString())
+        dojoUtil.applyAuthTokens(tokens)
         apiScope.launch {
             dojoUtil.writePayload(pairing);
             withContext(Dispatchers.Main) {

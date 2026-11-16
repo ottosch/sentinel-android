@@ -92,6 +92,7 @@ sealed interface CollectionTxSyncResult {
 }
 
 internal fun syncFailureKind(error: Throwable): SyncFailureKind = when {
+    error is ApiService.DojoReplyTooLarge -> SyncFailureKind.OVERSIZE
     error is java.io.IOException -> SyncFailureKind.TRANSPORT
     error is ApiService.DojoApiError -> SyncFailureKind.DOJO
     error is UnusableWalletResponse -> SyncFailureKind.DOJO

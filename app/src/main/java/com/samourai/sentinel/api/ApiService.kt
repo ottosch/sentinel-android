@@ -123,6 +123,16 @@ open class ApiService {
             response
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
+        } catch (e: com.samourai.sentinel.util.ImportTooLargeException) {
+            // A capped body is not a dead onion. Recording it as
+            // transport paints "Could not reach Dojo" and the round
+            // then skips every later collection. /wallet keeps its
+            // cap and says so. Other capped reads keep the original
+            // exception (the previous-transaction tests depend on it).
+            if (dojoCall && isWalletRequest(request)) {
+                throw DojoReplyTooLarge()
+            }
+            throw e
         } catch (e: java.io.IOException) {
             if (dojoCall) DojoReachability.recordTransport(e)
             throw e
@@ -133,6 +143,9 @@ open class ApiService {
      * Exchange calls share [callOn]. Only a request aimed at the
      * configured Dojo host updates reachability.
      */
+    private fun isWalletRequest(request: Request): Boolean =
+        request.url.encodedPath.removeSuffix("/").endsWith("/wallet")
+
     private fun isDojoCall(request: Request): Boolean {
         val configured = runCatching { getAPIUrl() }.getOrNull() ?: return false
         return TokenAuthenticator.isDojoTarget(configured, request.url)
@@ -616,6 +629,12 @@ open class ApiService {
      * error text is not a constructor argument: a release dump keeps
      * the throwable.
      */
+    /**
+     * A Dojo body was larger than the socket cap. Not an [java.io.IOException],
+     * so it is not recorded as the Dojo being unreachable.
+     */
+    class DojoReplyTooLarge : Exception("Dojo reply too large")
+
     class DojoApiError(message: String) : Exception(message) {
         companion object {
             const val MESSAGE = "Dojo returned an error"

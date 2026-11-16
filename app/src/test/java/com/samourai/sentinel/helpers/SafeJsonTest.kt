@@ -82,6 +82,14 @@ class SafeJsonTest {
     }
 
     @Test
+    fun onlyAsciiDigitsAreNumbers() {
+        assertEquals(1, SafeJson.parseArray("[1]").getInt(0))
+        val arabicIndic = refused("[١]")
+        assertEquals(SafeJson.SYNTAX_MESSAGE, arabicIndic.message)
+        assertNull(arabicIndic.cause)
+    }
+
+    @Test
     fun bracketsInsideStringsDoNotCount() {
         val parsed = SafeJson.parseObject("""{"a":"[[[{{{"}""")
         assertEquals("[[[{{{", parsed.getString("a"))
