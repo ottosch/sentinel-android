@@ -128,6 +128,14 @@ class ExplorerOnionGateTest {
     }
 
     @Test
+    fun `tab cr and lf are removed before the scheme is read`() {
+        assertTrue(ExplorerBinding.lookupRequiresTor("ht\ttps://custom.onion/tx/$txid", walletRequiresTor = false))
+        assertTrue(ExplorerBinding.lookupRequiresTor("ht\r\ntps://custom.onion/x", walletRequiresTor = false))
+        assertFalse(ExplorerBinding.lookupRequiresTor("da\tta:image/png,aaaa", walletRequiresTor = false))
+        assertFalse(ExplorerBinding.lookupRequiresTor("ht\ttps://evil.example/x", walletRequiresTor = false))
+    }
+
+    @Test
     fun `a direct session blocks a later onion navigation redirect and subresource`() {
         // Tor off, or Tor up somewhere else but this WebView loaded direct.
         for (ready in listOf(false, true)) {

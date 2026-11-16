@@ -91,17 +91,26 @@ private val NETWORK_SCHEMES = setOf("http", "https", "ws", "wss")
 fun onionAuthority(url: String?, host: String? = null): Boolean {
     if (onionHost(host)) return true
     if (url.isNullOrBlank()) return false
-    val parsed = networkHost(url)
+    val cleaned = stripUrlSpace(url)
+    val parsed = networkHost(cleaned)
     if (parsed != null) return TxFactsResolver.hostIsOnion(parsed)
     if (!host.isNullOrBlank()) return false
-    val scheme = urlScheme(url)
+    val scheme = urlScheme(cleaned)
     return scheme != null && scheme in NETWORK_SCHEMES
+}
+
+/** Tab, CR, and LF, removed before the scheme the way WHATWG does. */
+private fun stripUrlSpace(value: String): String = buildString(value.length) {
+    for (c in value) {
+        if (c == '\t' || c == '\n' || c == '\r') continue
+        append(c)
+    }
 }
 
 /** Scheme of [url], or null when it does not start with one. */
 internal fun urlScheme(url: String?): String? {
     if (url.isNullOrBlank()) return null
-    val trimmed = url.trim()
+    val trimmed = stripUrlSpace(url).trim()
     val colon = trimmed.indexOf(':')
     if (colon <= 0) return null
     val scheme = trimmed.substring(0, colon)
@@ -116,13 +125,13 @@ internal fun urlScheme(url: String?): String? {
  * Null for any other scheme, and for a network URL with no host.
  */
 private fun networkHost(url: String): String? {
-    val scheme = urlScheme(url) ?: return null
+    val cleaned = stripUrlSpace(url).trim()
+    val scheme = urlScheme(cleaned) ?: return null
     if (scheme !in NETWORK_SCHEMES) return null
-    val trimmed = url.trim()
     val asHttp = when (scheme) {
-        "ws" -> "http" + trimmed.substring(scheme.length)
-        "wss" -> "https" + trimmed.substring(scheme.length)
-        else -> trimmed
+        "ws" -> "http" + cleaned.substring(scheme.length)
+        "wss" -> "https" + cleaned.substring(scheme.length)
+        else -> cleaned
     }
     return TxFactsResolver.normalizedHost(asHttp)
 }

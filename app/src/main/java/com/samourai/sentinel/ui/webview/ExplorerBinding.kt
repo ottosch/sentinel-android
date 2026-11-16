@@ -414,9 +414,39 @@ object ExplorerBinding {
         return "://" in beforeQuery.substring(schemeEnd + 1)
     }
 
-    /** The characters of the host, before OkHttp rewrites IDN. */
-    private fun rawHostHasNonAscii(url: String): Boolean =
-        authorityHost(url).any { it.code > 0x7F }
+    /**
+     * Non-ASCII in the host, including a percent-encoded form such
+     * as `fa%C3%9F.de`. OkHttp maps that to `fass.de`; Chromium
+     * opens `xn--fa-hia.de`. An encoding that decodes to ASCII
+     * (`x.oni%6fn`) stays.
+     */
+    private fun rawHostHasNonAscii(url: String): Boolean {
+        val host = authorityHost(url)
+        if (host.any { it.code > 0x7F }) return true
+        if ('%' !in host) return false
+        val decoded = percentDecodeUtf8(host) ?: return true
+        return decoded.any { it.code > 0x7F }
+    }
+
+    /** Null when a `%` sequence is not two hex digits. */
+    private fun percentDecodeUtf8(value: String): String? {
+        val out = ArrayList<Byte>(value.length)
+        var i = 0
+        while (i < value.length) {
+            val c = value[i]
+            if (c != '%') {
+                if (c.code > 0x7F) return null
+                out.add(c.code.toByte())
+                i++
+                continue
+            }
+            if (i + 2 >= value.length) return null
+            val byte = value.substring(i + 1, i + 3).toIntOrNull(16) ?: return null
+            out.add(byte.toByte())
+            i += 3
+        }
+        return String(out.toByteArray(), Charsets.UTF_8)
+    }
 
     /**
      * Host after standing [txid] and [address] in for the
@@ -434,7 +464,7 @@ object ExplorerBinding {
     /**
      * True for an IPv4 host that is not four decimal octets in
      * 0..255 without a leading zero. Octal (`0177.0.0.1`), a real
-     * hex form (`0x7f.0.0.1`, `0x7f000001`), and the decimal dword
+     * hex form (`0x`, `0x7f.0.0.1`, `0x7f000001`), and the decimal dword
      * (`2130706433`) are refused. A name that merely contains the
      * letters "0x" is not an IPv4 address.
      */
@@ -455,7 +485,7 @@ object ExplorerBinding {
         part.isNotEmpty() && part.all { it.isDigit() }
 
     private fun isHexLabel(part: String): Boolean =
-        part.length > 2 &&
+        part.length >= 2 &&
             part.startsWith("0x") &&
             part.drop(2).all { it in '0'..'9' || it in 'a'..'f' }
 

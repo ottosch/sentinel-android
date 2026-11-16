@@ -68,6 +68,19 @@ class ExplorerTemplateTest {
     }
 
     @Test
+    fun `a percent encoded non ascii host is refused and an ascii encoding is kept`() {
+        assertTrue(rejected("https://fa%C3%9F.de/tx/{txid}"))
+        assertFalse(rejected("http://x.oni%6fn/tx/{txid}"))
+    }
+
+    @Test
+    fun `a bare 0x host is a hex ipv4 form`() {
+        assertTrue(rejected("http://0x/"))
+        assertTrue(rejected("http://0x/tx/{txid}"))
+        assertFalse(rejected("https://my0xnode.example/tx/{txid}"))
+    }
+
+    @Test
     fun `a txid placeholder is filled only with 64 hex characters`() {
         val template = "https://explorer.example/tx/{txid}"
         val bound = ExplorerBinding.resolve(
