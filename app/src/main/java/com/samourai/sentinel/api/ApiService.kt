@@ -8,6 +8,7 @@ import com.samourai.sentinel.core.DojoReachability
 import com.samourai.sentinel.core.SentinelState
 import com.samourai.sentinel.core.dojoErrorEnvelope
 import com.samourai.sentinel.data.AddressTypes
+import com.samourai.sentinel.helpers.SafeJson
 import com.samourai.sentinel.helpers.fromJSON
 import com.samourai.sentinel.tor.EnumTorState
 import com.samourai.sentinel.tor.SentinelTorManager
@@ -29,7 +30,6 @@ import kotlinx.coroutines.withContext
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.logging.HttpLoggingInterceptor
-import org.json.JSONObject
 import org.koin.java.KoinJavaComponent.inject
 import timber.log.Timber
 import java.net.URI
@@ -123,6 +123,16 @@ open class ApiService {
             response
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
+        } catch (e: com.samourai.sentinel.util.ImportTooLargeException) {
+            // A capped body is not a dead onion. Recording it as
+            // transport paints "Could not reach Dojo" and the round
+            // then skips every later collection. /wallet keeps its
+            // cap and says so. Other capped reads keep the original
+            // exception (the previous-transaction tests depend on it).
+            if (dojoCall && isWalletRequest(request)) {
+                throw DojoReplyTooLarge()
+            }
+            throw e
         } catch (e: java.io.IOException) {
             if (dojoCall) DojoReachability.recordTransport(e)
             throw e
@@ -133,6 +143,9 @@ open class ApiService {
      * Exchange calls share [callOn]. Only a request aimed at the
      * configured Dojo host updates reachability.
      */
+    private fun isWalletRequest(request: Request): Boolean =
+        request.url.encodedPath.removeSuffix("/").endsWith("/wallet")
+
     private fun isDojoCall(request: Request): Boolean {
         val configured = runCatching { getAPIUrl() }.getOrNull() ?: return false
         return TokenAuthenticator.isDojoTarget(configured, request.url)
@@ -289,7 +302,7 @@ open class ApiService {
             .post(formBody)
             .url("${getAPIUrl()}/auth/refresh")
             .build()
-        return callOn(http, request)
+        return callOn(http, request, maxBodyBytes = SafeJson.AUTH_MAX_BYTES)
     }
 
 
@@ -298,10 +311,10 @@ open class ApiService {
         val request = Request.Builder()
             .url("${getAPIUrl()}/xpub/${pubKey}/import/status")
             .build()
-        val response = callOn(http, request)
+        val response = callOn(http, request, maxBodyBytes = SafeJson.SMALL_BODY_MAX_BYTES)
         val status = response.body?.string()
         if (!status.isNullOrEmpty()) {
-            val json = JSONObject(status)
+            val json = SafeJson.parseObject(status)
             if (json["status"] == "ok") {
                 return@withContext true
             } else {
@@ -343,7 +356,7 @@ open class ApiService {
             .post(formBody)
             .build()
 
-        return callOn(http, request)
+        return callOn(http, request, maxBodyBytes = SafeJson.SMALL_BODY_MAX_BYTES)
     }
 
     /**
@@ -389,7 +402,7 @@ open class ApiService {
                 .post(formBody)
                 .build()
 
-            callOn(rescanClient, request)
+            callOn(rescanClient, request, maxBodyBytes = SafeJson.SMALL_BODY_MAX_BYTES)
         }
 
     /**
@@ -497,7 +510,7 @@ open class ApiService {
             .post(formBody)
             .url("${getAPIUrl()}/auth/login")
             .build()
-        return callOn(http, request)
+        return callOn(http, request, maxBodyBytes = SafeJson.AUTH_MAX_BYTES)
     }
 
 
@@ -506,7 +519,7 @@ open class ApiService {
         val request = Request.Builder()
             .url("${getAPIUrl()}/tx/${txId}?fees=1")
             .build()
-        return callOn(http, request)
+        return callOn(http, request, maxBodyBytes = SafeJson.TX_MAX_BYTES)
     }
 
 
@@ -515,7 +528,7 @@ open class ApiService {
         val request = Request.Builder()
             .url("${getAPIUrl()}/fees")
             .build()
-        return callOn(http, request)
+        return callOn(http, request, maxBodyBytes = SafeJson.FEES_MAX_BYTES)
     }
 
 
@@ -524,7 +537,7 @@ open class ApiService {
         val request = Request.Builder()
             .url("${getAPIUrl()}/wallet?active=${pubKey}")
             .build()
-        return callOn(http, request)
+        return callOn(http, request, maxBodyBytes = SafeJson.WALLET_MAX_BYTES)
     }
 
     /**
@@ -547,7 +560,7 @@ open class ApiService {
         // Dojo TokenAuthenticator: it would burn a real Dojo re-login and
         // retry the exchange URL with `at=<Dojo access token>` appended.
         val http = buildClient(excludeApiKey = excludeApiKey, excludeAuthenticator = true)
-        return callOn(http, request)
+        return callOn(http, request, maxBodyBytes = SafeJson.SMALL_BODY_MAX_BYTES)
     }
 
 
@@ -582,9 +595,9 @@ open class ApiService {
             .url("${getAPIUrl()}/pushtx/")
             .post(formBody)
             .build()
-        val response = callOn(http, request)
+        val response = callOn(http, request, maxBodyBytes = SafeJson.SMALL_BODY_MAX_BYTES)
         val string = response.body?.string() ?: "{}"
-        val json = JSONObject(string)
+        val json = SafeJson.parseObject(string)
         return if (response.isSuccessful) {
             if (json.has("status") && json.getString("status").equals("ok")) {
                 json.getString("data")
@@ -616,6 +629,12 @@ open class ApiService {
      * error text is not a constructor argument: a release dump keeps
      * the throwable.
      */
+    /**
+     * A Dojo body was larger than the socket cap. Not an [java.io.IOException],
+     * so it is not recorded as the Dojo being unreachable.
+     */
+    class DojoReplyTooLarge : Exception("Dojo reply too large")
+
     class DojoApiError(message: String) : Exception(message) {
         companion object {
             const val MESSAGE = "Dojo returned an error"

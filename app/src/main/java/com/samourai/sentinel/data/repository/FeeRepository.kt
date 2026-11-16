@@ -4,6 +4,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import com.samourai.sentinel.api.ApiService
 import com.samourai.sentinel.data.db.SentinelCollectionStore
+import com.samourai.sentinel.helpers.SafeJson
 import com.samourai.sentinel.helpers.toJSON
 import com.samourai.sentinel.send.SuggestedFee
 import com.samourai.sentinel.util.dataBaseScope
@@ -75,7 +76,7 @@ class FeeRepository : FeeUtil() {
         try {
             val response = apiService.getFees()
             if (response.isSuccessful) {
-                val json = JSONObject(response.body?.string())
+                val json = SafeJson.parseObject(response.body?.string()!!)
                 // #77: stamp the live answer; saveState persists it with the tiers.
                 json.put(KEY_FETCHED_AT, System.currentTimeMillis())
                 parse(json)

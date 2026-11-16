@@ -2,9 +2,9 @@ package com.samourai.sentinel.data.exchange
 
 import com.samourai.sentinel.api.ApiService
 import com.samourai.sentinel.ui.utils.PrefsUtil
+import com.samourai.sentinel.helpers.SafeJson
 import okhttp3.Request
 import okhttp3.Response
-import org.json.JSONObject
 import org.koin.java.KoinJavaComponent
 import org.koin.java.KoinJavaComponent.inject
 import timber.log.Timber
@@ -65,7 +65,7 @@ class BitFinexExchangeProvider : ExchangeProviderImpl {
             if (response.isSuccessful) {
                 val body = response.body?.string()
                 body?.let { responseBody ->
-                    val jsonObject = JSONObject(responseBody)
+                    val jsonObject = SafeJson.parseObject(responseBody)
                     var avgPrice: Long? = null
                     when {
                         jsonObject.has("mid") -> {

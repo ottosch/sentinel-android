@@ -35,7 +35,9 @@ import com.samourai.sentinel.core.DerivedNetwork
 import com.samourai.sentinel.core.NetworkClassifier
 import com.samourai.sentinel.core.SentinelState
 import com.samourai.sentinel.databinding.FragmentBottomsheetViewPagerBinding
+import com.samourai.sentinel.helpers.SafeJson
 import com.samourai.sentinel.helpers.fromJSON
+import com.samourai.sentinel.helpers.readUtf8Capped
 import com.samourai.sentinel.tor.EnumTorState
 import com.samourai.sentinel.tor.SentinelTorManager
 import com.samourai.sentinel.ui.utils.AndroidUtil
@@ -59,7 +61,6 @@ import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
-import org.json.JSONObject
 import org.koin.java.KoinJavaComponent
 import timber.log.Timber
 import java.io.IOException
@@ -789,11 +790,12 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
             client.newCall(request).enqueue(object : Callback {
 
                 override fun onResponse(call: Call, response: Response) {
-                    // #293: this callback does not use Call.await. string()
-                    // closes on the success path; the finally covers a
+                    // #293: this callback does not use Call.await. The capped
+                    // read closes on the success path; the finally covers a
                     // throw before that, and a null body (close is a no-op).
+                    // #567: the cap is applied while the socket is read.
                     try {
-                        val body = response.body?.string() ?: "{}"
+                        val body = response.body?.readUtf8Capped(SafeJson.AUTH_MAX_BYTES) ?: "{}"
                         if (response.code == 401 || (response.isSuccessful && !body.contains("authorizations"))) {
                             Timber.d("Unauthorized: wrong API key")
                             // #261: newly reachable AFTER consent - the
@@ -801,18 +803,29 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
                             dismissAllOrToast(false)
                         }
                         else if (response.isSuccessful) {
+                            // #567: tokens are strings before anything is
+                            // saved, and before the main looper runs.
+                            // A missing authorizations object, a non-object
+                            // authorizations value, or a non-finite number
+                            // (AOSP toString() returns null) throws here.
+                            // The catch below is the same failure toast as
+                            // a rejected key, and commitPairing is not called.
+                            val tokens = readDojoAuthTokens(body)
                             // #261: consent is already spent - the Pair tap
                             // preceded this response - so a 200 commits
                             // directly. The gate has nothing left to decide
                             // here (its old arm was the dialog, which now
                             // opens on selection); the pairing and the auth
-                            // body ride the mainHandler closure into
+                            // tokens ride the mainHandler closure into
                             // commitPairing(), the exact commit body #234
                             // gated and #256 receipted.
-                            mainHandler.post { commitPairing(pairing, JSONObject(body)) }
+                            mainHandler.post { commitPairing(pairing, tokens) }
                         }  else {
                             dismissAllOrToast(false)
                         }
+                    } catch (e: Exception) {
+                        Timber.w(e, "Dojo pairing response was not usable")
+                        dismissAllOrToast(false)
                     } finally {
                         try {
                             response.body?.close()
@@ -1056,7 +1069,7 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
      * consented to, not a decision trailing an exchange that
      * already succeeded.
      */
-    private fun commitPairing(pairing: DojoPairing, authBody: JSONObject) {
+    private fun commitPairing(pairing: DojoPairing, tokens: DojoAuthTokens) {
         val node = pairing.pairing ?: return
         // #250: the consented network set - the empty-keychain arm of
         // the guard. The pairing IS the network's establishment
@@ -1084,7 +1097,7 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
         // scan or paste has none, and clears a pin left by an earlier
         // directory pairing.
         DojoBaySignerPin.save(prefsUtil, pendingSignerPin.takeForCommit(node.url, committedSnapshot?.name))
-        dojoUtil.setAuthToken(authBody.toString())
+        dojoUtil.applyAuthTokens(tokens)
         apiScope.launch {
             dojoUtil.writePayload(pairing);
             withContext(Dispatchers.Main) {

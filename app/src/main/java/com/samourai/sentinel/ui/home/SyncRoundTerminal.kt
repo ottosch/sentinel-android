@@ -45,6 +45,7 @@ internal fun collectionsForSyncRound(
 internal object SyncRoundTerminal {
 
     const val DOJO_UNREACHABLE = "Could not reach Dojo."
+    const val DOJO_REPLY_TOO_LARGE = "Dojo reply too large"
 
     fun partialReason(failed: Int, total: Int): String =
         "$failed of $total collections failed to sync."
@@ -69,13 +70,21 @@ internal object SyncRoundTerminal {
         val everyTransport = counted.transport == failed &&
             counted.dojo == 0 &&
             counted.local == 0 &&
+            counted.oversize == 0 &&
             failed == total &&
             total > 0
         if (everyTransport) return DOJO_UNREACHABLE
-        if (counted.dojo > 0 && counted.transport == 0 && counted.local == 0) {
+        val everyOversize = counted.oversize == failed &&
+            counted.transport == 0 &&
+            counted.dojo == 0 &&
+            counted.local == 0 &&
+            failed == total &&
+            total > 0
+        if (everyOversize) return DOJO_REPLY_TOO_LARGE
+        if (counted.dojo > 0 && counted.transport == 0 && counted.local == 0 && counted.oversize == 0) {
             return dojoErrorReason(counted.dojo, total)
         }
-        if (counted.local == failed && counted.transport == 0 && counted.dojo == 0) {
+        if (counted.local == failed && counted.transport == 0 && counted.dojo == 0 && counted.oversize == 0) {
             return syncIncompleteReason(counted.local, total)
         }
         return partialReason(failed, total)
@@ -213,8 +222,9 @@ internal data class SyncFailureTally(
     val transport: Int = 0,
     val dojo: Int = 0,
     val local: Int = 0,
+    val oversize: Int = 0,
 ) {
-    val failed: Int get() = transport + dojo + local
+    val failed: Int get() = transport + dojo + local + oversize
 }
 
 internal class SyncRoundLedger {
@@ -247,14 +257,16 @@ internal class SyncRoundLedger {
         var transport = 0
         var dojo = 0
         var local = 0
+        var oversize = 0
         kinds.values.forEach { kind ->
             when (kind) {
                 SyncFailureKind.TRANSPORT -> transport++
                 SyncFailureKind.DOJO -> dojo++
                 SyncFailureKind.LOCAL -> local++
+                SyncFailureKind.OVERSIZE -> oversize++
             }
         }
-        return SyncFailureTally(transport, dojo, local)
+        return SyncFailureTally(transport, dojo, local, oversize)
     }
 
     /**

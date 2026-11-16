@@ -35,7 +35,7 @@ import com.samourai.sentinel.ui.webview.ExplorerOpener
 import com.samourai.sentinel.util.MonetaryUtil
 import com.samourai.sentinel.util.apiScope
 import kotlinx.coroutines.*
-import org.json.JSONObject
+import com.samourai.sentinel.helpers.SafeJson
 import org.koin.java.KoinJavaComponent.inject
 import timber.log.Timber
 import java.text.SimpleDateFormat
@@ -406,7 +406,7 @@ class TransactionsDetailsBottomSheet() : GenericBottomSheet() {
                 if (response.isSuccessful) {
                     val body = response.body?.string()
                     if (body != null) {
-                        val jsonObject = JSONObject(body)
+                        val jsonObject = SafeJson.parseObject(body)
                         var fee = 0L
                         var feeRate = 0L
                         var size = 0L

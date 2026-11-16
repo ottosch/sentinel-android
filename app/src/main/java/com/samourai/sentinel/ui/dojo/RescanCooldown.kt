@@ -1,5 +1,7 @@
 package com.samourai.sentinel.ui.dojo
 
+import com.samourai.sentinel.helpers.JsonSource
+import com.samourai.sentinel.helpers.SafeJson
 import com.samourai.sentinel.ui.utils.PrefsUtil
 import org.json.JSONObject
 import timber.log.Timber
@@ -103,7 +105,7 @@ object RescanCooldown {
         val raw = prefsUtil.rescanCooldowns
         if (raw.isNullOrBlank()) return JSONObject()
         return try {
-            JSONObject(raw)
+            SafeJson.parseObject(raw, JsonSource.LOCAL)
         } catch (e: Exception) {
             Timber.w(e, "Discarding unreadable rescan cooldown store")
             JSONObject()
