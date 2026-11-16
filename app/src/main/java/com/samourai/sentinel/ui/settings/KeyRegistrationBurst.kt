@@ -167,9 +167,15 @@ object KeyRegistrationBurst {
         else -> restLabel
     }
 
-    /** Attempt-counted progress - failures advance it too (option B). */
+    /**
+     * Attempt-counted progress - failures advance it too (option B).
+     * #488: the counter is its own line. A single line used to break
+     * wherever the column ran out, so "n of m" jumped rows as the
+     * digits and the font scale changed. The label stays put; the
+     * counter ticks on the line below it.
+     */
     fun progressText(attemptsDone: Int, totalCount: Int): String =
-        "Registering derivation paths with Dojo\u2026 $attemptsDone of $totalCount"
+        "Registering derivation paths with Dojo\u2026\n$attemptsDone of $totalCount"
 
     /**
      * Completion vocabulary, delta stated out loud (option B): the partial
