@@ -135,7 +135,7 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
                 // validates, stores the payload, and moves to the connect
                 // page, and it toasts on an invalid payload.
                 val host = parentFragment as? DojoConfigureBottomSheet
-                host?.onScanPayload(json, snapshot)
+                host?.onScanPayload(json, snapshot, signerCode = item.verified?.paymentCode)
                 dismiss()
             }
         },

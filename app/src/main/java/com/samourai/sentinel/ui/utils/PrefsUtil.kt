@@ -118,6 +118,15 @@ class PrefsUtil(context: Context) : Preferences(context, "${context.packageName}
     // disclosure class is host-derived, never type-derived.
     var dojoExplorerUrl by stringPref(defaultValue = null)
     var dojoExplorerType by stringPref(defaultValue = null)
+    // The trusted signer of the paired Dojo (DojoBaySignerPin): the full
+    // BIP47 payment code that signed the Dojo Bay listing the user paired
+    // with, and the pairing URL it was saved for. Written only when a
+    // directory pairing commits, cleared by a scan/paste pairing and with
+    // the pairing (DojoUtility.clearDojo). Null for manual pairings and for
+    // pairings made before it existed. Rides export()/import() like the
+    // dojoDisplay* snapshot; it applies only while its URL is the paired one.
+    var dojoTrustedSignerCode by stringPref(defaultValue = null)
+    var dojoTrustedSignerUrl by stringPref(defaultValue = null)
     // Custom Dojo Bay directory base address for the Community Dojos list.
     // Null means the built-in default (DojoBayConstants.BASE_URL), so a
     // change of default reaches everyone who never customized it. Stored

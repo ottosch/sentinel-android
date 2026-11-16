@@ -381,6 +381,9 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
     /** The picked directory listing's display snapshot, saved only on commit. */
     private val pendingSnapshot = PendingDisplaySnapshot()
 
+    /** The picked listing's signer code, saved as the pairing's pin only on commit. */
+    private val pendingSignerPin = PendingSignerPin()
+
     // #234/#261: the decision gate. #261 moved it before the first
     // network contact: selection arms the dialog, the taps spend it.
     // The pendingPairing/pendingAuthBody staging fields died with the
@@ -454,6 +457,7 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
             if (dojoUtil.validate(it)) {
                 payload = it
                 pendingSnapshot.select(null)
+                pendingSignerPin.select(null)
                 binding.pager.setCurrentItem(2, true)
             } else {
                 // #181: the old scanFragment.resetCamera() here no-op'd
@@ -499,6 +503,7 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
         ) {
             payload = jsonDojo
             pendingSnapshot.select(null)
+            pendingSignerPin.select(null)
             binding.pager.setCurrentItem(2, true)
         } else
             Toast.makeText(requireContext(), getString(R.string.invalid_pairing_payload), Toast.LENGTH_SHORT).show()
@@ -546,12 +551,15 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
      * lands here, where getString lives) and the caller resets its own
      * camera. [snapshot] is the directory listing's display data when the
      * payload comes from the Community Dojos list; it is held, not saved,
-     * until the pairing commits.
+     * until the pairing commits. [signerCode] is the full payment code the
+     * listing's signature proved, held the same way and saved as the
+     * pairing's trusted signer on commit (null for a scan or paste).
      */
-    fun onScanPayload(scanned: String, snapshot: DojoDisplaySnapshot? = null): Boolean {
+    fun onScanPayload(scanned: String, snapshot: DojoDisplaySnapshot? = null, signerCode: String? = null): Boolean {
         if (!ImportLimits.exceedsSensitivePaste(scanned) && dojoUtil.validate(scanned)) {
             payload = scanned
             pendingSnapshot.select(snapshot)
+            pendingSignerPin.select(signerCode)
             binding.pager.setCurrentItem(2, true)
             return true
         }
@@ -1023,7 +1031,12 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
         // scan or paste carries none and leaves the saved ones). The
         // Block Explorer row reads them. Nothing here fetches the
         // directory.
-        pendingSnapshot.takeForCommit()?.let { saveDisplaySnapshot(it) }
+        val committedSnapshot = pendingSnapshot.takeForCommit()
+        committedSnapshot?.let { saveDisplaySnapshot(it) }
+        // The listing's signer becomes the paired Dojo's trusted signer. A
+        // scan or paste has none, and clears a pin left by an earlier
+        // directory pairing.
+        DojoBaySignerPin.save(prefsUtil, pendingSignerPin.takeForCommit(node.url, committedSnapshot?.name))
         dojoUtil.setAuthToken(authBody.toString())
         apiScope.launch {
             dojoUtil.writePayload(pairing);
@@ -1106,6 +1119,7 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
     private fun onPairingDeclineTapped() {
         if (pairingAckGate.onUserDeclined() != PairingAckDecision.DISCARD_AND_DISMISS) return
         pendingSnapshot.discard()
+        pendingSignerPin.discard()
         mainHandler.post {
             dismiss()
             if (context != null)
