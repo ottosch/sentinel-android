@@ -30,7 +30,7 @@
             android:textAppearance="?attr/textAppearanceHeadline6" />
     </com.google.android.material.appbar.MaterialToolbar>
 
-    <!-- Shown over a saved list: refreshing, or Dojo Bay unreachable. -->
+    <!-- Shown over a saved list: refreshing, Dojo Bay unreachable, or no operator statement. -->
     <LinearLayout
         android:id="@+id/communityDojoBanner"
         android:layout_width="match_parent"

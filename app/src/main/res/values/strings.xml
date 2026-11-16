@@ -237,7 +237,8 @@
     <!-- Dojo Bay answered with no Dojos at all: the saved list is kept. -->
     <string name="community_dojo_cached_listed_none" translatable="false">Dojo Bay currently lists no Dojos · showing list from %1$s</string>
     <string name="community_dojo_listed_none" translatable="false">Dojo Bay currently lists no Dojos, and there is no saved list. You can still pair with Connect to your Dojo by scanning or pasting a Dojo\'s pairing details, or change the Dojo Bay address.</string>
-    <string name="community_dojo_cached_no_operator" translatable="false">Dojo Bay has no signed operator statement · showing list from %1$s</string>
+    <!-- operator.json 404: the saved list stays up, with no age limit. -->
+    <string name="community_dojo_cached_no_operator" translatable="false">Saved list from %1$s · Dojo Bay has no operator statement, so it can\'t be re-checked</string>
     <string name="community_dojo_unreachable_no_cache" translatable="false">Could not reach Dojo Bay: %1$s. There is no saved list yet. You can still pair with Connect to your Dojo by scanning or pasting a Dojo\'s pairing details, or change the Dojo Bay address.</string>
     <string name="community_dojo_failed_two_tries" translatable="false">Dojo Bay could not be reached after two tries. Tap Retry to try again. There is no saved list yet. You can still pair with Connect to your Dojo by scanning or pasting a Dojo\'s pairing details, or change the Dojo Bay address.</string>
     <string name="community_dojo_change_address" translatable="false">Change Dojo Bay address</string>

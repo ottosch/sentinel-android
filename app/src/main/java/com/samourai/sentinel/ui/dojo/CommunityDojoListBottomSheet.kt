@@ -459,10 +459,11 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
             is CommunityDojoDisplay.Cached -> showList(
                 display.dojos,
                 bannerMessage = getString(
-                    if (display.failure == CommunityDojoRepository.Failure.NO_OPERATOR_STATEMENT) {
-                        R.string.community_dojo_cached_no_operator
-                    } else {
-                        R.string.community_dojo_cached_unreachable
+                    when (display.banner) {
+                        CommunityDojoDisplay.SavedListBanner.NO_OPERATOR_STATEMENT ->
+                            R.string.community_dojo_cached_no_operator
+                        CommunityDojoDisplay.SavedListBanner.UNREACHABLE ->
+                            R.string.community_dojo_cached_unreachable
                     },
                     formatDate(display.fetchedAtMs),
                 ),

@@ -53,18 +53,44 @@ data class CheckedDojo(
  *    fallback;
  *  - a failed fetch with a saved list, from the operator still trusted for
  *    this address, shows that list with the "unreachable" indicator and its
- *    date;
+ *    date; after an operator.json 404 the indicator says instead that Dojo
+ *    Bay has no operator statement ([SavedListBanner]), with no age limit;
  *  - otherwise the failure message, Retry, and Change Dojo Bay address.
  * Every listing carries its own signature check; only verified ones pair.
  */
 sealed class CommunityDojoDisplay {
     data class Fresh(val dojos: List<CheckedDojo>, val operatorCode: String) : CommunityDojoDisplay()
     data class Empty(val network: String) : CommunityDojoDisplay()
+    /**
+     * A failed fetch with the saved list shown, saved at [fetchedAtMs].
+     * There is no age limit: the list was verified under the operator code
+     * still trusted for this address, and every listing is checked again
+     * each time it is shown. [banner] says which banner goes over it.
+     */
     data class Cached(
         val dojos: List<CheckedDojo>,
         val fetchedAtMs: Long,
         val failure: CommunityDojoRepository.Failure,
-    ) : CommunityDojoDisplay()
+    ) : CommunityDojoDisplay() {
+        val banner: SavedListBanner
+            get() = if (failure == CommunityDojoRepository.Failure.NO_OPERATOR_STATEMENT) {
+                SavedListBanner.NO_OPERATOR_STATEMENT
+            } else {
+                SavedListBanner.UNREACHABLE
+            }
+    }
+
+    /** The banner over a saved list after a failed fetch. */
+    enum class SavedListBanner {
+        /** Dojo Bay could not be reached, or did not answer usefully. */
+        UNREACHABLE,
+        /**
+         * Dojo Bay answered, but data/operator.json is 404: the instance has
+         * no operator statement, so the saved list can't be re-checked
+         * against it. The list itself was not parsed.
+         */
+        NO_OPERATOR_STATEMENT,
+    }
     /** [attempts]: fetch attempts made before this failure (0 when none was made, e.g. Tor unavailable). */
     data class Failed(val failure: CommunityDojoRepository.Failure, val attempts: Int = 1) : CommunityDojoDisplay()
     /** Dojo Bay answered but lists no Dojos at all: the saved list is kept and shown. */
