@@ -11,14 +11,13 @@ import com.samourai.sentinel.R
 
 /**
  * The pre-pair dialog's "Signed by" section, from the picked listing: the
- * code the listing's signature proved, its grouped form and PayNym link, and
+ * code the listing's signature proved, its grouped form, and
  * whether another listing used the same name under a different signer. Null
  * (no section) for a scan or paste, or a code that is not shaped like one.
  */
 data class PrePairSigner(
     val code: String,
     val displayCode: String,
-    val profileUrl: String,
     val nameCollision: Boolean,
 )
 
@@ -28,9 +27,8 @@ fun prePairSigner(
     pairingUrl: String?,
 ): PrePairSigner? {
     val code = signerCode?.takeIf { DojoBaySignatures.isPaymentCodeShape(it) } ?: return null
-    val url = PayNymLinks.profileUrl(code) ?: return null
     val collision = pairingUrl != null && snapshot?.url == pairingUrl && snapshot.nameCollision
-    return PrePairSigner(code, SignerCodeFormat.displayCode(code), url, collision)
+    return PrePairSigner(code, SignerCodeFormat.displayCode(code), collision)
 }
 
 /**
@@ -110,13 +108,14 @@ class PrePairDialogViews(val root: View) {
         caption.visibility = View.VISIBLE
     }
 
+    /** [onOpenPayNym] gets the signed code; the page is found from it ([PayNymPage.openSigner]). */
     fun bindSigner(signer: PrePairSigner?, onOpenPayNym: (String) -> Unit) {
         if (signer == null) {
             signerSection.visibility = View.GONE
             return
         }
         signerCode.text = signer.displayCode
-        signerLink.setOnClickListener { onOpenPayNym(signer.profileUrl) }
+        signerLink.setOnClickListener { onOpenPayNym(signer.code) }
         collision.visibility = if (signer.nameCollision) View.VISIBLE else View.GONE
         signerSection.visibility = View.VISIBLE
     }

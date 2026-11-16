@@ -107,17 +107,25 @@ class DojoBaySignerIdentityTest {
     }
 
     @Test
-    fun `the PayNym link is built from the signed code, on the PayNym onion`() {
-        assertEquals("http://paynym25chftmsywv4v2r67agbrr62lcxagsf4tymbzpeeucucy2ivad.onion/$qa", PayNymLinks.profileUrl(qa))
+    fun `the PayNym link is the +name on the PayNym onion, never the code`() {
+        // PayNym serves profiles at /+name (as Dojo Bay's cards link them);
+        // /<payment code> is its "PayNym not found" page.
+        assertEquals("http://paynym25chftmsywv4v2r67agbrr62lcxagsf4tymbzpeeucucy2ivad.onion/+91xTx93x3", PayNymLinks.profileUrl("+91xTx93x3"))
+        assertEquals("http://paynym25chftmsywv4v2r67agbrr62lcxagsf4tymbzpeeucucy2ivad.onion/+condescendingcup55", PayNymLinks.profileUrl("+condescendingcup55"))
         assertEquals("/$qa/avatar", PayNymLinks.avatarPath(qa))
         assertEquals("paynym25chftmsywv4v2r67agbrr62lcxagsf4tymbzpeeucucy2ivad.onion", PayNymLinks.ONION_HOST)
-        // Anything not shaped like a payment code gives no link.
+        // A code, or anything not shaped like a +name, gives no link.
+        assertNull(PayNymLinks.profileUrl(qa))
         assertNull(PayNymLinks.profileUrl(null))
         assertNull(PayNymLinks.profileUrl(""))
-        assertNull(PayNymLinks.profileUrl("+examplenym"))
-        assertNull(PayNymLinks.profileUrl("$qa/../x"))
-        assertNull(PayNymLinks.profileUrl(qa.dropLast(1)))
-        assertNull(PayNymLinks.profileUrl(qa.dropLast(1) + "0"))
+        assertNull(PayNymLinks.profileUrl("+"))
+        assertNull(PayNymLinks.profileUrl("examplenym"))
+        assertNull(PayNymLinks.profileUrl("+example/../x"))
+        assertNull(PayNymLinks.profileUrl("+example?x=1"))
+        assertNull(PayNymLinks.profileUrl("+example#f"))
+        assertNull(PayNymLinks.profileUrl("+exa mple"))
+        assertNull(PayNymLinks.profileUrl("+example\n"))
+        assertNull(PayNymLinks.profileUrl("+" + "a".repeat(65)))
     }
 
     @Test
@@ -125,7 +133,7 @@ class DojoBaySignerIdentityTest {
         val snap = DojoDisplaySnapshot("u", "QA", "🇸🇬", null)
         val signer = prePairSigner(qa, snap, "u")!!
         assertEquals(qa, signer.code)
-        assertEquals(PayNymLinks.profileUrl(qa), signer.profileUrl)
+        assertEquals(SignerCodeFormat.displayCode(qa), signer.displayCode)
         assertFalse(signer.nameCollision)
         // A scan or paste has no code: no section.
         assertNull(prePairSigner(null, snap, "u"))

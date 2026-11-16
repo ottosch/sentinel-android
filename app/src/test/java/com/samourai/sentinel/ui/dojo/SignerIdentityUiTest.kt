@@ -58,7 +58,7 @@ class SignerIdentityUiTest {
         assertFalse(view.shown(R.id.dojoPairingSignerMeta))
 
         view.findViewById<View>(R.id.dojoPairingSignerLink).performClick()
-        assertEquals(PayNymLinks.profileUrl(qa), opened)
+        assertEquals(qa, opened)
     }
 
     @Test
@@ -112,7 +112,7 @@ class SignerIdentityUiTest {
         assertEquals(SignerCodeFormat.displayCode(qa), row.signerCode.text.toString())
         assertEquals(View.VISIBLE, row.signerLink.visibility)
         row.signerLink.performClick()
-        assertEquals(PayNymLinks.profileUrl(qa), opened)
+        assertEquals(qa, opened)
 
         // Tapping again folds it back.
         row.signerCode.performClick()

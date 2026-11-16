@@ -14,7 +14,7 @@ import com.samourai.sentinel.R
 class CommunityDojoAdapter(
     private val onSelect: (CheckedDojo) -> Unit,
     private val onCopy: (CheckedDojo) -> Unit,
-    /** "View on PayNym" in an expanded row: the profile URL built from the signed code. */
+    /** "View on PayNym" in an expanded row: gets the signed code ([PayNymPage.openSigner]). */
     private val onOpenPayNym: (String) -> Unit = {},
 ) : ListAdapter<CheckedDojo, CommunityDojoAdapter.ViewHolder>(DiffCallback) {
 
@@ -151,7 +151,7 @@ class CommunityDojoAdapter(
             if (open) null else context.getString(R.string.community_dojo_signer_expand_description)
         holder.signerCode.visibility = if (open) View.VISIBLE else View.GONE
         holder.signerCode.text = if (open) SignerCodeFormat.displayCode(code) else null
-        val link = PayNymLinks.profileUrl(code)
+        val link = code.takeIf { DojoBaySignatures.isPaymentCodeShape(it) }
         holder.signerLink.visibility = if (open && link != null) View.VISIBLE else View.GONE
         holder.signerLink.paintFlags = holder.signerLink.paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
         holder.signerLink.setOnClickListener { link?.let(onOpenPayNym) }

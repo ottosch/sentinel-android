@@ -45,12 +45,21 @@ object PayNymLinks {
     const val ONION_HOST = "paynym25chftmsywv4v2r67agbrr62lcxagsf4tymbzpeeucucy2ivad.onion"
     const val BASE_URL = "http://$ONION_HOST"
 
+    /** A +name as PayNym writes it: "+", then letters, digits, '.', '_' or '-'. */
+    private val NYM_NAME = Regex("^\\+[A-Za-z0-9._-]{1,64}$")
+
     private fun encoded(code: String): String = URLEncoder.encode(code, "UTF-8")
 
-    /** The signer's PayNym page, or null when [signedCode] is not shaped like a payment code. */
-    fun profileUrl(signedCode: String?): String? {
-        val code = signedCode?.takeIf { DojoBaySignatures.isPaymentCodeShape(it) } ?: return null
-        return "$BASE_URL/${encoded(code)}"
+    /**
+     * The PayNym page for [nymName], or null when it isn't shaped like a
+     * +name. PayNym serves profile pages at /+name only (the same link Dojo
+     * Bay's cards use); /<payment code> is its "PayNym not found" page. The
+     * name must come from [PayNymLookup] for the signed code, never from the
+     * directory's unsigned paynym field.
+     */
+    fun profileUrl(nymName: String?): String? {
+        val nym = nymName?.takeIf { NYM_NAME.matches(it) } ?: return null
+        return "$BASE_URL/$nym"
     }
 
     /** The avatar path on [ONION_HOST] for [code] (shape-checked by the caller). */

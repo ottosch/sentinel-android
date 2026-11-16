@@ -862,7 +862,7 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
         dialogViews.bindHeader(directoryHeader(snapshot, pairing.pairing?.url), getString(R.string.dojo_unnamed))
         // Who signed the picked listing: the full code its signature proved.
         val signer = prePairSigner(pendingSignerPin.forDialog(), snapshot, pairing.pairing?.url)
-        dialogViews.bindSigner(signer) { url -> context?.let { PayNymPage.open(it, url) } }
+        dialogViews.bindSigner(signer) { code -> context?.let { PayNymPage.openSigner(it, lifecycleScope, code) } }
         if (signer != null) dialogViews.showIdentityLoading()
         bindDetailRow(view, R.id.dojoPairingJurisdictionRow, R.id.dojoPairingJurisdictionValue, rows.jurisdiction)
         // #250: the network guard - evidence at dialog time, the

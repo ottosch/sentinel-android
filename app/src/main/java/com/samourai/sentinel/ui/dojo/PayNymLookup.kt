@@ -74,6 +74,22 @@ class PayNymLookup(
         }
     }
 
+    /**
+     * Just the +name for [signedCode], for "View on PayNym": the cached one,
+     * else asked over Tor. Null when it isn't known and can't be asked.
+     */
+    suspend fun name(signedCode: String): String? {
+        if (!DojoBaySignatures.isPaymentCodeShape(signedCode)) return null
+        cache.name(signedCode)?.let { return it }
+        val proxy = torProxy() ?: return null
+        val transport = transportFor(proxy)
+        return try {
+            PayNymFetcher(transport).name(signedCode)?.also { cache.putName(signedCode, it) }
+        } finally {
+            transport.close()
+        }
+    }
+
     companion object {
         const val MAX_AVATAR_BYTES = 2 * 1024 * 1024
         const val MAX_NYM_BYTES = 64 * 1024

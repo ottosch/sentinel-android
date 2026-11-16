@@ -207,6 +207,39 @@ class PayNymLookupTest {
     }
 
     @Test
+    fun `View on PayNym's name comes from the cache, else one name request over Tor`() {
+        val cache = PayNymCache(tmp.root)
+        val made = mutableListOf<FakeTransport>()
+        val lookup = PayNymLookup(cache, torProxy = { proxy }, transportFor = { serving().also { made.add(it) } })
+
+        assertEquals("+examplenym", runBlocking { lookup.name(code) })
+        assertEquals(listOf("POST"), made.single().requests.map { it.first })
+        assertTrue(made.single().closed)
+        assertEquals("+examplenym", cache.name(code))
+        // Cached now: nothing is asked again.
+        assertEquals("+examplenym", runBlocking { lookup.name(code) })
+        assertEquals(1, made.size)
+        assertEquals(PayNymLinks.BASE_URL + "/+examplenym", runBlocking { PayNymPage.urlForSigner(lookup, code) })
+    }
+
+    @Test
+    fun `no name, no Tor or no code gives no PayNym page`() {
+        val noName = PayNymLookup(PayNymCache(tmp.newFolder()), torProxy = { proxy }, transportFor = { serving(name = null) })
+        assertNull(runBlocking { noName.name(code) })
+        assertNull(runBlocking { PayNymPage.urlForSigner(noName, code) })
+        // A nym that doesn't list the signed code is no name either.
+        val otherCode = PayNymLookup(PayNymCache(tmp.newFolder()), torProxy = { proxy }, transportFor = {
+            FakeTransport { _, _, _ -> ok(nymDoc(codes = listOf("PM8TJ" + "x".repeat(111))).toByteArray()) }
+        })
+        assertNull(runBlocking { otherCode.name(code) })
+        var transports = 0
+        val noTor = PayNymLookup(PayNymCache(tmp.newFolder()), torProxy = { null }, transportFor = { transports++; serving() })
+        assertNull(runBlocking { noTor.name(code) })
+        assertNull(runBlocking { noTor.name("+examplenym") })
+        assertEquals(0, transports)
+    }
+
+    @Test
     fun `the cache keeps only code-named PNGs and names, and Erase clears it`() {
         val cache = PayNymCache(tmp.root)
         cache.putAvatar("../evil", png)

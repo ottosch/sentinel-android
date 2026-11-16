@@ -81,8 +81,8 @@ class ExplorerWebViewActivity : AppCompatActivity() {
         payNym = intent.getStringExtra(EXTRA_PAGE) == PayNymPage.PAGE_KIND
         val selected = if (payNym) null else SentinelState.selectedTx
         if (payNym) {
-            // Only a link built from a signed code; anything else closes.
-            if (PayNymPage.signedCodeOf(incoming) == null) {
+            // Only a link built from a signer's +name; anything else closes.
+            if (PayNymPage.nymOf(incoming) == null) {
                 finish()
                 return
             }
@@ -213,7 +213,7 @@ class ExplorerWebViewActivity : AppCompatActivity() {
         }
         // A PayNym page can still be opened elsewhere over Tor: copying
         // the link is the fallback. Nothing is loaded here.
-        val payNymLink = if (payNym) PayNymPage.urlFor(PayNymPage.signedCodeOf(intent.getStringExtra(EXTRA_URL))) else null
+        val payNymLink = if (payNym) PayNymPage.urlFor(PayNymPage.nymOf(intent.getStringExtra(EXTRA_URL))) else null
         if (payNymLink != null) {
             builder.setNeutralButton(R.string.paynym_copy_link) { _, _ ->
                 copyText(payNymLink, R.string.paynym_link_copied)

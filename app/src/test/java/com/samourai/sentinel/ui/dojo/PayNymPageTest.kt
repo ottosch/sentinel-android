@@ -38,7 +38,8 @@ class PayNymPageTest {
 
     private val app = ApplicationProvider.getApplicationContext<Application>()
     private val qa = "PM8TJUJHkfdjkb5g5XaJuvnC63rUz7LXHnVqsnCd17dhDRupn9gW3QrgJJdNNGxsR4LSe4kFBMwarLbJVRQur9ZQfY4rtTHWWgdjLeE1svskeNoCEoum"
-    private val page = "http://paynym25chftmsywv4v2r67agbrr62lcxagsf4tymbzpeeucucy2ivad.onion/$qa"
+    private val nym = "+91xTx93x3"
+    private val page = "http://paynym25chftmsywv4v2r67agbrr62lcxagsf4tymbzpeeucucy2ivad.onion/$nym"
 
     @Test
     fun `Tor ready and the proxy supported loads through the proxy`() {
@@ -78,23 +79,27 @@ class PayNymPageTest {
     }
 
     @Test
-    fun `the URL is built from the signed code only`() {
-        assertEquals(page, PayNymPage.urlFor(qa))
-        assertEquals(qa, PayNymPage.signedCodeOf(page))
+    fun `the URL is the signer's +name on the PayNym onion, never the code`() {
+        assertEquals(page, PayNymPage.urlFor(nym))
+        assertEquals(nym, PayNymPage.nymOf(page))
         assertNull(PayNymPage.urlFor(null))
-        assertNull(PayNymPage.urlFor("not a code"))
-        assertNull(PayNymPage.urlFor(qa + "x"))
-        assertNull(PayNymPage.urlFor("$qa/avatar"))
+        assertNull(PayNymPage.urlFor("not a nym"))
+        assertNull(PayNymPage.urlFor(qa))
+        assertNull(PayNymPage.urlFor("91xTx93x3"))
+        assertNull(PayNymPage.urlFor("$nym/avatar"))
         for (other in listOf(
             null, "", page + "/", "$page/avatar", "$page?x=1", "$page#f",
             page.replace("http://", "https://"),
             page.replace(".onion/", ".onion:8080/"),
             page.replace("paynym25", "paynym26"),
-            "http://example.com/$qa",
-            "http://evil.${PayNymLinks.ONION_HOST}/$qa",
-            page.dropLast(1),
+            page.replace("/+", "/"),
+            page.replace(nym, qa),
+            "http://example.com/$nym",
+            "http://evil.${PayNymLinks.ONION_HOST}/$nym",
+            "https://paynym.rs/$nym",
+            page + "x".repeat(64),
         )) {
-            assertNull(other, PayNymPage.signedCodeOf(other))
+            assertNull(other, PayNymPage.nymOf(other))
             assertNull(other, PayNymPage.intent(app, other))
         }
     }
@@ -134,7 +139,7 @@ class PayNymPageTest {
     @Test
     fun `the screen closes on a link this app didn't build`() {
         val intent = Intent(app, ExplorerWebViewActivity::class.java)
-            .putExtra(ExplorerWebViewActivity.EXTRA_URL, "http://example.com/$qa")
+            .putExtra(ExplorerWebViewActivity.EXTRA_URL, "http://example.com/$nym")
             .putExtra(ExplorerWebViewActivity.EXTRA_TITLE, "PayNym")
             .putExtra(ExplorerWebViewActivity.EXTRA_PAGE, PayNymPage.PAGE_KIND)
         val activity = Robolectric.buildActivity(ExplorerWebViewActivity::class.java, intent).setup().get()

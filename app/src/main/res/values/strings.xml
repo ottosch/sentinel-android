@@ -286,6 +286,7 @@
     <string name="paynym_avatar_failed_description" translatable="false">PayNym avatar unavailable</string>
     <string name="paynym_copy_link" translatable="false">Copy link</string>
     <string name="paynym_link_copied" translatable="false">PayNym link copied</string>
+    <string name="paynym_page_not_found" translatable="false">No PayNym page to open: PayNym has no name for this code, or it couldn\'t be reached over Tor.</string>
     <string name="paynym_tor_required_off" translatable="false">PayNym is an onion site, so it opens only through Tor, and Tor is not running. Start Tor, or copy the link to open it elsewhere over Tor.</string>
     <string name="paynym_tor_required_unsupported" translatable="false">PayNym is an onion site, so it opens only through Tor, and this device\'s WebView cannot route through Tor. It will not load here. Copy the link to open it elsewhere over Tor.</string>
     <string name="paynym_tor_route_failed" translatable="false">PayNym could not be routed through Tor, so it will not load. Close this screen and try again, or copy the link.</string>
