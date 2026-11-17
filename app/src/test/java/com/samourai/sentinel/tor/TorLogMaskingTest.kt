@@ -48,10 +48,29 @@ class TorLogMaskingTest {
     fun `dollar fingerprints with nicknames and bare IPv6 are masked`() {
         val tilde = TorLogMasking.mask("Your Guard \$$fp~SomeGuardRelay (\$$fp) is failing a very large amount of circuits.")
         assertGone(tilde, fp, "SomeGuardRelay")
-        assertEquals("Your Guard FINGERPRINT_REDACTED (FINGERPRINT_REDACTED) is failing a very large amount of circuits.", tilde)
+        assertEquals("Your Guard NICK_REDACTED is failing a very large amount of circuits.", tilde)
 
         val equals = TorLogMasking.mask("Circuit build failed at \$$fp=relay2 on 2001:db8::1")
         assertEquals("Circuit build failed at FINGERPRINT_REDACTED on IP_REDACTED", equals)
+    }
+    @Test
+    fun `guard nicknames do not survive`() {
+        val issueForm = TorLogMasking.mask("Your Guard SomeGuardRelay (\$$fp) is failing a very large amount of circuits.")
+        assertGone(issueForm, fp, "SomeGuardRelay")
+
+        val tildeForm = TorLogMasking.mask("Your Guard \$$fp~SomeGuardRelay is failing a very large amount of circuits.")
+        assertGone(tildeForm, fp, "SomeGuardRelay")
+
+        // Ordinary words before a non-fingerprint parenthetical stay.
+        val normal = TorLogMasking.mask("Bootstrapped 45% (handshake): Handshaking with a relay.")
+        assertEquals("Bootstrapped 45% (handshake): Handshaking with a relay.", normal)
+    }
+
+    @Test
+    fun `lines longer than the limit are cut before masking`() {
+        val long = "/data/user/0/com.samourai.sentinel.staging/app_tor/geoip" + "x".repeat(4_000)
+        val out = TorLogMasking.mask("Parsing GEOIP IPv4 file $long")
+        assertGone(out, appDir)
     }
 
     @Test

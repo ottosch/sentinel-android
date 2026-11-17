@@ -65,11 +65,32 @@ internal object TorLogMasking {
         """(?i)(\b(?:Socks|Control|DNS|Trans|NATD|HTTPTunnel|Metrics)Port\s*[= ]\s*)\d{1,5}\b"""
     )
 
-    fun mask(line: String): String =
-        LogRedaction.redact(
-            line
+    /**
+     * #588: Tor names the guard by nickname as well as fingerprint:
+     * "Your Guard <nick> ($FP)". [FINGERPRINT] blanks the hex (with its
+     * own ~nick/=nick suffix), but the bare nickname before " ($FP)"
+     * survived. Runs after [FINGERPRINT] on the masked text and blanks
+     * the word hugging the masked parenthetical, so
+     * "host FINGERPRINT_REDACTED at IP" (no paren) keeps its "host".
+     */
+    private val GUARD_NICKNAME = Regex("""\w+ \(FINGERPRINT_REDACTED\)""")
+
+    /**
+     * #588: bare-IPv6 and bracketed-IPv6 matching is quadratic or can
+     * overflow the regex stack on long lines, and no log line this
+     * diagnoses runs near this long. Cut to 2k chars before masking;
+     * kmp-tor would drop an over-long line on a regex failure anyway
+     * (fails closed), so a cut tail only loses diagnostics.
+     */
+    private const val LINE_LIMIT = 2_048
+
+    fun mask(line: String): String {
+        val cut = line.take(LINE_LIMIT)
+        return LogRedaction.redact(
+            cut
                 .replace(PATH, "PATH_REDACTED")
                 .replace(FINGERPRINT, "FINGERPRINT_REDACTED")
+                .replace(GUARD_NICKNAME, "NICK_REDACTED")
                 .replace(ED25519_ID, "ED25519_REDACTED")
                 .replace(IPV6_BRACKETED, "IP_REDACTED")
                 .replace(IPV4, "IP_REDACTED")
@@ -77,4 +98,5 @@ internal object TorLogMasking {
                 .replace(LISTENER_PORT) { "${it.groupValues[1]}PORT_REDACTED" }
                 .replace(PORT_OPTION) { "${it.groupValues[1]}PORT_REDACTED" }
         )
+    }
 }
