@@ -149,4 +149,71 @@ class TorLogMaskingTest {
         assertTrue(src.contains("Timber.tag(TOR_LOG_TAG).w(TorLogMasking.mask(line))"))
         assertFalse("no unmasked Tor line", Regex("""Timber\.tag\(TOR_LOG_TAG\)\.\w\(line\)""").containsMatchIn(src))
     }
+
+    // #588: the IPv6 patterns are linear, so a line within the cap is masked, not dropped.
+
+    /** Runs [block] on a thread with a 256 KiB stack; returns elapsed ms, rethrows any failure. */
+    private fun onSmallStack(block: () -> Unit): Long {
+        var failure: Throwable? = null
+        val started = System.nanoTime()
+        val worker = Thread(null, {
+            try {
+                block()
+            } catch (t: Throwable) {
+                failure = t
+            }
+        }, "tor-mask-small-stack", 256L * 1024)
+        worker.start()
+        worker.join(30_000)
+        val elapsedMs = (System.nanoTime() - started) / 1_000_000
+        assertFalse("still running after $elapsedMs ms", worker.isAlive)
+        failure?.let { throw AssertionError("masking threw on a long line", it) }
+        return elapsedMs
+    }
+
+    private val longInputs = listOf(
+        "1:".repeat(50_000),
+        "[" + "1:".repeat(50_000),
+        "[1:".repeat(33_000),
+        "::" + "ab:".repeat(33_000),
+        "a".repeat(100_000),
+        "host " + "0123456789abcdef:".repeat(6_000) + " at [" + ":".repeat(100_000),
+    )
+
+    @Test
+    fun `lines up to the cap of colons and hex are masked on a 256 KiB stack`() {
+        // The old bare-IPv6 pattern overflowed here at about 655 characters,
+        // well under the 2,048 cap, so kmp-tor dropped the line.
+        val elapsedMs = onSmallStack {
+            for (input in longInputs) TorLogMasking.mask(input)
+            val atCap = "on " + "2001:db8::1 ".repeat(170)
+            val out = TorLogMasking.mask(atCap)
+            assertGone(out, "2001:db8")
+            assertTrue(out.startsWith("on IP_REDACTED IP_REDACTED"))
+        }
+        assertTrue("took $elapsedMs ms", elapsedMs < 5_000)
+    }
+
+    @Test
+    fun `the IPv6 patterns stay linear on 100k-character input`() {
+        val elapsedMs = onSmallStack {
+            for (input in longInputs) {
+                TorLogMasking.IPV6_BRACKETED.replace(input, "IP_REDACTED")
+                TorLogMasking.IPV6_BARE.replace(input) { if (TorLogMasking.isIpv6(it.value)) "IP_REDACTED" else it.value }
+            }
+        }
+        assertTrue("took $elapsedMs ms", elapsedMs < 5_000)
+    }
+
+    @Test
+    fun `linear IPv6 patterns still mask real addresses and keep clock times`() {
+        assertEquals("on IP_REDACTED", TorLogMasking.mask("on 2001:db8:85a3:0:0:8a2e:370:7334"))
+        assertEquals("on IP_REDACTED.", TorLogMasking.mask("on fe80::1."))
+        assertEquals("on IP_REDACTED", TorLogMasking.mask("on ::1"))
+        assertEquals("at IP_REDACTED)", TorLogMasking.mask("at [2001:db8::1]:9001)"))
+        assertEquals("at IP_REDACTED", TorLogMasking.mask("at [::1]"))
+        for (kept in listOf("at 12:34:56.", "cafe: open", "Foo::bar", "a:b:c:d", "[scrubbed]:443")) {
+            assertEquals(kept, TorLogMasking.mask(kept))
+        }
+    }
 }

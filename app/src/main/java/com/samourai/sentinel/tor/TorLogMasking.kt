@@ -36,8 +36,13 @@ internal object TorLogMasking {
     /** Base64 ed25519 relay identities (43 characters, unpadded). */
     private val ED25519_ID = Regex("""(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{43}(?![A-Za-z0-9+/=])""")
 
-    /** Bracketed IPv6, optionally with a port: [2001:db8::1]:443. */
-    private val IPV6_BRACKETED = Regex("""\[[0-9A-Fa-f:.]*:[0-9A-Fa-f:.]*](?::\d{1,5})?""")
+    /**
+     * Bracketed IPv6, optionally with a port: [2001:db8::1]:443. The
+     * part before the first colon cannot contain a colon and both runs
+     * are possessive, so a failed match never backtracks: linear, not
+     * quadratic, on a long line (#588).
+     */
+    internal val IPV6_BRACKETED = Regex("""\[[0-9A-Fa-f.]*+:[0-9A-Fa-f:.]*+](?::\d{1,5}+)?""")
 
     /**
      * IPv4, optionally with a port. Not after "Tor " or "version ", so
@@ -46,14 +51,26 @@ internal object TorLogMasking {
     private val IPV4 = Regex("""(?<![\w.])(?<!Tor )(?<!version )(?:\d{1,3}\.){3}\d{1,3}(?::\d{1,5})?(?!\w)(?!\.\d)""")
 
     /**
-     * Bare IPv6: the full eight groups, or a compressed form with "::"
-     * and at least one group. Clock times (12:34:56) do not match.
+     * Bare IPv6 candidates: one possessive run of hex digits and colons,
+     * with at least one colon. [isIpv6] then keeps the full eight groups
+     * or a compressed form with "::" and at least one group, so clock
+     * times (12:34:56) do not match. The old pattern repeated a group
+     * and overflowed a 256 KiB stack at about 655 characters, under
+     * [LINE_LIMIT]; this one has no nested repetition, so its cost is
+     * linear and its stack depth constant (#588).
      */
-    private val IPV6_BARE = Regex(
-        """(?<![\w:])(?:(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}""" +
-            """|(?:[0-9A-Fa-f]{1,4}:)+:(?:[0-9A-Fa-f]{1,4}:)*[0-9A-Fa-f]{0,4}""" +
-            """|::(?:[0-9A-Fa-f]{1,4}:)*[0-9A-Fa-f]{1,4})(?![\w:])"""
-    )
+    internal val IPV6_BARE = Regex("""(?<![\w:])[0-9A-Fa-f]*+:[0-9A-Fa-f:]*+(?!\w)""")
+
+    internal fun isIpv6(candidate: String): Boolean {
+        val groups = candidate.split(':')
+        if (groups.size > 9 || groups.any { it.length > 4 }) return false
+        val compressed = candidate.indexOf("::")
+        return if (compressed >= 0) {
+            candidate.indexOf("::", compressed + 1) < 0 && groups.count { it.isNotEmpty() } in 1..7
+        } else {
+            groups.size == 8 && groups.all { it.isNotEmpty() }
+        }
+    }
 
     /** "Socks listener listening on port 9050", "Control listener ... port 9051". */
     private val LISTENER_PORT = Regex(
@@ -94,7 +111,7 @@ internal object TorLogMasking {
                 .replace(ED25519_ID, "ED25519_REDACTED")
                 .replace(IPV6_BRACKETED, "IP_REDACTED")
                 .replace(IPV4, "IP_REDACTED")
-                .replace(IPV6_BARE, "IP_REDACTED")
+                .replace(IPV6_BARE) { if (isIpv6(it.value)) "IP_REDACTED" else it.value }
                 .replace(LISTENER_PORT) { "${it.groupValues[1]}PORT_REDACTED" }
                 .replace(PORT_OPTION) { "${it.groupValues[1]}PORT_REDACTED" }
         )
