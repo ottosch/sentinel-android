@@ -60,4 +60,13 @@ object CommunityDojoTorWait {
         } else {
             null
         }
+
+    /**
+     * While "Tor is still starting (n%)…" is shown: true once Tor is
+     * stopping or off. The sheet then replaces it with "Tor is not
+     * connected" straight away instead of leaving the starting message up
+     * until Tor reports OFF (#585 I3).
+     */
+    fun stillStartingEnds(state: EnumTorState): Boolean =
+        state == EnumTorState.STOPPING || state == EnumTorState.OFF
 }

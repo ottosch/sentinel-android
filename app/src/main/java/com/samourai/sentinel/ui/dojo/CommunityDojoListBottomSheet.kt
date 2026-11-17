@@ -321,10 +321,15 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
         liveData.observe(viewLifecycleOwner) { state ->
             sawStart = CommunityDojoTorWait.sawStart(state.state, sawStart)
             // Keep the "still starting" percentage live until Tor is ready
-            // (the fetch replaces it) or stops (the failure replaces it).
+            // (the fetch replaces it) or stops (the failure replaces it as
+            // soon as Tor is stopping, #585 I3).
             if (torStillStarting && !fetchInFlight) {
-                CommunityDojoTorWait.stillStartingProgress(state.state, state.progressIndicator)
-                    ?.let { renderTorStillStarting(it) }
+                if (CommunityDojoTorWait.stillStartingEnds(state.state)) {
+                    renderTorFailure()
+                } else {
+                    CommunityDojoTorWait.stillStartingProgress(state.state, state.progressIndicator)
+                        ?.let { renderTorStillStarting(it) }
+                }
             }
             when (CommunityDojoTorWait.onState(state.state, sawStart)) {
                 CommunityDojoTorWait.Action.FETCH_WHEN_READY -> {
