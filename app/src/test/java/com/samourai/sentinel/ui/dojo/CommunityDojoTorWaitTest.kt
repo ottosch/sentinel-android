@@ -76,6 +76,25 @@ class CommunityDojoTorWaitTest {
         assertNull(CommunityDojoTorWait.stillStartingProgress(EnumTorState.ON, 100))
     }
 
+    @Test
+    fun `the still starting message ends as soon as Tor is stopping or off`() {
+        // #585 I3: STOPPING used to leave "Tor is still starting (n%)…" up.
+        assertTrue(CommunityDojoTorWait.stillStartingEnds(EnumTorState.STOPPING))
+        assertTrue(CommunityDojoTorWait.stillStartingEnds(EnumTorState.OFF))
+        assertFalse(CommunityDojoTorWait.stillStartingEnds(EnumTorState.STARTING))
+        assertFalse(CommunityDojoTorWait.stillStartingEnds(EnumTorState.ON))
+    }
+
+    @Test
+    fun `the sheet replaces the still starting message with the failure while Tor is stopping`() {
+        val path = "java/com/samourai/sentinel/ui/dojo/CommunityDojoListBottomSheet.kt"
+        val src = listOf(File("src/main/$path"), File("app/src/main/$path")).first { it.isFile }.readText()
+        val block = src.substringAfter("if (torStillStarting && !fetchInFlight) {").substringBefore("when (CommunityDojoTorWait.onState")
+        assertTrue(block.contains("CommunityDojoTorWait.stillStartingEnds(state.state)"))
+        assertTrue(block.indexOf("stillStartingEnds") < block.indexOf("renderTorFailure()"))
+        assertTrue(block.indexOf("renderTorFailure()") < block.indexOf("renderTorStillStarting"))
+    }
+
     private fun stringResource(name: String): String {
         val path = "res/values/strings.xml"
         val xml = listOf(File("src/main/$path"), File("app/src/main/$path")).first { it.isFile }.readText()
