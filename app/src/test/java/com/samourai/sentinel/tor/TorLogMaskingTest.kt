@@ -216,4 +216,108 @@ class TorLogMaskingTest {
             assertEquals(kept, TorLogMasking.mask(kept))
         }
     }
+
+    // #593 review L1: a token that straddles the 2,048-character cut is dropped
+    // whole, with the word before it, so no fragment escapes the masks.
+
+    private val limit = 2_048
+    private val truncated = " [truncated]"
+
+    /** A Tor-like line where [secret] starts so that [before] of its characters fall inside the cut. */
+    private fun straddling(secret: String, before: Int, tail: String = " is still here"): String {
+        val target = limit - before
+        val sb = StringBuilder("Bootstrapped 70% (loading_descriptors): Loading relay descriptors ")
+        while (sb.length + 3 <= target) sb.append("ok ")
+        when (target - sb.length) {
+            1 -> sb.append(" ")
+            2 -> sb.append("k ")
+        }
+        check(sb.length == target)
+        return sb.append(secret).append(tail).toString()
+    }
+
+    private fun assertCutCleanly(secret: String, vararg befores: Int) {
+        for (before in befores) {
+            val line = straddling(secret, before)
+            assertTrue(line.length > limit)
+            val out = TorLogMasking.mask(line)
+            val inside = secret.take(before)
+            if (inside.length >= 3) assertGone(out, inside)
+            val after = secret.drop(before).take(6)
+            if (after.length >= 3) assertGone(out, after)
+            assertTrue("marker in: ${out.takeLast(40)}", out.endsWith(truncated))
+            assertTrue(out.startsWith("Bootstrapped 70% (loading_descriptors)"))
+            assertTrue(out.length <= limit + truncated.length)
+        }
+    }
+
+    @Test
+    fun `a fingerprint straddling the cut leaves no hex fragment`() {
+        assertCutCleanly(fp, 3, 10, 30, 39)
+        assertCutCleanly("\$$fp", 5, 31, 40)
+    }
+
+    @Test
+    fun `IPv4 and IPv6 addresses straddling the cut leave no fragment`() {
+        assertCutCleanly("192.0.2.34:9101", 3, 7, 11, 14)
+        assertCutCleanly("2001:db8:85a3::8a2e:370:7334", 4, 9, 15, 27)
+        assertCutCleanly("[2001:db8::1]:9001", 5, 12, 17)
+    }
+
+    @Test
+    fun `onion, xpub and ed25519 values straddling the cut leave no fragment`() {
+        val onion = "pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd.onion"
+        assertCutCleanly(onion, 16, 40, 56, 60)
+        val xpub = "xpub6CUGRUonZSQ4TWtTMmzXdrXDtypWKiKrhko4egpiMZbpiaQL2jkwSB1icqYh2cfDfVxdx4df189oLKnC5fSwqPfgyP3hooxujYzAu3fDVmz"
+        assertCutCleanly(xpub, 20, 80, 110)
+        assertCutCleanly("3e2Z8pKMzJ0Vb7q0V1z0hXqoYvTQ0YbF2y8b9mH1aWk", 10, 21, 42)
+    }
+
+    @Test
+    fun `a guard nickname whose fingerprint falls past the cut is dropped`() {
+        val warning = "SomeGuardRelay (\$$fp) is failing a very large amount of circuits."
+        for (before in listOf(5, "SomeGuardRelay".length, "SomeGuardRelay ".length, "SomeGuardRelay (\$".length + 10)) {
+            val out = TorLogMasking.mask(straddling(warning, before))
+            assertGone(out, "SomeGuard", fp.take(6))
+            assertTrue(out.endsWith(truncated))
+        }
+    }
+
+    @Test
+    fun `a line with no whitespace past the limit keeps nothing`() {
+        assertEquals(truncated, TorLogMasking.mask("x".repeat(3_000) + fp))
+        assertEquals(truncated, TorLogMasking.mask("1:".repeat(50_000)))
+    }
+
+    @Test
+    fun `a line exactly at the limit is not cut`() {
+        val plain = straddling("end", 3, tail = "")
+        assertEquals(limit, plain.length)
+        assertEquals(plain, TorLogMasking.mask(plain))
+
+        val withFp = straddling("host $fp", "host $fp".length, tail = "")
+        assertEquals(limit, withFp.length)
+        val out = TorLogMasking.mask(withFp)
+        assertTrue(out.endsWith("host FINGERPRINT_REDACTED"))
+        assertFalse(out.contains(truncated))
+    }
+
+    // #593 review L2: the nickname rule must not eat the end of an IPv6 address.
+
+    @Test
+    fun `an IPv6 address just before a parenthesised fingerprint is masked whole`() {
+        assertEquals(
+            "Guard at IP_REDACTED (FINGERPRINT_REDACTED) is down",
+            TorLogMasking.mask("Guard at 2a0b:f4c2:2::1 (\$$fp) is down"),
+        )
+        assertEquals(
+            "Guard at IP_REDACTED (FINGERPRINT_REDACTED) is down",
+            TorLogMasking.mask("Guard at 2a0b:f4c2:2:: (\$$fp) is down"),
+        )
+        // The nickname form is unchanged.
+        assertEquals(
+            "Your Guard NICK_REDACTED is failing more circuits than usual.",
+            TorLogMasking.mask("Your Guard SomeGuardRelay (\$$fp) is failing more circuits than usual."),
+        )
+    }
 }

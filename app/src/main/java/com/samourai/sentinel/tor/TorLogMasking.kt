@@ -90,7 +90,7 @@ internal object TorLogMasking {
      * the word hugging the masked parenthetical, so
      * "host FINGERPRINT_REDACTED at IP" (no paren) keeps its "host".
      */
-    private val GUARD_NICKNAME = Regex("""\w+ \(FINGERPRINT_REDACTED\)""")
+    private val GUARD_NICKNAME = Regex("""(?<![\w:])\w+ \(FINGERPRINT_REDACTED\)""")
 
     /**
      * #588: bare-IPv6 and bracketed-IPv6 matching is quadratic or can
@@ -102,7 +102,14 @@ internal object TorLogMasking {
     private const val LINE_LIMIT = 2_048
 
     fun mask(line: String): String {
-        val cut = line.take(LINE_LIMIT)
+        // Over the limit: drop the token that straddles the cut and the word
+        // before it (a nickname whose " ($FP)" was cut off), so no partial
+        // secret is left unmaskable. No whitespace at all: keep nothing.
+        val cut = if (line.length <= LINE_LIMIT) line else {
+            var kept = line.take(LINE_LIMIT)
+            repeat(2) { kept = kept.substring(0, maxOf(0, kept.indexOfLast { it.isWhitespace() })).trimEnd() }
+            "$kept [truncated]"
+        }
         return LogRedaction.redact(
             cut
                 .replace(PATH, "PATH_REDACTED")
