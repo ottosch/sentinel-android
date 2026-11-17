@@ -4,8 +4,10 @@ import com.samourai.sentinel.tor.EnumTorState
 import com.samourai.sentinel.ui.dojo.CommunityDojoTorWait.Action
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 class CommunityDojoTorWaitTest {
 
@@ -52,5 +54,45 @@ class CommunityDojoTorWaitTest {
         assertFalse(CommunityDojoTorWait.failsAfterReadyLimit(torReady = false, fetchStarted = true))
         assertEquals(120_000L, CommunityDojoTorWait.READY_LIMIT_MS)
         assertTrue(CommunityDojoTorWait.READY_LIMIT_MS > CommunityDojoTorWait.START_GRACE_MS)
+    }
+
+    @Test
+    fun `at the wait limit a bootstrap past 0 percent is still starting, with its percentage`() {
+        // #581: a first bootstrap sat at 70 % for over five minutes.
+        assertEquals(70, CommunityDojoTorWait.stillStartingProgress(EnumTorState.ON, 70))
+        assertEquals(5, CommunityDojoTorWait.stillStartingProgress(EnumTorState.ON, 5))
+        assertEquals(99, CommunityDojoTorWait.stillStartingProgress(EnumTorState.ON, 99))
+        assertEquals(40, CommunityDojoTorWait.stillStartingProgress(EnumTorState.STARTING, 40))
+    }
+
+    @Test
+    fun `at the wait limit Tor that is off, stopping or still at 0 percent keeps the real failure`() {
+        assertNull(CommunityDojoTorWait.stillStartingProgress(EnumTorState.OFF, 0))
+        assertNull(CommunityDojoTorWait.stillStartingProgress(EnumTorState.OFF, 70))
+        assertNull(CommunityDojoTorWait.stillStartingProgress(EnumTorState.STOPPING, 70))
+        assertNull(CommunityDojoTorWait.stillStartingProgress(EnumTorState.STARTING, 0))
+        assertNull(CommunityDojoTorWait.stillStartingProgress(EnumTorState.ON, 0))
+        // 100 % without a SOCKS port yet is not "starting": the fetch follows within moments.
+        assertNull(CommunityDojoTorWait.stillStartingProgress(EnumTorState.ON, 100))
+    }
+
+    private fun stringResource(name: String): String {
+        val path = "res/values/strings.xml"
+        val xml = listOf(File("src/main/$path"), File("app/src/main/$path")).first { it.isFile }.readText()
+        val line = xml.lines().single { it.contains("name=\"$name\"") }
+        return line.substringAfter('>').substringBeforeLast("</string>").replace("\\'", "'")
+    }
+
+    @Test
+    fun `the still starting texts show the live percentage`() {
+        assertEquals(
+            "Tor is still starting (70%)… The first start after installing can take a few minutes. " +
+                "The list loads by itself when Tor is ready.",
+            String.format(stringResource("community_dojo_tor_still_starting"), 70),
+        )
+        assertEquals(
+            "Showing saved list from Nov 16 · Tor is still starting (70%)…",
+            String.format(stringResource("community_dojo_cached_tor_starting"), "Nov 16", 70),
+        )
     }
 }

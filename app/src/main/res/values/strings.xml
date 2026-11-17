@@ -234,6 +234,8 @@
     <string name="community_dojo_cached_unreachable" translatable="false">Dojo Bay unreachable · showing list from %1$s</string>
     <string name="community_dojo_waiting_tor" translatable="false">Waiting for Tor…</string>
     <string name="community_dojo_cached_waiting_tor" translatable="false">Showing saved list from %1$s · waiting for Tor…</string>
+    <string name="community_dojo_tor_still_starting" translatable="false">Tor is still starting (%1$d%%)… The first start after installing can take a few minutes. The list loads by itself when Tor is ready.</string>
+    <string name="community_dojo_cached_tor_starting" translatable="false">Showing saved list from %1$s · Tor is still starting (%2$d%%)…</string>
     <!-- Dojo Bay answered with no Dojos at all: the saved list is kept. -->
     <string name="community_dojo_cached_listed_none" translatable="false">Dojo Bay currently lists no Dojos · showing list from %1$s</string>
     <string name="community_dojo_listed_none" translatable="false">Dojo Bay currently lists no Dojos, and there is no saved list. You can still pair with Connect to your Dojo by scanning or pasting a Dojo\'s pairing details, or change the Dojo Bay address.</string>
