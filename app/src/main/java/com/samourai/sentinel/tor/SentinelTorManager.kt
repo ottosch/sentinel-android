@@ -127,17 +127,19 @@ object SentinelTorManager {
             // Debug builds only: Tor's own log at notice level and above
             // (NOTICE, WARN) goes to logcat under TOR_LOG_TAG, so a slow
             // bootstrap or onion connection can be read from a capture
-            // (#581). It goes through Timber, so the debug masking Tree
-            // redacts onion hosts, xpubs and txids on top of Tor's own
-            // SafeLogging scrubbing. Release builds register nothing here:
-            // no extra Tor event subscription, no new log lines.
+            // (#581). Each line goes through TorLogMasking, which masks
+            // relay fingerprints, IP addresses, listener ports and file
+            // paths, then applies the app-wide LogRedaction rules (onion
+            // hosts, xpubs, txids), on top of Tor's own SafeLogging
+            // scrubbing. Release builds register nothing here: no extra
+            // Tor event subscription, no new log lines.
             if (BuildConfig.DEBUG) {
                 required(TorEvent.WARN)
                 observerStatic(TorEvent.NOTICE, OnEvent.Executor.Immediate) { line ->
-                    Timber.tag(TOR_LOG_TAG).i(line)
+                    Timber.tag(TOR_LOG_TAG).i(TorLogMasking.mask(line))
                 }
                 observerStatic(TorEvent.WARN, OnEvent.Executor.Immediate) { line ->
-                    Timber.tag(TOR_LOG_TAG).w(line)
+                    Timber.tag(TOR_LOG_TAG).w(TorLogMasking.mask(line))
                 }
             }
 
