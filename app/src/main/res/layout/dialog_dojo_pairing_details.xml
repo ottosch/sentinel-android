@@ -71,34 +71,7 @@
             android:textSize="16sp"
             android:textStyle="bold"
             tools:text="Community Dojo" />
-
-        <!-- The directory's name and flag are not signed. -->
-        <TextView
-            android:id="@+id/dojoPairingDirectoryChip"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
-            android:background="@drawable/signer_unverified_chip"
-            android:fontFamily="sans-serif-medium"
-            android:letterSpacing="0.04"
-            android:paddingHorizontal="6dp"
-            android:paddingVertical="3dp"
-            android:text="@string/signer_unverified_chip"
-            android:textAllCaps="true"
-            android:textColor="#9A9A9A"
-            android:textSize="10sp" />
     </LinearLayout>
-
-    <TextView
-        android:id="@+id/dojoPairingDirectoryCaption"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:text="@string/dojo_pairing_directory_not_signed"
-        android:textColor="#9A9A9A"
-        android:textSize="12sp"
-        android:visibility="gone"
-        tools:visibility="visible" />
 
     <LinearLayout
         android:id="@+id/dojoPairingJurisdictionRow"

@@ -271,8 +271,6 @@
     <string name="network_directory_default" translatable="false">Default · %1$s</string>
     <string name="network_directory_custom" translatable="false">Custom · %1$s</string>
     <string name="community_dojo_signed_by" translatable="false">Signed by %1$s</string>
-    <string name="signer_unverified_chip" translatable="false">Unverified</string>
-    <string name="dojo_pairing_directory_not_signed" translatable="false">Name and location are set by the directory and are not signed.</string>
     <string name="dojo_pairing_row_signed_by" translatable="false">Signed by</string>
     <string name="dojo_pairing_signer_collision" translatable="false">Another listing uses this name with a different signer. Check the full code.</string>
     <string name="community_dojo_signer_collision" translatable="false">Another listing uses this name with a different signer</string>

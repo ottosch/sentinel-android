@@ -33,7 +33,7 @@ fun prePairSigner(
 
 /**
  * Binds dialog_dojo_pairing_details: the directory header with its
- * "Unverified" chip and caption, and the "Signed by" section. Kept apart from
+ * name and flag, and the "Signed by" section. Kept apart from
  * the sheet so the dialog states can be bound and checked in tests.
  */
 class PrePairDialogViews(val root: View) {
@@ -41,7 +41,6 @@ class PrePairDialogViews(val root: View) {
     private val header: View = root.findViewById(R.id.dojoPairingDirectoryHeader)
     private val name: TextView = root.findViewById(R.id.dojoPairingDirectoryName)
     private val flag: TextView = root.findViewById(R.id.dojoPairingDirectoryFlag)
-    private val caption: View = root.findViewById(R.id.dojoPairingDirectoryCaption)
     private val signerSection: View = root.findViewById(R.id.dojoPairingSignerSection)
     private val signerCode: TextView = root.findViewById(R.id.dojoPairingSignerCode)
     private val signerLink: TextView = root.findViewById(R.id.dojoPairingSignerLink)
@@ -94,7 +93,6 @@ class PrePairDialogViews(val root: View) {
     fun bindHeader(directory: DojoDirectoryHeader?, unnamed: String) {
         if (directory == null) {
             header.visibility = View.GONE
-            caption.visibility = View.GONE
             return
         }
         name.text = directory.name ?: unnamed
@@ -105,7 +103,6 @@ class PrePairDialogViews(val root: View) {
             flag.visibility = View.GONE
         }
         header.visibility = View.VISIBLE
-        caption.visibility = View.VISIBLE
     }
 
     /** [onOpenPayNym] gets the signed code; the page is found from it ([PayNymPage.openSigner]). */

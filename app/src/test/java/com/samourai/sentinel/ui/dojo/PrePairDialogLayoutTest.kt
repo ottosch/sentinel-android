@@ -23,7 +23,7 @@ import org.robolectric.annotation.Config
 
 /**
  * The pre-pair dialog on a short window with every section shown (header,
- * caption, all rows, the signer with avatar, +name, code and link, and the
+ * all rows, the signer with avatar, +name, code and link, and the
  * same-name warning): Pair and Don't pair stay on screen, the body scrolls,
  * and Back is Don't pair. With master's setMessage + setView shape, the same
  * body at this height put the Pair button's bottom at 1278 px on a 1200 px

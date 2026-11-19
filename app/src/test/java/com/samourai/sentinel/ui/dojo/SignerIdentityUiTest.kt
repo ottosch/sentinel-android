@@ -18,8 +18,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * The dialog and row states for the signer: the "Unverified" chip and
- * caption, the grouped full code and PayNym link, the same-name warning, and
+ * The dialog and row states for the signer: the directory name and flag
+ * (plain metadata, no chip or caption), the grouped full code and PayNym link, the same-name warning, and
  * a row's collapsed and expanded code. Inflated from the real layouts.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -38,7 +38,7 @@ class SignerIdentityUiTest {
     private fun View.text(id: Int) = findViewById<TextView>(id).text.toString()
 
     @Test
-    fun `a picked listing shows the unverified chip, the caption, the full grouped code and the link`() {
+    fun `a picked listing shows the name and flag, the full grouped code and the link`() {
         val view = dialog()
         val views = PrePairDialogViews(view)
         views.bindHeader(DojoDirectoryHeader("🇸🇬", "QA valid (signed)"), "Unnamed")
@@ -46,9 +46,8 @@ class SignerIdentityUiTest {
         views.bindSigner(prePairSigner(qa, DojoDisplaySnapshot("u", "QA valid (signed)", "🇸🇬", null), "u")) { opened = it }
 
         assertTrue(view.shown(R.id.dojoPairingDirectoryHeader))
-        assertTrue(view.shown(R.id.dojoPairingDirectoryChip))
-        assertEquals("Unverified", view.text(R.id.dojoPairingDirectoryChip))
-        assertTrue(view.shown(R.id.dojoPairingDirectoryCaption))
+        assertEquals("QA valid (signed)", view.text(R.id.dojoPairingDirectoryName))
+        assertEquals("🇸🇬", view.text(R.id.dojoPairingDirectoryFlag))
         assertTrue(view.shown(R.id.dojoPairingSignerSection))
         assertEquals(SignerCodeFormat.displayCode(qa), view.text(R.id.dojoPairingSignerCode))
         assertEquals(qa, SignerCodeFormat.compact(view.text(R.id.dojoPairingSignerCode)))
@@ -77,7 +76,6 @@ class SignerIdentityUiTest {
         views.bindHeader(null, "Unnamed")
         views.bindSigner(null) {}
         assertFalse(view.shown(R.id.dojoPairingDirectoryHeader))
-        assertFalse(view.shown(R.id.dojoPairingDirectoryCaption))
         assertFalse(view.shown(R.id.dojoPairingSignerSection))
     }
 
@@ -101,7 +99,6 @@ class SignerIdentityUiTest {
 
         var row = bound(adapter, 0)
         assertEquals("Signed by PM8TJUJH…eNoCEoum", row.signer.text.toString())
-        assertEquals(View.VISIBLE, row.chip.visibility)
         assertEquals(View.GONE, row.signerCode.visibility)
         assertEquals(View.GONE, row.signerLink.visibility)
 
@@ -119,9 +116,10 @@ class SignerIdentityUiTest {
         row = bound(adapter, 0)
         assertEquals(View.GONE, row.signerCode.visibility)
 
-        // An unverified row has no chip, no signer and no expansion.
+        // An unverified row is greyed out, with no signer and no expansion.
         val dim = bound(adapter, 1)
-        assertEquals(View.GONE, dim.chip.visibility)
+        assertEquals(0.5f, dim.itemView.alpha)
+        assertFalse(dim.copyButton.isEnabled)
         assertEquals(View.GONE, dim.signer.visibility)
         assertTrue(dim.subtitle.text.toString().contains("can't pair"))
     }
