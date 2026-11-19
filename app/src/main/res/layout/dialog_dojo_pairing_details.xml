@@ -29,15 +29,16 @@
         android:id="@+id/dojoPairingMessage"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        style="?attr/materialAlertDialogBodyTextStyle"
         android:layout_marginBottom="12dp"
-        android:textColor="#c7c7c7"
-        android:textSize="14sp"
+        android:importantForAccessibility="yes"
         tools:text="@string/dojo_pairing_confirm_message" />
 
     <!--
       #256: the PRE-PAIR confirmation dialog's detail view, carried by
-      MaterialAlertDialogBuilder.setView (title + lead-in message stay on
-      the builder). Grey 12sp labels over white 13sp values, values
+      MaterialAlertDialogBuilder.setView. The title stays on the builder; the
+      lead-in message is the first view above, in the dialog's message style.
+      Grey 12sp labels over white 13sp values, values
       wrapped - the fragment_dojo_credentials_bottomsheet row idiom - so
       long onion URLs never bleed into neighboring rows. The directory
       header and the jurisdiction/version/explorer rows default hidden:

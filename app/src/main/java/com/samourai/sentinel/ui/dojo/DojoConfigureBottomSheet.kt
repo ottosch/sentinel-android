@@ -344,17 +344,30 @@ fun pairingDetailRows(
         url = pairingUrl,
         // The version the directory reports for the picked listing (the
         // same value as its list row), url-match-guarded like jurisdiction.
-        // The pairing payload's own version is what the Dojo had when its
-        // pairing code was made and goes stale; it is used only when there
-        // is no matching listing (a scan or paste).
+        // It is directory metadata, not signed, so it is shown only when it
+        // looks like a version (listingVersionOrNull). The pairing payload's
+        // own version is what the Dojo had when its pairing code was made and
+        // goes stale; it is used when there is no matching listing (a scan or
+        // paste) or the listing's version is blank or not version-shaped.
         version = snapshot
             ?.takeIf { pairingUrl != null && it.url == pairingUrl }
-            ?.version?.takeIf { it.isNotBlank() }
+            ?.version?.let { listingVersionOrNull(it) }
             ?: pairing.pairing?.version?.takeIf { it.isNotBlank() },
         explorer = pairing.explorer?.url?.takeIf { it.isNotBlank() },
         network = declaredNetwork ?: NetworkClassifier.fromUrl(pairingUrl),
     )
 }
+
+/** A directory version shape: 1 to 32 of A-Z, a-z, 0-9, '.', '+' and '-'. */
+private val LISTING_VERSION_SHAPE = Regex("^[0-9A-Za-z.+-]{1,32}$")
+
+/**
+ * The picked listing's directory version for the pre-pair dialog, or null
+ * when it is blank or not version-shaped (then the pairing code's version
+ * is shown instead). The directory's version is not signed.
+ */
+fun listingVersionOrNull(version: String?): String? =
+    version?.takeIf { LISTING_VERSION_SHAPE.matches(it) }
 
 /**
  * #256: the receipt's ONE identity line - a fixed ladder, never
@@ -915,7 +928,10 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
         }
         val snapshot = pendingSnapshot.forDialog { readDisplaySnapshot() }
         val rows = pairingDetailRows(pairing, snapshot)
-        val view = layoutInflater.inflate(R.layout.dialog_dojo_pairing_details, null)
+        // Inflated in the dialog's own theme, so the lead-in message gets the
+        // same style a setMessage message would (materialAlertDialogBodyTextStyle).
+        val builder = MaterialAlertDialogBuilder(requireContext())
+        val view = LayoutInflater.from(builder.context).inflate(R.layout.dialog_dojo_pairing_details, null)
         val dialogViews = PrePairDialogViews(view)
         dialogViews.bindHeader(directoryHeader(snapshot, pairing.pairing?.url), getString(R.string.dojo_unnamed))
         // Who signed the picked listing: the full code its signature proved.
@@ -975,8 +991,9 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
         // The message sits inside the scrolling view, not on the builder:
         // setMessage plus setView gives the dialog two middle panels, and a
         // tall body then pushes Pair / Don't pair off screen.
-        view.findViewById<TextView>(R.id.dojoPairingMessage).text = message
-        val dialog = MaterialAlertDialogBuilder(requireContext())
+        val messageView = view.findViewById<TextView>(R.id.dojoPairingMessage)
+        messageView.text = message
+        val dialog = builder
             .setTitle(getString(R.string.dojo_pairing_confirm_title))
             .setView(view)
             .setPositiveButton(getString(R.string.dojo_pairing_confirm_accept)) { _, _ ->
@@ -990,6 +1007,9 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
             .setOnCancelListener { onPairingDeclineTapped() }
             .create()
         dialog.setCanceledOnTouchOutside(false)
+        // A setMessage message is read with the dialog; this one sits in the
+        // custom view, so screen readers are told it when the dialog opens.
+        dialog.setOnShowListener { messageView.announceForAccessibility(message) }
         dialog.show()
         // The signer's PayNym avatar and +name, looked up now that the dialog
         // is open, from the signed code, over Tor only (PayNymLookup). This

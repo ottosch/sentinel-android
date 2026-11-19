@@ -1,6 +1,12 @@
 package com.samourai.sentinel.ui.dojo
 
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
+import kotlin.coroutines.CoroutineContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
@@ -168,6 +174,37 @@ class PayNymLookupTest {
         } finally {
             server.shutdown()
         }
+    }
+
+    /** Holds dispatched work until the test runs it, so it shows exactly what runs there. */
+    private class HeldDispatcher : CoroutineDispatcher() {
+        val held = ArrayDeque<Runnable>()
+        override fun dispatch(context: CoroutineContext, block: Runnable) {
+            held.addLast(block)
+        }
+    }
+
+    @Test
+    fun `the nym answer is decoded and parsed on the parse dispatcher, not the caller's thread`() {
+        val parse = HeldDispatcher()
+        val t = FakeTransport { _, _, _ -> ok(nymDoc().toByteArray()) }
+        runBlocking {
+            val name = async(start = CoroutineStart.UNDISPATCHED) { PayNymFetcher(t, parse).name(code) }
+            yield()
+            // The reply is in, but nothing is parsed until the parse dispatcher runs it.
+            assertEquals(1, t.requests.size)
+            assertFalse(name.isCompleted)
+            assertEquals(1, parse.held.size)
+            parse.held.removeFirst().run()
+            assertEquals("+examplenym", name.await())
+            assertTrue(parse.held.isEmpty())
+        }
+    }
+
+    @Test
+    fun `the default parse dispatcher is Dispatchers Default`() {
+        val f = PayNymFetcher::class.java.getDeclaredField("parseDispatcher").apply { isAccessible = true }
+        assertTrue(f.get(PayNymFetcher(FakeTransport { _, _, _ -> null })) === Dispatchers.Default)
     }
 
     // ---- the lookup: Tor only, cached ------------------------------------------------

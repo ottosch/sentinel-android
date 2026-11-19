@@ -3,7 +3,7 @@ package com.samourai.sentinel.ui.dojo
 import android.app.Application
 import android.os.Bundle
 import android.os.Looper
-import android.view.KeyEvent
+import android.view.LayoutInflater
 import android.view.View
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
@@ -11,8 +11,6 @@ import androidx.core.widget.NestedScrollView
 import androidx.fragment.app.FragmentActivity
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.samourai.sentinel.R
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -22,14 +20,17 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /**
- * The pre-pair dialog on a short window with every section shown (header,
- * all rows, the signer with avatar, +name, code and link, and the
- * same-name warning): Pair and Don't pair stay on screen, the body scrolls,
- * and Back is Don't pair. With master's setMessage + setView shape, the same
- * body at this height put the Pair button's bottom at 1278 px on a 1200 px
- * screen: two middle panels make AlertDialogLayout fall back to a plain
- * LinearLayout measure, the body is clipped without scrolling and then the
- * buttons are pushed off.
+ * The layout file alone (dialog_dojo_pairing_details) on a short window with
+ * every section shown (header, all rows, the signer with avatar, +name, code
+ * and link, and the same-name warning), in a dialog built the way the sheet
+ * builds it: Pair and Don't pair stay on screen and the body scrolls. With
+ * master's setMessage + setView shape, the same body at this height put the
+ * Pair button's bottom at 1278 px on a 1200 px screen: two middle panels make
+ * AlertDialogLayout fall back to a plain LinearLayout measure, the body is
+ * clipped without scrolling and then the buttons are pushed off.
+ *
+ * The sheet's own dialog (message placement, Back as Don't pair) is covered
+ * on the real sheets by PrePairDialogSheetTest.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class, qualifiers = "w360dp-h400dp-xxhdpi")
@@ -38,7 +39,9 @@ class PrePairDialogLayoutTest {
     private val code = "PM8TJUJHkfdjkb5g5XaJuvnC63rUz7LXHnVqsnCd17dhDRupn9gW3QrgJJdNNGxsR4LSe4kFBMwarLbJVRQur9ZQfY4rtTHWWgdjLeE1svskeNoCEoum"
 
     private fun fullBody(activity: FragmentActivity): View {
-        val view = activity.layoutInflater.inflate(R.layout.dialog_dojo_pairing_details, null)
+        // In the dialog's theme, as the sheet inflates it.
+        val view = LayoutInflater.from(MaterialAlertDialogBuilder(activity).context)
+            .inflate(R.layout.dialog_dojo_pairing_details, null)
         val views = PrePairDialogViews(view)
         views.bindHeader(DojoDirectoryHeader("🇸🇬", "max"), "Unnamed")
         views.bindSigner(prePairSigner(code, DojoDisplaySnapshot("u", "max", null, null, nameCollision = true), "u")) {}
@@ -69,18 +72,16 @@ class PrePairDialogLayoutTest {
     }
 
     @Test
-    fun `with the message in the scrolling body, Pair and Don't pair stay on screen`() {
+    fun `with every section shown, the body scrolls and Pair and Don't pair stay on screen`() {
         val activity = activity()
         val body = fullBody(activity)
         assertTrue(body is NestedScrollView)
         body.findViewById<TextView>(R.id.dojoPairingMessage).setText(R.string.dojo_pairing_confirm_message)
-        var declined = 0
         val dialog = MaterialAlertDialogBuilder(activity)
             .setTitle(R.string.dojo_pairing_confirm_title)
             .setView(body)
             .setPositiveButton(R.string.dojo_pairing_confirm_accept, null)
             .setNegativeButton(R.string.dojo_pairing_confirm_decline, null)
-            .setOnCancelListener { declined++ }
             .create()
         dialog.setCanceledOnTouchOutside(false)
         dialog.show()
@@ -93,12 +94,6 @@ class PrePairDialogLayoutTest {
         // The body is taller than the space left, so it scrolls.
         val scroll = body as NestedScrollView
         assertTrue(scroll.getChildAt(0).height > scroll.height)
-
-        // Back is Don't pair.
-        dialog.onBackPressed()
-        shadowOf(Looper.getMainLooper()).idle()
-        assertFalse(dialog.isShowing)
-        assertEquals(1, declined)
     }
 }
 

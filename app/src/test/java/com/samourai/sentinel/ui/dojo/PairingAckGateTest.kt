@@ -215,6 +215,30 @@ class PairingAckGateTest {
     }
 
     @Test
+    fun `a listing version that isn't version-shaped falls back to the pairing code's`() {
+        // Accepted: 1 to 32 of A-Z, a-z, 0-9, '.', '+' and '-'.
+        for (ok in listOf("1.29.2", "1", "1.29.2-rc1+build.5", "v1.29.2", "a".repeat(32))) {
+            assertEquals(ok, listingVersionOrNull(ok))
+            assertEquals(ok, pairingDetailRows(communityPairing, communitySnapshot.copy(version = ok)).version)
+        }
+        // Refused, so the dialog shows the pairing code's 1.19.1 instead.
+        val bad = listOf(
+            "", " ", " 1.29.2", "1.29.2 ", "1.29.2\n", "1.29\u202E2", "1 29 2", "1.29/../2",
+            "<b>1.29.2</b>", "1.29.2;", "１.２９.２", "1.29.2\u0000", "a".repeat(33),
+        )
+        for (no in bad) {
+            assertNull(no, listingVersionOrNull(no))
+            assertEquals(no, "1.19.1", pairingDetailRows(communityPairing, communitySnapshot.copy(version = no)).version)
+        }
+        assertNull(listingVersionOrNull(null))
+        // A bad listing version and no pairing-code version: no row at all.
+        val noPayloadVersion = communityPairing.copy(pairing = communityPairing.pairing!!.copy(version = null))
+        assertNull(pairingDetailRows(noPayloadVersion, communitySnapshot.copy(version = "<b>")).version)
+        // A good listing version still needs the snapshot to match the URL.
+        assertEquals("1.19.1", pairingDetailRows(communityPairing, communitySnapshot.copy(url = "http://other.example", version = "1.29.2")).version)
+    }
+
+    @Test
     fun `detail rows omit directory metadata for a manual pairing`() {
         // The payload carries none of it; absent means absent, never a
         // placeholder row.

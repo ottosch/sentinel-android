@@ -6,6 +6,7 @@ import com.google.gson.JsonPrimitive
 import com.samourai.sentinel.api.okHttp.await
 import com.samourai.sentinel.util.OkHttpLogRedaction
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -114,7 +115,15 @@ interface PayNymTransport {
  * The rules, apart from the transport: redirects, status, PNG magic, size,
  * and the name's shape and code match.
  */
-class PayNymFetcher(private val transport: PayNymTransport) {
+class PayNymFetcher(
+    private val transport: PayNymTransport,
+    /**
+     * Where the /api/v1/nym answer (up to [PayNymLookup.MAX_NYM_BYTES]) is
+     * decoded and parsed: never the caller's thread, which is the main
+     * thread for the pre-pair dialog and View on PayNym.
+     */
+    private val parseDispatcher: CoroutineDispatcher = Dispatchers.Default,
+) {
 
     suspend fun avatar(code: String): ByteArray? {
         if (!DojoBaySignatures.isPaymentCodeShape(code)) return null
@@ -140,9 +149,11 @@ class PayNymFetcher(private val transport: PayNymTransport) {
         val reply = transport.post(PayNymLinks.NYM_PATH, body, PayNymLookup.MAX_NYM_BYTES) ?: return null
         if (reply.status != 200) return null
         val bytes = reply.body?.takeIf { it.size <= PayNymLookup.MAX_NYM_BYTES } ?: return null
-        val text = DojoBayJson.decodeBody(bytes) ?: return null
-        val doc = DojoBayJson.parseTree(text) as? JsonObject ?: return null
-        return nymFor(doc, code)
+        return withContext(parseDispatcher) {
+            val text = DojoBayJson.decodeBody(bytes) ?: return@withContext null
+            val doc = DojoBayJson.parseTree(text) as? JsonObject ?: return@withContext null
+            nymFor(doc, code)
+        }
     }
 
     companion object {
