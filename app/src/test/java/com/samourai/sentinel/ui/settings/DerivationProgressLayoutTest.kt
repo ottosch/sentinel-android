@@ -124,6 +124,9 @@ class DerivationProgressLayoutTest {
             .inflate(R.layout.activity_network, null)
         val row = root.findViewById<View>(R.id.network_dojo_layout)
         row.findViewById<View>(R.id.networking_dojo_details_btn).visibility = View.VISIBLE
+        // The burst's labels take the whole column (NetworkActivity does
+        // this for progress and residue).
+        DojoRowLayout.placeStatus(row, wide = true)
         val px = (widthDp * themed.resources.displayMetrics.density).toInt()
         row.measure(
             MeasureSpec.makeMeasureSpec(px, MeasureSpec.EXACTLY),
