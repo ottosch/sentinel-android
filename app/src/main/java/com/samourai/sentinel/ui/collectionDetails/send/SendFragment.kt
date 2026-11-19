@@ -32,6 +32,7 @@ import androidx.transition.TransitionManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.transition.MaterialContainerTransform
 import com.samourai.sentinel.R
+import com.samourai.sentinel.core.SentinelState
 import com.samourai.sentinel.data.AddressTypes
 import com.samourai.sentinel.data.PubKeyCollection
 import com.samourai.sentinel.data.PubKeyModel
@@ -54,6 +55,7 @@ import com.samourai.sentinel.ui.utils.showFloatingSnackBar
 import com.samourai.sentinel.ui.utils.startDocumentPickerForResult
 import com.samourai.sentinel.util.FormatsUtil
 import com.samourai.sentinel.util.MonetaryUtil
+import com.samourai.sentinel.util.UtxoMetaUtil
 import com.samourai.sentinel.util.figuresFor
 import com.samourai.wallet.util.FormatsUtilGeneric
 import com.samourai.wallet.util.XPUB
@@ -65,7 +67,6 @@ import kotlinx.coroutines.withContext
 import org.bouncycastle.util.encoders.Hex
 import org.koin.java.KoinJavaComponent.inject
 import timber.log.Timber
-import java.io.File
 import java.math.BigInteger
 import java.text.DecimalFormat
 import java.util.*
@@ -145,6 +146,7 @@ class SendFragment : Fragment() {
     @RequiresApi(Build.VERSION_CODES.R)
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        context?.cacheDir?.let { viewModel.bindShareCache(it) }
 
         parentFragmentManager.setFragmentResultListener(REQUEST_SCAN_PAYMENT, viewLifecycleOwner) { _, bundle ->
             val decoded = bundle.getString(CameraFragmentBottomSheet.RESULT_TEXT) ?: return@setFragmentResultListener
@@ -253,6 +255,20 @@ class SendFragment : Fragment() {
             fragmentSpendBinding.fragmentBroadcastTx.psbtText.movementMethod = ScrollingMovementMethod()
         }
 
+        // #566: a reviewed input was spent or frozen. Close the review
+        // and say so. An unrelated coin change does not post this.
+        viewModel.freshReview.observe(viewLifecycleOwner) { resId ->
+            if (resId == null || _fragmentSpendBinding == null) return@observe
+            viewModel.consumeFreshReview()
+            toast(resId)
+            closeUnsignedScreen()
+        }
+        // A do-not-spend mark does not rewrite the UTXO rows, so the
+        // table observer never sees a freeze on its own.
+        UtxoMetaUtil.blockedChanges.observe(viewLifecycleOwner) {
+            viewModel.recheckReviewedInputs()
+        }
+
         viewModel.validSpend.observe(viewLifecycleOwner) {
             fragmentSpendBinding.composeBtn.isEnabled = it
             fragmentSpendBinding.composeBtn.alpha = if (it) 1f else 0.6f
@@ -312,25 +328,7 @@ class SendFragment : Fragment() {
                         sharePSBTFile()
                     }
                     R.id.menu_share_psbt -> {
-                        val psbtBytes: ByteArray? = viewModel.getPsbtBytes()
-                        val psbtFile = File(requireContext().cacheDir, "PSBT_transaction.psbt")
-                        psbtFile.writeBytes(psbtBytes!!)
-
-                        val uri = FileProvider.getUriForFile(
-                            requireContext(),
-                            "${requireContext().packageName}.provider",
-                            psbtFile
-                        )
-
-                        val sendIntent: Intent = Intent().apply {
-                            action = Intent.ACTION_SEND
-                            putExtra(Intent.EXTRA_STREAM, uri)
-                            type = "application/octet-stream"
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        }
-
-                        val shareIntent = Intent.createChooser(sendIntent, null)
-                        startActivity(shareIntent)
+                        shareReviewedPsbt()
                     }
                     R.id.menu_save_as_text_file -> {
                         saveTxtFile()
@@ -351,6 +349,13 @@ class SendFragment : Fragment() {
             if (!unsignedScreen.tryOpen()) return@setOnClickListener
             if (!viewModel.makeTx()) {
                 unsignedScreen.tryClose()
+                when (viewModel.takeSnapshotError()) {
+                    SendViewModel.PsbtSnapshotError.REBUILD_IN_FLIGHT ->
+                        toast(R.string.send_psbt_rebuilding)
+                    SendViewModel.PsbtSnapshotError.UNUSABLE ->
+                        toast(R.string.send_psbt_unusable)
+                    null -> Unit
+                }
                 return@setOnClickListener
             }
             requireActivity().window.statusBarColor = ContextCompat.getColor(requireContext(), R.color.v3_accent)
@@ -457,12 +462,53 @@ class SendFragment : Fragment() {
     }
 
 
-    fun getPsbtBytes() {
-        viewModel.getPsbtBytes()
+    /**
+     * #566: share the reviewed bytes. The cache file is that snapshot,
+     * not whatever the composer holds after a resume. A failure here
+     * (missing snapshot, FileProvider, no share target) is a message.
+     */
+    private fun shareReviewedPsbt() {
+        val host = context ?: return
+        val psbtFile = PsbtShareFiles.create(host.cacheDir)
+        val outcome = PsbtFileExport.write(
+            bytes = viewModel.getPsbtBytes(),
+            params = SentinelState.getNetworkParam(),
+            documentAlreadyExists = false,
+            open = { psbtFile.outputStream() },
+            delete = { if (psbtFile.exists()) psbtFile.delete() else true },
+        )
+        if (outcome !is PsbtFileExport.Outcome.Saved) {
+            toast(PsbtFileExport.messageRes(outcome, sharing = true))
+            return
+        }
+        try {
+            val uri = FileProvider.getUriForFile(
+                host,
+                "${host.packageName}.provider",
+                psbtFile
+            )
+            startActivity(PsbtShareFiles.chooser(uri))
+        } catch (t: Throwable) {
+            Timber.w(t, "PSBT share failed")
+            toast(R.string.send_share_failed)
+        }
     }
 
     private fun sharePSBTFile() {
-        viewModel.getPsbtBytes() ?: return
+        val refusal = PsbtFileExport.refusal(
+            viewModel.getPsbtBytes(),
+            SentinelState.getNetworkParam(),
+        )
+        if (refusal != null) {
+            toast(
+                if (refusal == PsbtFileExport.Refusal.MISSING) {
+                    R.string.send_export_again
+                } else {
+                    R.string.send_psbt_unusable
+                }
+            )
+            return
+        }
         val fileUUID = UUID.randomUUID()
         val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
@@ -473,7 +519,20 @@ class SendFragment : Fragment() {
     }
 
     private fun saveTxtFile() {
-        viewModel.psbtLive.value ?: return
+        val refusal = PsbtFileExport.textRefusal(
+            viewModel.psbtLive.value,
+            SentinelState.getNetworkParam(),
+        )
+        if (refusal != null) {
+            toast(
+                if (refusal == PsbtFileExport.Refusal.MISSING) {
+                    R.string.send_export_again
+                } else {
+                    R.string.send_psbt_unusable
+                }
+            )
+            return
+        }
         val fileUUID = UUID.randomUUID()
         val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
@@ -485,31 +544,49 @@ class SendFragment : Fragment() {
 
     /**
      * #361: the two save doors' results, consumed by the fragment that
-     * launched them - the #362 fragment-side shape. Content is sourced
-     * from the viewModel at result time, as the old activity handlers did.
+     * launched them - the #362 fragment-side shape. The text door still
+     * reads the reviewed snapshot at result time.
+     *
+     * #566: the PSBT door writes that same snapshot and nothing else.
+     * If the process died while the picker was open, the snapshot is
+     * gone: delete the empty document and ask for another export. Do
+     * not compose a new PSBT to fill it.
      */
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == REQ_CODE_SAVE_PSBT && resultCode == Activity.RESULT_OK) {
-            data?.data?.also { uri ->
-                val fileContent = viewModel.getPsbtBytes()
-                val outputStream = requireContext().contentResolver.openOutputStream(uri)
-                outputStream?.write(fileContent)
-                outputStream?.close()
+            val uri = data?.data ?: return
+            val outcome = PsbtFileExport.write(
+                bytes = viewModel.getPsbtBytes(),
+                params = SentinelState.getNetworkParam(),
+                documentAlreadyExists = true,
+                open = { context?.contentResolver?.openOutputStream(uri) },
+                delete = { context?.let { PsbtFileExport.deleteExportedDocument(it, uri) } ?: false },
+            )
+            if (outcome is PsbtFileExport.Outcome.Saved) {
                 view?.let { parent ->
                     requireActivity().showFloatingSnackBar(parent, text = "File saved to ${uri.path}")
                 }
+            } else {
+                toast(PsbtFileExport.messageRes(outcome, sharing = false))
             }
         }
         else if (requestCode == REQ_CODE_SAVE_TXT && resultCode == Activity.RESULT_OK) {
-            data?.data?.also { uri ->
-                val fileContent = viewModel.psbtLive.value
-                val outputStream = requireContext().contentResolver.openOutputStream(uri)
-                outputStream?.write(fileContent?.toByteArray())
-                outputStream?.close()
+            val uri = data?.data ?: return
+            val host = context ?: return
+            val outcome = PsbtFileExport.writeText(
+                text = viewModel.psbtLive.value,
+                params = SentinelState.getNetworkParam(),
+                documentAlreadyExists = true,
+                open = { host.contentResolver.openOutputStream(uri) },
+                delete = { PsbtFileExport.deleteExportedDocument(host, uri) },
+            )
+            if (outcome is PsbtFileExport.Outcome.Saved) {
                 view?.let { parent ->
                     requireActivity().showFloatingSnackBar(parent, text = "Txt file saved to ${uri.path}")
                 }
+            } else {
+                toast(PsbtFileExport.messageRes(outcome, sharing = false))
             }
         }
     }
@@ -608,6 +685,9 @@ class SendFragment : Fragment() {
      * still close if the two ever diverge.
      */
     private fun closeUnsignedScreen() {
+        // #566: the reviewed PSBT does not outlive the screen. The
+        // cache file is a separate follow-up and is not deleted here.
+        viewModel.clearReviewedPsbt()
         val unsigned = fragmentSpendBinding.fragmentBroadcastTx.unsignedTxView
         val wasOpen = unsignedScreen.tryClose()
         if (!wasOpen && unsigned.visibility != VISIBLE) return
@@ -1054,7 +1134,15 @@ class SendFragment : Fragment() {
         }
     }
 
+    private fun toast(resId: Int) {
+        val host = context ?: return
+        Toast.makeText(host, host.getString(resId), Toast.LENGTH_LONG).show()
+    }
+
     private fun generateQRCode(uri: String) {
+        // Clearing the review publishes an empty string. There is no QR
+        // to draw for that, and decoding it is not a PSBT.
+        if (uri.isEmpty()) return
         viewModel.viewModelScope.launch(Dispatchers.Default) {
             withContext(Dispatchers.Main) {
                 fragmentSpendBinding.fragmentBroadcastTx.psbtQRCode.maxFragmentLength = 40

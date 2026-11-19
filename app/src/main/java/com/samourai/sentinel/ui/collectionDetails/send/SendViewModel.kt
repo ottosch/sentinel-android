@@ -6,17 +6,21 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.samourai.sentinel.R
 import com.samourai.sentinel.data.PubKeyCollection
 import com.samourai.sentinel.data.PubKeyModel
 import com.samourai.sentinel.data.Utxo
 import com.samourai.sentinel.core.SentinelState
 import com.samourai.sentinel.data.db.dao.UtxoDao
+import com.samourai.wallet.psbt.PSBT
+import org.bouncycastle.util.encoders.Hex
 import com.samourai.sentinel.send.FeeUtil
 import com.samourai.sentinel.send.SuggestedFee
 import com.samourai.sentinel.util.FormatsUtil
 import com.samourai.sentinel.util.MonetaryUtil
 import com.samourai.sentinel.util.UtxoMetaUtil
 import kotlinx.coroutines.Dispatchers
+import java.io.File
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -49,6 +53,28 @@ class SendViewModel : ViewModel() {
 
     private val _psbt = MutableLiveData("")
     val psbtLive: LiveData<String> = _psbt
+
+    /**
+     * #566: the PSBT the user reviewed, captured once at [makeTx].
+     * QR, text, and both file exports read this. None of them re-read
+     * the composer, which [prepareSpend] rebuilds on resume and on
+     * every coin-set update.
+     */
+    private var reviewedPsbt: ReviewedPsbt? = null
+
+    /**
+     * #566: why [makeTx] refused to open the review. Consumed by the
+     * screen so the message is shown once.
+     */
+    private var snapshotError: PsbtSnapshotError? = null
+
+    /**
+     * #566: a reviewed input was spent or frozen. The value is the
+     * string the screen shows as it closes the review. Null when the
+     * review still holds.
+     */
+    private val _freshReview = MutableLiveData<Int?>(null)
+    val freshReview: LiveData<Int?> = _freshReview
 
     private val _minerFee = MutableLiveData("")
     val minerFee: LiveData<String> = _minerFee
@@ -84,6 +110,14 @@ class SendViewModel : ViewModel() {
          * number, or out of range). The field says which.
          */
         INVALID_FEE
+    }
+
+    /** #566: [makeTx] did not take a snapshot. */
+    enum class PsbtSnapshotError {
+        /** A compose is still running, or the previous one is no longer valid. */
+        REBUILD_IN_FLIGHT,
+        /** The composer held no bytes, or they do not parse as a PSBT. */
+        UNUSABLE,
     }
 
     private val _spendBlocker = MutableLiveData(SpendBlocker.NO_ADDRESS)
@@ -186,6 +220,8 @@ class SendViewModel : ViewModel() {
         lifecycleOwner: LifecycleOwner,
         mCollection: PubKeyCollection
     ) {
+        // #566: a review belongs to the account it was composed against.
+        clearReviewedPsbt()
         // #190: a pin belongs to the account it was made against.
         _pinnedOutpoints.value = emptySet()
         _pinnedTotal.value = null
@@ -411,6 +447,10 @@ class SendViewModel : ViewModel() {
         utxos.clear()
         utxos.addAll(visible)
         _utxoPool.value = visible
+        // #566: resume and every coin-set write come through here.
+        // Close the review only when a reviewed input itself is gone
+        // or frozen. A rebuild of the composer is not that.
+        noteReviewedInputs(raw) { UtxoMetaUtil.has(it) }
         if (utxos.isEmpty()) {
             block(SpendBlocker.NO_FUNDS)
         } else {
@@ -454,25 +494,141 @@ class SendViewModel : ViewModel() {
         prepareSpend()
     }
 
+    /**
+     * #566: take the snapshot the review screen will show and export.
+     *
+     * Called from the Compose tap, on the main thread, so [_psbt] is
+     * published with [MutableLiveData.setValue] before the screen
+     * opens. Refuses while a compose is still running and when the
+     * bytes are missing or do not parse: [PSBT.toBytes] swallows a
+     * serialization failure and returns null, and [PSBT.toString]
+     * would then crash. Nothing is published in that case.
+     */
     fun makeTx(): Boolean {
-        if (validSpend.value == true) {
-            val psbt = transactionComposer.getPSBT()
-            psbt?.let {
-                _psbt.postValue(it.toString())
-                return true
-            }
+        snapshotError = null
+        if (job?.isActive == true || _validSpend.value != true) {
+            snapshotError = PsbtSnapshotError.REBUILD_IN_FLIGHT
             return false
         }
-        return false
+        val params = SentinelState.getNetworkParam()
+        val live = transactionComposer.getPSBT()
+        val raw = try {
+            live?.toBytes()
+        } catch (t: Throwable) {
+            Timber.e(t, "PSBT bytes were not usable")
+            null
+        }
+        if (params == null || PsbtFileExport.refusal(raw, params) != null || raw == null) {
+            snapshotError = PsbtSnapshotError.UNUSABLE
+            return false
+        }
+        val parsed = try {
+            PSBT.fromBytes(raw, params)
+        } catch (t: Throwable) {
+            Timber.e(t, "PSBT bytes did not parse")
+            snapshotError = PsbtSnapshotError.UNUSABLE
+            return false
+        }
+        val inputs = parsed.transaction?.inputs.orEmpty()
+        if (!parsed.isParseOK || inputs.isEmpty()) {
+            snapshotError = PsbtSnapshotError.UNUSABLE
+            return false
+        }
+        // Same "txid:vout" key the coin picker stores, taken from the
+        // parsed bytes so a later edit of the live PSBT cannot move them.
+        val outpoints = try {
+            inputs.map { input ->
+                val outpoint = input.outpoint ?: return@map null
+                "${outpoint.hash}:${outpoint.index}"
+            }.filterNotNull().toSet()
+        } catch (t: Throwable) {
+            Timber.e(t, "PSBT inputs were not usable")
+            snapshotError = PsbtSnapshotError.UNUSABLE
+            return false
+        }
+        if (outpoints.size != inputs.size) {
+            snapshotError = PsbtSnapshotError.UNUSABLE
+            return false
+        }
+        reviewedPsbt = ReviewedPsbt(raw.copyOf(), outpoints)
+        _psbt.value = Hex.toHexString(raw)
+        return true
     }
 
-    fun getPsbtBytes(): ByteArray? {
-        if (validSpend.value == true) {
-            val psbt = transactionComposer.getPSBT()
-            return psbt?.toBytes()
+    /** #566: the bytes [makeTx] captured. Null when there is no review. */
+    fun getPsbtBytes(): ByteArray? = reviewedPsbt?.bytes?.copyOf()
+
+    /** #566: why the last [makeTx] returned false. Null after it is read. */
+    fun takeSnapshotError(): PsbtSnapshotError? =
+        snapshotError.also { snapshotError = null }
+
+    /**
+     * #566: directory that holds the per-share cache files. Set by the
+     * screen. [clearReviewedPsbt] deletes them.
+     */
+    private var shareCacheDir: File? = null
+
+    fun bindShareCache(dir: File) {
+        shareCacheDir = dir
+    }
+
+    /**
+     * #566: drop the reviewed PSBT. The screen calls this when the
+     * review closes; [setPublicKey] calls it when the account changes.
+     * Each share file in [shareCacheDir] is deleted with it.
+     */
+    fun clearReviewedPsbt() {
+        reviewedPsbt = null
+        snapshotError = null
+        _psbt.value = ""
+        shareCacheDir?.let { PsbtShareFiles.deleteAll(it) }
+    }
+
+    fun consumeFreshReview() {
+        _freshReview.value = null
+    }
+
+    /** The outpoints [makeTx] froze into the snapshot. Empty when there is no review. */
+    internal fun reviewedOutpoints(): Set<String> = reviewedPsbt?.outpoints ?: emptySet()
+
+    /**
+     * #566: a reviewed input spent elsewhere is absent from [raw]; a
+     * reviewed input frozen since the review is [isBlocked]. Either
+     * one closes the review. Any other coin arriving, leaving, or
+     * being frozen does not.
+     *
+     * @return the fresh-review string, or null when the review still holds.
+     */
+    internal fun noteReviewedInputs(
+        raw: List<Utxo>,
+        isBlocked: (Utxo) -> Boolean,
+    ): Int? {
+        val reviewed = reviewedPsbt ?: return null
+        val resolution = CoinSelection.resolve(reviewed.outpoints, raw, isBlocked)
+        if (resolution is CoinSelection.Resolution.Missing ||
+            resolution is CoinSelection.Resolution.Blocked
+        ) {
+            clearReviewedPsbt()
+            _freshReview.value = R.string.send_review_inputs_changed
+            return R.string.send_review_inputs_changed
         }
         return null
     }
 
+    /**
+     * #566: a do-not-spend mark does not rewrite the UTXO rows, so the
+     * table observer never runs. The screen calls this when the marks
+     * change. No reviewed snapshot, or no coin set yet, is a no-op:
+     * an empty pool must not look like every input was spent.
+     */
+    fun recheckReviewedInputs() {
+        val raw = lastRawUtxos
+        if (raw.isEmpty() || reviewedPsbt == null) return
+        noteReviewedInputs(raw) { UtxoMetaUtil.has(it) }
+    }
 
+    private class ReviewedPsbt(
+        val bytes: ByteArray,
+        val outpoints: Set<String>,
+    )
 }

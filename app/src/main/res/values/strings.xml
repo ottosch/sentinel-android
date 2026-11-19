@@ -601,6 +601,14 @@
     <string name="send_error_selection_insufficient" translatable="false">Selected coins do not cover the amount plus fee</string>
     <string name="send_error_selection_blocked" translatable="false">A selected coin is now marked do-not-spend. Review your coin selection</string>
     <string name="send_error_selection_missing" translatable="false">A selected coin is no longer unspent. Review your coin selection</string>
+    <!-- #566: the reviewed PSBT could not be exported, or is no longer the one on screen. -->
+    <string name="send_psbt_rebuilding" translatable="false">The transaction is still updating. Try again.</string>
+    <string name="send_psbt_unusable" translatable="false">This transaction could not be built. Try again.</string>
+    <string name="send_review_inputs_changed" translatable="false">A coin in this transaction was spent or frozen. Review it again.</string>
+    <string name="send_export_again" translatable="false">This transaction is no longer here. Export it again.</string>
+    <string name="send_export_failed" translatable="false">Could not save the file.</string>
+    <string name="send_share_failed" translatable="false">Could not share the file.</string>
+    <string name="send_export_incomplete" translatable="false">The file may be incomplete. Remove it.</string>
     <string name="coin_picker_title" translatable="false">Coin control</string>
     <string name="coin_picker_inputs_label" translatable="false">Inputs</string>
     <string name="coin_picker_mode_auto" translatable="false">Automatic</string>

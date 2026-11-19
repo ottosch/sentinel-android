@@ -68,9 +68,9 @@ class ScreenLatchTest {
         assertTrue(send.contains("if (!viewModel.makeTx())"))
         assertEquals(2, occurrences(send, "unsignedScreen.tryClose()"))
         assertTrue(send.contains("private fun closeUnsignedScreen()"))
-        // The two call sites (toolbar close and system Back), not the
-        // definition, which is `closeUnsignedScreen() {`.
-        assertEquals(2, occurrences(send, "closeUnsignedScreen()\n"))
+        // Toolbar close, system Back, and a reviewed input that was
+        // spent or frozen. Not the definition, which is `closeUnsignedScreen() {`.
+        assertEquals(3, occurrences(send, "closeUnsignedScreen()\n"))
         assertTrue(send.contains("TransitionManager.endTransitions(sceneRoot)"))
 
         assertTrue(send.contains("if (!broadcastScreen.tryOpen()) return@setOnClickListener"))
