@@ -109,11 +109,10 @@ class TransactionsListFragment : Fragment() {
 
         val decorator = RecyclerViewItemDividerDecorator(ContextCompat.getDrawable(requireContext(), R.drawable.divider_tx)!!)
         transactionsRecycler.addItemDecoration(decorator)
-        // Pub label -> account role, once per page. Bind looks this up
-        // by the row's associatedPubKey; it does not reclassify the tx.
-        transactionAdapter.pubRoles = transactionViewModel.pubKeyCollection.pubs.associate { pub ->
-            pub.pubKey to TxPerspectiveLabel.roleForPubLabel(pub.label)
-        }
+        // Account role from the xpub (Bad Bank / Premix / Deposit).
+        // The pub label is only the fallback for a key that does not
+        // decode. Bind looks the role up by associatedPubKey.
+        bindPubRoles()
         transactionAdapter.setOnclickListener { tx ->
             val role = transactionAdapter.pubRoles[tx.associatedPubKey]
                 ?: TxPerspectiveLabel.Role.OTHER
@@ -141,7 +140,19 @@ class TransactionsListFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
+        // A renamed pub, and the Whirlpool auto-labels toggle, are both
+        // read on the way back from Settings. The toggle is display-only:
+        // rebinding does not write label rows.
+        if (view != null) {
+            bindPubRoles()
+        }
         transactionAdapter.notifyDataSetChanged()
+    }
+
+    private fun bindPubRoles() {
+        transactionAdapter.pubRoles = transactionViewModel.pubKeyCollection.pubs.associate { pub ->
+            pub.pubKey to TxPerspectiveLabel.roleForPub(pub.pubKey, pub.label)
+        }
     }
 
     companion object {

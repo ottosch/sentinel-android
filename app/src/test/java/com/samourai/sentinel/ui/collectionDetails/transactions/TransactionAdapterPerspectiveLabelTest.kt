@@ -66,6 +66,7 @@ class TransactionAdapterPerspectiveLabelTest {
         val app = ApplicationProvider.getApplicationContext<Application>()
         prefs = PrefsUtil(app)
         prefs.streetMode = false
+        prefs.whirlpoolAutoLabels = true
         startKoin {
             androidContext(app)
             modules(
@@ -78,7 +79,10 @@ class TransactionAdapterPerspectiveLabelTest {
 
     @After
     fun tearDown() {
-        if (this::prefs.isInitialized) prefs.streetMode = false
+        if (this::prefs.isInitialized) {
+            prefs.streetMode = false
+            prefs.whirlpoolAutoLabels = false
+        }
         if (GlobalContext.getOrNull() != null) stopKoin()
     }
 
@@ -184,6 +188,60 @@ class TransactionAdapterPerspectiveLabelTest {
         ).single()
         assertRemixUnchanged(holder)
         assertEquals(View.GONE, holder.txLabel.visibility)
+    }
+
+    @Test
+    fun toggleOffHidesAutoLabelsOnEveryRoleAndKeepsManualAndImported() {
+        prefs.whirlpoolAutoLabels = false
+        val importedTxid = "34".repeat(32)
+        val holders = bind(
+            listOf(
+                row(txid, 1, depositPub, result = -50_000_000L),
+                row(txid, 2, premixPub, result = 12_500_000L),
+                row(txid, 3, badBankPub, result = 180_000L),
+                row(txid, 4, postmixPub, result = 1L),
+                row(mixTxid, 1, premixPub, result = 2_500_000L),
+                row(manualTxid, 1, premixPub, result = 12_500_000L),
+                row(importedTxid, 1, badBankPub, result = 1L),
+            ),
+            labels = mapOf(
+                txid to tx0,
+                mixTxid to TxLabelDetail("Whirlpool Mix", autoOrigin),
+                manualTxid to TxLabelDetail("Whirlpool Tx0", null),
+                importedTxid to TxLabelDetail("invoice", "sparrow"),
+            ),
+        )
+        holders.take(5).forEach { holder ->
+            assertEquals(View.GONE, holder.txLabel.visibility)
+        }
+        assertEquals(View.VISIBLE, holders[5].txLabel.visibility)
+        assertEquals("Whirlpool Tx0", holders[5].txLabel.text.toString())
+        assertEquals(View.VISIBLE, holders[6].txLabel.visibility)
+        assertEquals("invoice", holders[6].txLabel.text.toString())
+    }
+
+    @Test
+    fun toggleBackOnRestoresThePerspectiveWithoutAnotherLabelMap() {
+        val txs = listOf(
+            row(txid, 1, depositPub, result = -50_000_000L),
+            row(txid, 2, premixPub, result = 12_500_000L),
+            row(txid, 3, badBankPub, result = 180_000L),
+            row(mixTxid, 1, postmixPub, result = 2_500_000L),
+        )
+        val labels = mapOf(
+            txid to tx0,
+            mixTxid to TxLabelDetail("Whirlpool Mix", autoOrigin),
+        )
+        prefs.whirlpoolAutoLabels = false
+        bind(txs, labels).forEach { holder ->
+            assertEquals(View.GONE, holder.txLabel.visibility)
+        }
+        prefs.whirlpoolAutoLabels = true
+        val shown = bind(txs, labels)
+        assertEquals("Whirlpool Tx0", shown[0].txLabel.text.toString())
+        assertEquals("Whirlpool Premix", shown[1].txLabel.text.toString())
+        assertEquals("Bad Bank", shown[2].txLabel.text.toString())
+        assertEquals("Whirlpool Mix", shown[3].txLabel.text.toString())
     }
 
     @Test
