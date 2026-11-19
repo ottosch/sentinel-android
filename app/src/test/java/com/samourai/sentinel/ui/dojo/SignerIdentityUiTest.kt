@@ -19,7 +19,7 @@ import org.robolectric.annotation.Config
 
 /**
  * The dialog and row states for the signer: the directory name and flag
- * (plain metadata, no chip or caption), the grouped full code and PayNym link, the same-name warning, and
+ * with the dialog's "not signed" caption (no chip, here or on list rows), the grouped full code and PayNym link, the same-name warning, and
  * a row's collapsed and expanded code. Inflated from the real layouts.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -38,7 +38,7 @@ class SignerIdentityUiTest {
     private fun View.text(id: Int) = findViewById<TextView>(id).text.toString()
 
     @Test
-    fun `a picked listing shows the name and flag, the full grouped code and the link`() {
+    fun `a picked listing shows the name and flag, the not-signed caption, the full grouped code and the link`() {
         val view = dialog()
         val views = PrePairDialogViews(view)
         views.bindHeader(DojoDirectoryHeader("🇸🇬", "QA valid (signed)"), "Unnamed")
@@ -48,6 +48,12 @@ class SignerIdentityUiTest {
         assertTrue(view.shown(R.id.dojoPairingDirectoryHeader))
         assertEquals("QA valid (signed)", view.text(R.id.dojoPairingDirectoryName))
         assertEquals("🇸🇬", view.text(R.id.dojoPairingDirectoryFlag))
+        // The name and flag are the directory's, outside the signature: one short caption says so.
+        assertTrue(view.shown(R.id.dojoPairingDirectoryCaption))
+        assertEquals(
+            "Name and location are set by the directory and are not signed.",
+            view.text(R.id.dojoPairingDirectoryCaption),
+        )
         assertTrue(view.shown(R.id.dojoPairingSignerSection))
         assertEquals(SignerCodeFormat.displayCode(qa), view.text(R.id.dojoPairingSignerCode))
         assertEquals(qa, SignerCodeFormat.compact(view.text(R.id.dojoPairingSignerCode)))
@@ -76,6 +82,7 @@ class SignerIdentityUiTest {
         views.bindHeader(null, "Unnamed")
         views.bindSigner(null) {}
         assertFalse(view.shown(R.id.dojoPairingDirectoryHeader))
+        assertFalse(view.shown(R.id.dojoPairingDirectoryCaption))
         assertFalse(view.shown(R.id.dojoPairingSignerSection))
     }
 

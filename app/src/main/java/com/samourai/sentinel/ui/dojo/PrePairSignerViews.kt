@@ -33,7 +33,7 @@ fun prePairSigner(
 
 /**
  * Binds dialog_dojo_pairing_details: the directory header with its
- * name and flag, the Dojo version
+ * name and flag and the "not signed" caption under them, the Dojo version
  * row (signed) with the directory's unsigned version labelled under it, and
  * the "Signed by" section. Kept apart from
  * the sheet so the dialog states can be bound and checked in tests.
@@ -43,6 +43,7 @@ class PrePairDialogViews(val root: View) {
     private val header: View = root.findViewById(R.id.dojoPairingDirectoryHeader)
     private val name: TextView = root.findViewById(R.id.dojoPairingDirectoryName)
     private val flag: TextView = root.findViewById(R.id.dojoPairingDirectoryFlag)
+    private val caption: View = root.findViewById(R.id.dojoPairingDirectoryCaption)
     private val versionRow: View = root.findViewById(R.id.dojoPairingVersionRow)
     private val versionValue: TextView = root.findViewById(R.id.dojoPairingVersionValue)
     private val directoryVersion: TextView = root.findViewById(R.id.dojoPairingDirectoryVersion)
@@ -98,6 +99,7 @@ class PrePairDialogViews(val root: View) {
     fun bindHeader(directory: DojoDirectoryHeader?, unnamed: String) {
         if (directory == null) {
             header.visibility = View.GONE
+            caption.visibility = View.GONE
             return
         }
         name.text = directory.name ?: unnamed
@@ -108,6 +110,8 @@ class PrePairDialogViews(val root: View) {
             flag.visibility = View.GONE
         }
         header.visibility = View.VISIBLE
+        // The name and flag come from the directory, outside the signature.
+        caption.visibility = View.VISIBLE
     }
 
     /**

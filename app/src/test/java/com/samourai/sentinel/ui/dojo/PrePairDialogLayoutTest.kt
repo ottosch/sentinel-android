@@ -21,7 +21,8 @@ import org.robolectric.annotation.Config
 
 /**
  * The layout file alone (dialog_dojo_pairing_details) on a short window with
- * every section shown (header, all rows, the signer with avatar, +name, code
+ * every section shown (header, the not-signed caption, all rows, the
+ * directory's unsigned version line, the signer with avatar, +name, code
  * and link, and the same-name warning), in a dialog built the way the sheet
  * builds it: Pair and Don't pair stay on screen and the body scrolls. With
  * master's setMessage + setView shape, the same body at this height put the
@@ -56,6 +57,7 @@ class PrePairDialogLayoutTest {
             view.findViewById<TextView>(value).text = "http://" + "a".repeat(56) + ".onion/v2"
             view.findViewById<View>(row).visibility = View.VISIBLE
         }
+        views.bindVersion("http://" + "a".repeat(56) + ".onion/v2", "a".repeat(32))
         return view
     }
 

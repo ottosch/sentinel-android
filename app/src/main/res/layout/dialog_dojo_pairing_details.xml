@@ -74,6 +74,18 @@
             tools:text="Community Dojo" />
     </LinearLayout>
 
+    <!-- The directory's name, flag and location are not signed. -->
+    <TextView
+        android:id="@+id/dojoPairingDirectoryCaption"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:text="@string/dojo_pairing_directory_not_signed"
+        android:textColor="#9A9A9A"
+        android:textSize="12sp"
+        android:visibility="gone"
+        tools:visibility="visible" />
+
     <LinearLayout
         android:id="@+id/dojoPairingJurisdictionRow"
         android:layout_width="match_parent"
