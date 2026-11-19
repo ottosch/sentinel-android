@@ -1,8 +1,12 @@
 package com.samourai.sentinel.ui.settings
 
+import android.os.Handler
+import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
+import com.samourai.sentinel.BuildConfig
 import com.samourai.sentinel.R
+import timber.log.Timber
 
 /**
  * Where the Dojo row's status line sits. At rest it is right under the
@@ -15,7 +19,20 @@ import com.samourai.sentinel.R
  */
 internal object DojoRowLayout {
 
-    fun placeStatus(row: View, wide: Boolean) {
+    /**
+     * Main thread only. Off it, removeView succeeds and addView then
+     * throws, which would leave the Dojo status detached and silently gone
+     * from the screen. So nothing is touched off the main thread: a debug
+     * build fails loudly ([strict]); a release build logs it and makes the
+     * move on the main thread instead.
+     */
+    fun placeStatus(row: View, wide: Boolean, strict: Boolean = BuildConfig.DEBUG) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            check(!strict) { "DojoRowLayout.placeStatus called off the main thread" }
+            Timber.e("DojoRowLayout.placeStatus called off the main thread; moved to the main thread")
+            Handler(Looper.getMainLooper()).post { placeStatus(row, wide, strict) }
+            return
+        }
         val status = row.findViewById<View>(R.id.network_dojo_status) ?: return
         val target = row.findViewById<ViewGroup>(
             if (wide) R.id.network_dojo_column else R.id.network_dojo_title_block

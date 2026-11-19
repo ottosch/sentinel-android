@@ -1,6 +1,7 @@
 package com.samourai.sentinel.ui.settings
 
 import android.app.Application
+import android.os.Looper
 import android.view.ContextThemeWrapper
 import android.view.LayoutInflater
 import android.view.View
@@ -15,11 +16,13 @@ import androidx.test.core.app.ApplicationProvider
 import com.samourai.sentinel.R
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /**
@@ -120,5 +123,39 @@ class NetworkRowsLayoutTest {
         val dirRow = root.findViewById<ViewGroup>(R.id.network_directory_layout)
         assertEquals(0, dirRow.paddingStart)
         assertNotNull(ContextCompat.getDrawable(themed, R.drawable.ic_dojobay_logo))
+    }
+
+    private fun offMain(block: () -> Unit): Throwable? {
+        var thrown: Throwable? = null
+        val t = Thread { try { block() } catch (e: Throwable) { thrown = e } }
+        t.start()
+        t.join()
+        return thrown
+    }
+
+    @Test
+    fun `off the main thread a debug build fails loudly and leaves the status where it was`() {
+        val row = inflate().findViewById<ViewGroup>(R.id.network_dojo_layout)
+        val status = row.findViewById<TextView>(R.id.network_dojo_status)
+        val block = row.findViewById<ViewGroup>(R.id.network_dojo_title_block)
+        DojoRowLayout.placeStatus(row, wide = false)
+        val thrown = offMain { DojoRowLayout.placeStatus(row, wide = true, strict = true) }
+        assertTrue(thrown is IllegalStateException)
+        // Nothing was removed: the status is not orphaned.
+        assertSame(block, status.parent)
+        assertSame(status, row.findViewById<View>(R.id.network_dojo_status))
+    }
+
+    @Test
+    fun `off the main thread a release build touches nothing there and moves the status on the main thread`() {
+        val row = inflate().findViewById<ViewGroup>(R.id.network_dojo_layout)
+        val status = row.findViewById<TextView>(R.id.network_dojo_status)
+        val block = row.findViewById<ViewGroup>(R.id.network_dojo_title_block)
+        val column = row.findViewById<ViewGroup>(R.id.network_dojo_column)
+        DojoRowLayout.placeStatus(row, wide = false)
+        assertNull(offMain { DojoRowLayout.placeStatus(row, wide = true, strict = false) })
+        assertSame(block, status.parent)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertSame(column, status.parent)
     }
 }
