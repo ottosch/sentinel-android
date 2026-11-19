@@ -7,11 +7,14 @@ import android.view.View
 import android.view.View.MeasureSpec
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import androidx.test.core.app.ApplicationProvider
 import com.samourai.sentinel.R
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -20,11 +23,13 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * The Network screen's Dojo row:
+ * The Network screen's Dojo and Dojo Bay rows:
  * - At rest the Dojo status sits right under "Dojo Full Node", beside the
  *   buttons, with no blank line between them, paired ("Change / Disable"
  *   on two lines) or not. A burst label moves under the buttons, across
  *   the column (#488), and back again.
+ * - The Dojo Bay row shows Dojo Bay's logo in the status column the other
+ *   rows use, where it used to have an empty 64dp gap.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w411dp-h891dp-xxhdpi")
@@ -98,5 +103,22 @@ class NetworkRowsLayoutTest {
             assertSame(block, status.parent)
             assertEquals(1, (0 until block.childCount).count { block.getChildAt(it) === status })
         }
+    }
+
+    @Test
+    fun `the Dojo Bay row shows Dojo Bay's logo in the status column`() {
+        val root = inflate()
+        layout(root)
+        val icon = root.findViewById<ImageView>(R.id.network_directory_icon)
+        assertNotNull(icon.drawable)
+        assertEquals("Dojo Bay", icon.contentDescription)
+        val d = themed.resources.displayMetrics.density
+        assertEquals((64 * d).toInt(), icon.width)
+        val torIcon = root.findViewById<View>(R.id.network_tor_status_icon)
+        assertEquals(torIcon.left, icon.left)
+        assertEquals(torIcon.width, icon.width)
+        val dirRow = root.findViewById<ViewGroup>(R.id.network_directory_layout)
+        assertEquals(0, dirRow.paddingStart)
+        assertNotNull(ContextCompat.getDrawable(themed, R.drawable.ic_dojobay_logo))
     }
 }

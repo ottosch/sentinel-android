@@ -458,21 +458,36 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center_vertical"
-                android:orientation="vertical"
-                android:paddingStart="64dp"
+                android:orientation="horizontal"
                 android:paddingEnd="16dp">
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/network_directory_row_title"
-                    android:textColor="@color/white"
-                    android:textStyle="bold" />
+                <!-- Dojo Bay's own mark in the status column the other rows use. -->
+                <ImageView
+                    android:id="@+id/network_directory_icon"
+                    android:layout_width="64dp"
+                    android:layout_height="24dp"
+                    android:contentDescription="@string/network_directory_logo_description"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_dojobay_logo" />
 
-                <TextView
-                    android:id="@+id/network_directory_status"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/network_directory_row_title"
+                        android:textColor="@color/white"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/network_directory_status"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" />
+                </LinearLayout>
             </LinearLayout>
 
             <View

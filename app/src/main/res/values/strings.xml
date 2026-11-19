@@ -268,6 +268,7 @@
     <string name="dojobay_address_invalid_port" translatable="false">The port must be between 1 and 65535.</string>
     <string name="dojobay_address_invalid_extras" translatable="false">Remove the user name, query, or fragment from the address</string>
     <string name="network_directory_row_title" translatable="false">Dojo Bay directory</string>
+    <string name="network_directory_logo_description" translatable="false">Dojo Bay</string>
     <string name="network_directory_default" translatable="false">Default · %1$s</string>
     <string name="network_directory_custom" translatable="false">Custom · %1$s</string>
     <string name="community_dojo_signed_by" translatable="false">Signed by %1$s</string>
