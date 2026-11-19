@@ -268,6 +268,9 @@ data class DojoDisplaySnapshot(
     // Another listing in the same list used this name under a different
     // signer when it was picked: the pre-pair dialog warns. Not saved.
     val nameCollision: Boolean = false,
+    // The directory's version for the picked listing, as its row shows it.
+    // Not saved: only the pre-pair dialog reads it.
+    val version: String? = null,
 )
 
 /**
@@ -339,7 +342,15 @@ fun pairingDetailRows(
     return PairingDetailRows(
         jurisdiction = jurisdiction,
         url = pairingUrl,
-        version = pairing.pairing?.version?.takeIf { it.isNotBlank() },
+        // The version the directory reports for the picked listing (the
+        // same value as its list row), url-match-guarded like jurisdiction.
+        // The pairing payload's own version is what the Dojo had when its
+        // pairing code was made and goes stale; it is used only when there
+        // is no matching listing (a scan or paste).
+        version = snapshot
+            ?.takeIf { pairingUrl != null && it.url == pairingUrl }
+            ?.version?.takeIf { it.isNotBlank() }
+            ?: pairing.pairing?.version?.takeIf { it.isNotBlank() },
         explorer = pairing.explorer?.url?.takeIf { it.isNotBlank() },
         network = declaredNetwork ?: NetworkClassifier.fromUrl(pairingUrl),
     )
@@ -875,10 +886,10 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
      * string. The directory header and the Jurisdiction row render
      * only for a matching directory snapshot; URL/Dojo
      * version/Explorer rows render only when the payload carries
-     * them - absent means absent, never a placeholder. Title,
-     * lead-in and Pair/Don't-pair stay on the builder. Non-cancelable
-     * by design: an outside tap would be a silent decline, and the
-     * explicit buttons own the decision. The apikey never renders
+     * them - absent means absent, never a placeholder. Title and
+     * Pair/Don't-pair stay on the builder; the lead-in sits at the top
+     * of the scrolling view. An outside tap does nothing (it would be a
+     * silent decline); Back is Don't pair. The apikey never renders
      * (see DojoUtility.getPairing's FLAG_SECURE note). #261: the
      * dialog opens BEFORE any network contact - directly on
      * selection - so the success checkmark that used to render behind
@@ -961,18 +972,25 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
                 )
             else -> ""
         }
+        // The message sits inside the scrolling view, not on the builder:
+        // setMessage plus setView gives the dialog two middle panels, and a
+        // tall body then pushes Pair / Don't pair off screen.
+        view.findViewById<TextView>(R.id.dojoPairingMessage).text = message
         val dialog = MaterialAlertDialogBuilder(requireContext())
             .setTitle(getString(R.string.dojo_pairing_confirm_title))
-            .setMessage(message)
             .setView(view)
-            .setCancelable(false)
             .setPositiveButton(getString(R.string.dojo_pairing_confirm_accept)) { _, _ ->
                 onPairingConfirmTapped()
             }
             .setNegativeButton(getString(R.string.dojo_pairing_confirm_decline)) { _, _ ->
                 onPairingDeclineTapped()
             }
-            .show()
+            // Back is Don't pair. An outside tap still does nothing, so a
+            // stray touch is never a silent decline.
+            .setOnCancelListener { onPairingDeclineTapped() }
+            .create()
+        dialog.setCanceledOnTouchOutside(false)
+        dialog.show()
         // The signer's PayNym avatar and +name, looked up now that the dialog
         // is open, from the signed code, over Tor only (PayNymLookup). This
         // goes to PayNym's onion, not to the Dojo: the Dojo still sees

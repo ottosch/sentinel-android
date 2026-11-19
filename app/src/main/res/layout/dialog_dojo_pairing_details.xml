@@ -1,13 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!--
+  The whole body scrolls, and the lead-in message lives here rather than on
+  the builder. An AlertDialog with both setMessage and setView has two
+  middle panels, so AlertDialogLayout falls back to a plain LinearLayout
+  measure and a tall body (the signer section) pushes Pair / Don't pair
+  off the bottom of the screen. With one scrolling middle panel the
+  buttons are measured first and always stay on screen.
+-->
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/dojoPairingScroll"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:fillViewport="false"
+    android:scrollbarStyle="outsideOverlay"
+    android:scrollbars="vertical">
+
+<LinearLayout
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:paddingHorizontal="24dp"
     android:paddingTop="8dp"
     android:paddingBottom="16dp">
+
+    <TextView
+        android:id="@+id/dojoPairingMessage"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="12dp"
+        android:textColor="#c7c7c7"
+        android:textSize="14sp"
+        tools:text="@string/dojo_pairing_confirm_message" />
 
     <!--
       #256: the PRE-PAIR confirmation dialog's detail view, carried by
@@ -332,3 +357,5 @@
     </LinearLayout>
 
 </LinearLayout>
+
+</androidx.core.widget.NestedScrollView>

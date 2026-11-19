@@ -148,6 +148,28 @@ class PayNymLookupTest {
         assertNull(nameFrom("<html>"))
     }
 
+    @Test
+    fun `a busy nym's answer over 64 KiB still gives its name, through the real transport cap`() {
+        // A nym with a few hundred followers: the answer lists them all
+        // (+max's was 65,763 bytes in Nov 2026).
+        val follower = """{"code":"PM8T${"x".repeat(112)}","nymId":"nymABCDEFGHIJKLMNOPQRSTUV","nymName":"+somefollower00","segwit":true}"""
+        val followers = (1..400).joinToString(",") { follower }
+        val body = """{"nymName":"+examplenym","nymID":"x","codes":[{"claimed":true,"code":"$code","segwit":true}],"followers":[$followers],"following":[]}"""
+        assertTrue(body.length > 64 * 1024)
+        assertTrue(body.length < PayNymLookup.MAX_NYM_BYTES)
+        val server = MockWebServer()
+        server.start()
+        try {
+            val client = OkHttpClient.Builder().followRedirects(false).callTimeout(5, TimeUnit.SECONDS).build()
+            val t = OkHttpPayNymTransport(client, server.url("/").toString().toHttpUrl())
+            server.enqueue(MockResponse().setBody(body))
+            assertEquals("+examplenym", runBlocking { PayNymFetcher(t).name(code) })
+            t.close()
+        } finally {
+            server.shutdown()
+        }
+    }
+
     // ---- the lookup: Tor only, cached ------------------------------------------------
 
     private val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress.createUnresolved("127.0.0.1", 9050))

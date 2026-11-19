@@ -92,7 +92,9 @@ class PayNymLookup(
 
     companion object {
         const val MAX_AVATAR_BYTES = 2 * 1024 * 1024
-        const val MAX_NYM_BYTES = 64 * 1024
+        // The /api/v1/nym answer carries the nym's full follower and following
+        // lists: +max's was 65,763 bytes in Nov 2026, just over the old 64 KiB.
+        const val MAX_NYM_BYTES = 1024 * 1024
         const val TIMEOUT_SECONDS = 25L
         const val CACHE_MAX_AGE_MS = 7L * 24 * 60 * 60 * 1000
     }

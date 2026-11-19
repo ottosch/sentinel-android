@@ -203,6 +203,18 @@ class PairingAckGateTest {
     }
 
     @Test
+    fun `the version row shows the listing's version, as its row does, not the pairing code's`() {
+        val listed = communitySnapshot.copy(version = "1.29.2")
+        assertEquals("1.29.2", pairingDetailRows(communityPairing, listed).version)
+        // A snapshot for another URL never supplies it; the payload's does.
+        assertEquals("1.19.1", pairingDetailRows(communityPairing, listed.copy(url = "http://other.example")).version)
+        // No listing version, or a scan/paste: the payload's.
+        assertEquals("1.19.1", pairingDetailRows(communityPairing, communitySnapshot).version)
+        assertEquals("1.19.1", pairingDetailRows(communityPairing, listed.copy(version = " ")).version)
+        assertEquals("1.19.1", pairingDetailRows(communityPairing, null).version)
+    }
+
+    @Test
     fun `detail rows omit directory metadata for a manual pairing`() {
         // The payload carries none of it; absent means absent, never a
         // placeholder row.
