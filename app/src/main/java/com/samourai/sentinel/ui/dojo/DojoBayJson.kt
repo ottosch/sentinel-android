@@ -26,7 +26,11 @@ import java.io.StringReader
  * deep), so a deeply nested document fails as malformed JSON instead of
  * recursing. A leading byte-order mark is refused, as JSON.parse refuses it
  * (Gson's reader would skip it). StackOverflowError is still caught at each
- * boundary, though the limit keeps the recursion shallow.
+ * boundary, though the limit keeps the recursion shallow, and so is
+ * OutOfMemoryError: a capped body can still build a tree many times its size
+ * (about x44 for 1 MiB of `[0,0,...]`), and a failed parse must be "nothing",
+ * not a dead process (#567 rule 2). Callers that need only a few fields of a
+ * big answer read them with [stream] instead of building a tree.
  */
 internal object DojoBayJson {
 
@@ -59,6 +63,13 @@ internal object DojoBayJson {
     fun <T> parse(text: String, type: Class<T>, with: Gson = gson): T? =
         read(text) { with.getAdapter(type).read(it) }
 
+    /**
+     * [block] reads one strict JSON value from the reader itself (pulling
+     * the fields it needs and skipValue() for the rest, so nothing it skips
+     * is kept in memory); null if [text] isn't exactly one strict JSON value.
+     */
+    fun <T> stream(text: String, block: (JsonReader) -> T?): T? = read(text, block)
+
     private inline fun <T> read(text: String, block: (JsonReader) -> T?): T? {
         val reader = reader(text) ?: return null
         return try {
@@ -67,6 +78,8 @@ internal object DojoBayJson {
         } catch (e: Exception) {
             null
         } catch (e: StackOverflowError) {
+            null
+        } catch (e: OutOfMemoryError) {
             null
         }
     }
