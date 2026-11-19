@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Dojo Bay's mark, converted from dojobay.org/favicon.svg (512x512):
-     a red torii gate over three waves on a near-black rounded square. -->
+<!--
+  ~ Dojo Bay's mark, converted from https://dojobay.org/favicon.svg (512x512):
+  ~ a red torii gate over three waves on a near-black rounded square.
+  ~
+  ~ Copyright (c) 2026 The Dojo Bay contributors
+  ~ Licensed under the MIT License (https://github.com/Dojobay/dojobay).
+  ~ The full notice ships in assets/DojoBayLogo/NOTICE.txt.
+  -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"

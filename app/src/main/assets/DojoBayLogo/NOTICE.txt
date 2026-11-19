@@ -1,0 +1,29 @@
+res/drawable/ic_dojobay_logo.xml
+
+Dojo Bay's logo, shown in the Dojo Bay row of the Network screen.
+Converted to an Android vector drawable from https://dojobay.org/favicon.svg
+(SHA-256 a92cff5a2138dcba86e821ec633ae52897a963d3f99a2a06a452ac0f05c1286b),
+the favicon.svg of https://github.com/Dojobay/dojobay.
+Licensed under the MIT License:
+
+MIT License
+
+Copyright (c) 2026 The Dojo Bay contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
