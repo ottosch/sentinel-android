@@ -67,7 +67,6 @@ import kotlinx.coroutines.withContext
 import org.bouncycastle.util.encoders.Hex
 import org.koin.java.KoinJavaComponent.inject
 import timber.log.Timber
-import java.io.File
 import java.math.BigInteger
 import java.text.DecimalFormat
 import java.util.*
@@ -147,6 +146,7 @@ class SendFragment : Fragment() {
     @RequiresApi(Build.VERSION_CODES.R)
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        context?.cacheDir?.let { viewModel.bindShareCache(it) }
 
         parentFragmentManager.setFragmentResultListener(REQUEST_SCAN_PAYMENT, viewLifecycleOwner) { _, bundle ->
             val decoded = bundle.getString(CameraFragmentBottomSheet.RESULT_TEXT) ?: return@setFragmentResultListener
@@ -469,16 +469,16 @@ class SendFragment : Fragment() {
      */
     private fun shareReviewedPsbt() {
         val host = context ?: return
-        val psbtFile = File(host.cacheDir, "PSBT_transaction.psbt")
+        val psbtFile = PsbtShareFiles.create(host.cacheDir)
         val outcome = PsbtFileExport.write(
             bytes = viewModel.getPsbtBytes(),
             params = SentinelState.getNetworkParam(),
             documentAlreadyExists = false,
             open = { psbtFile.outputStream() },
-            delete = { psbtFile.delete() },
+            delete = { if (psbtFile.exists()) psbtFile.delete() else true },
         )
         if (outcome !is PsbtFileExport.Outcome.Saved) {
-            toast(exportMessage(outcome, sharing = true))
+            toast(PsbtFileExport.messageRes(outcome, sharing = true))
             return
         }
         try {
@@ -487,13 +487,7 @@ class SendFragment : Fragment() {
                 "${host.packageName}.provider",
                 psbtFile
             )
-            val sendIntent: Intent = Intent().apply {
-                action = Intent.ACTION_SEND
-                putExtra(Intent.EXTRA_STREAM, uri)
-                type = "application/octet-stream"
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            startActivity(Intent.createChooser(sendIntent, null))
+            startActivity(PsbtShareFiles.chooser(uri))
         } catch (t: Throwable) {
             Timber.w(t, "PSBT share failed")
             toast(R.string.send_share_failed)
@@ -525,7 +519,20 @@ class SendFragment : Fragment() {
     }
 
     private fun saveTxtFile() {
-        viewModel.psbtLive.value ?: return
+        val refusal = PsbtFileExport.textRefusal(
+            viewModel.psbtLive.value,
+            SentinelState.getNetworkParam(),
+        )
+        if (refusal != null) {
+            toast(
+                if (refusal == PsbtFileExport.Refusal.MISSING) {
+                    R.string.send_export_again
+                } else {
+                    R.string.send_psbt_unusable
+                }
+            )
+            return
+        }
         val fileUUID = UUID.randomUUID()
         val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
@@ -554,25 +561,32 @@ class SendFragment : Fragment() {
                 params = SentinelState.getNetworkParam(),
                 documentAlreadyExists = true,
                 open = { context?.contentResolver?.openOutputStream(uri) },
-                delete = { context?.contentResolver?.delete(uri, null, null) },
+                delete = { context?.let { PsbtFileExport.deleteExportedDocument(it, uri) } ?: false },
             )
             if (outcome is PsbtFileExport.Outcome.Saved) {
                 view?.let { parent ->
                     requireActivity().showFloatingSnackBar(parent, text = "File saved to ${uri.path}")
                 }
             } else {
-                toast(exportMessage(outcome, sharing = false))
+                toast(PsbtFileExport.messageRes(outcome, sharing = false))
             }
         }
         else if (requestCode == REQ_CODE_SAVE_TXT && resultCode == Activity.RESULT_OK) {
-            data?.data?.also { uri ->
-                val fileContent = viewModel.psbtLive.value
-                val outputStream = requireContext().contentResolver.openOutputStream(uri)
-                outputStream?.write(fileContent?.toByteArray())
-                outputStream?.close()
+            val uri = data?.data ?: return
+            val host = context ?: return
+            val outcome = PsbtFileExport.writeText(
+                text = viewModel.psbtLive.value,
+                params = SentinelState.getNetworkParam(),
+                documentAlreadyExists = true,
+                open = { host.contentResolver.openOutputStream(uri) },
+                delete = { PsbtFileExport.deleteExportedDocument(host, uri) },
+            )
+            if (outcome is PsbtFileExport.Outcome.Saved) {
                 view?.let { parent ->
                     requireActivity().showFloatingSnackBar(parent, text = "Txt file saved to ${uri.path}")
                 }
+            } else {
+                toast(PsbtFileExport.messageRes(outcome, sharing = false))
             }
         }
     }
@@ -1124,20 +1138,6 @@ class SendFragment : Fragment() {
         val host = context ?: return
         Toast.makeText(host, host.getString(resId), Toast.LENGTH_LONG).show()
     }
-
-    /** #566: the sentence for a file export that did not save. */
-    private fun exportMessage(outcome: PsbtFileExport.Outcome, sharing: Boolean): Int =
-        when (outcome) {
-            is PsbtFileExport.Outcome.Saved ->
-                if (sharing) R.string.send_share_failed else R.string.send_export_failed
-            is PsbtFileExport.Outcome.Refused -> when (outcome.reason) {
-                PsbtFileExport.Refusal.MISSING -> R.string.send_export_again
-                PsbtFileExport.Refusal.EMPTY,
-                PsbtFileExport.Refusal.UNPARSEABLE -> R.string.send_psbt_unusable
-            }
-            is PsbtFileExport.Outcome.Failed ->
-                if (sharing) R.string.send_share_failed else R.string.send_export_failed
-        }
 
     private fun generateQRCode(uri: String) {
         // Clearing the review publishes an empty string. There is no QR

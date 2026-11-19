@@ -20,6 +20,7 @@ import com.samourai.sentinel.util.FormatsUtil
 import com.samourai.sentinel.util.MonetaryUtil
 import com.samourai.sentinel.util.UtxoMetaUtil
 import kotlinx.coroutines.Dispatchers
+import java.io.File
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -562,14 +563,25 @@ class SendViewModel : ViewModel() {
         snapshotError.also { snapshotError = null }
 
     /**
+     * #566: directory that holds the per-share cache files. Set by the
+     * screen. [clearReviewedPsbt] deletes them.
+     */
+    private var shareCacheDir: File? = null
+
+    fun bindShareCache(dir: File) {
+        shareCacheDir = dir
+    }
+
+    /**
      * #566: drop the reviewed PSBT. The screen calls this when the
      * review closes; [setPublicKey] calls it when the account changes.
-     * The cache file `PSBT_transaction.psbt` is left on disk.
+     * Each share file in [shareCacheDir] is deleted with it.
      */
     fun clearReviewedPsbt() {
         reviewedPsbt = null
         snapshotError = null
         _psbt.value = ""
+        shareCacheDir?.let { PsbtShareFiles.deleteAll(it) }
     }
 
     fun consumeFreshReview() {

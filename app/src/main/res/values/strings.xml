@@ -607,6 +607,7 @@
     <string name="send_export_again" translatable="false">This transaction is no longer here. Export it again.</string>
     <string name="send_export_failed" translatable="false">Could not save the file.</string>
     <string name="send_share_failed" translatable="false">Could not share the file.</string>
+    <string name="send_export_incomplete" translatable="false">The file may be incomplete. Remove it.</string>
     <string name="coin_picker_title" translatable="false">Coin control</string>
     <string name="coin_picker_inputs_label" translatable="false">Inputs</string>
     <string name="coin_picker_mode_auto" translatable="false">Automatic</string>

@@ -39,11 +39,14 @@ import org.bitcoinj.core.TransactionInput
 import org.bitcoinj.core.TransactionOutput
 import org.bitcoinj.crypto.ChildNumber
 import org.bitcoinj.crypto.HDKeyDerivation
+import android.content.Intent
+import android.net.Uri
 import org.bouncycastle.util.encoders.Hex
 import org.junit.AfterClass
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -238,7 +241,7 @@ class PsbtFileExportTest {
                     opened = true
                     ByteArrayOutputStream()
                 },
-                delete = { deleted = true },
+                delete = { deleted = true; true },
             )
             assertFalse("opened for ${bytes?.size}", opened)
             assertFalse("deleted for ${bytes?.size}", deleted)
@@ -422,6 +425,140 @@ class PsbtFileExportTest {
         vm.use(composer)
         assertFalse(vm.makeTx())
         assertEquals(SendViewModel.PsbtSnapshotError.REBUILD_IN_FLIGHT, vm.takeSnapshotError())
+    }
+
+    @Test
+    fun everyInputMustCarryAWitnessOrNonWitnessUtxo() {
+        val bytes = review(compose(wallet.funded(1_000_000L, 0))).getPsbtBytes()!!
+        val parsed = PSBT.fromBytes(bytes, params())
+        val kinds = parsed.psbtInputs.mapNotNull { it.key?.firstOrNull()?.toInt()?.and(0xff) }.toSet()
+        assertTrue(kinds.contains(PSBT.PSBT_IN_WITNESS_UTXO.toInt() and 0xff))
+        assertTrue(kinds.contains(PSBT.PSBT_IN_NON_WITNESS_UTXO.toInt() and 0xff))
+        assertNull(PsbtFileExport.refusal(bytes, params()))
+        assertNull(PsbtFileExport.refusal(withoutUtxoTypes(bytes, setOf(0x01)), params()))
+        assertNull(PsbtFileExport.refusal(withoutUtxoTypes(bytes, setOf(0x00)), params()))
+        assertEquals(
+            PsbtFileExport.Refusal.UNPARSEABLE,
+            PsbtFileExport.refusal(withoutUtxoTypes(bytes, setOf(0x00, 0x01)), params()),
+        )
+    }
+
+    @Test
+    fun clearedReviewRefusesTheTextFileAndARealReviewWritesTheHex() {
+        val vm = review(compose(wallet.funded(1_000_000L, 0)))
+        val hex = vm.psbtLive.value!!
+        val written = ByteArrayOutputStream()
+        val saved = PsbtFileExport.writeText(
+            text = hex,
+            params = params(),
+            documentAlreadyExists = true,
+            open = { written },
+            delete = { true },
+        )
+        assertTrue(saved is PsbtFileExport.Outcome.Saved)
+        assertArrayEquals(hex.toByteArray(Charsets.UTF_8), written.toByteArray())
+
+        vm.clearReviewedPsbt()
+        var opened = false
+        var removed = false
+        val refused = PsbtFileExport.writeText(
+            text = vm.psbtLive.value,
+            params = params(),
+            documentAlreadyExists = true,
+            open = {
+                opened = true
+                ByteArrayOutputStream()
+            },
+            delete = { removed = true; true },
+        )
+        assertFalse(opened)
+        assertTrue(removed)
+        assertTrue(refused is PsbtFileExport.Outcome.Refused)
+        assertEquals(PsbtFileExport.Refusal.MISSING, (refused as PsbtFileExport.Outcome.Refused).reason)
+        assertEquals(R.string.send_export_again, PsbtFileExport.messageRes(refused, sharing = false))
+
+        val stuck = PsbtFileExport.writeText(
+            text = "",
+            params = params(),
+            documentAlreadyExists = true,
+            open = { ByteArrayOutputStream() },
+            delete = { false },
+        )
+        assertEquals(R.string.send_export_incomplete, PsbtFileExport.messageRes(stuck, sharing = false))
+    }
+
+    @Test
+    fun eachShareFileHasItsOwnNameAndClearingTheReviewDeletesIt() {
+        val dir = File.createTempFile("share-cache", "").apply {
+            delete()
+            mkdirs()
+        }
+        val first = PsbtShareFiles.create(dir)
+        val second = PsbtShareFiles.create(dir)
+        assertNotEquals(first.name, second.name)
+        assertFalse(first.name.contains("PSBT_transaction"))
+        assertFalse(second.name.contains("PSBT_transaction"))
+        first.writeBytes(byteArrayOf(1))
+        second.writeBytes(byteArrayOf(2))
+
+        val uri = Uri.parse("content://com.samourai.sentinel.provider/psbt-share/${first.name}")
+        val chooser = PsbtShareFiles.chooser(uri)
+        assertEquals(0, chooser.flags and Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        assertTrue(chooser.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
+        assertEquals(uri, chooser.clipData?.getItemAt(0)?.uri)
+        val inner = chooser.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
+        assertNotNull(inner)
+        assertEquals(0, inner!!.flags and Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        assertTrue(inner.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
+        assertEquals(uri, inner.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java))
+
+        val vm = SendViewModel()
+        vm.bindShareCache(dir)
+        vm.clearReviewedPsbt()
+        assertFalse(first.exists())
+        assertFalse(second.exists())
+        dir.delete()
+    }
+
+    @Test
+    fun aPartialWriteOfTheReviewedPsbtIsRemovedThroughDeleteDocument() {
+        val bytes = review(compose(wallet.funded(1_000_000L, 0))).getPsbtBytes()!!
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val provider = installPickerDocumentsProvider(context)
+        val uri = provider.put("partial", ByteArray(0))
+        var partial = 0
+        val outcome = PsbtFileExport.write(
+            bytes = bytes,
+            params = params(),
+            documentAlreadyExists = true,
+            open = {
+                object : java.io.OutputStream() {
+                    override fun write(b: Int) = throw java.io.IOException("disk")
+                    override fun write(buffer: ByteArray, off: Int, len: Int) {
+                        val n = 20.coerceAtMost(len)
+                        provider.live["partial"] = buffer.copyOfRange(off, off + n)
+                        partial = n
+                        throw java.io.IOException("disk")
+                    }
+                }
+            },
+            delete = { PsbtFileExport.deleteExportedDocument(context, uri) },
+        )
+        assertEquals(20, partial)
+        assertTrue(outcome is PsbtFileExport.Outcome.Failed)
+        assertTrue((outcome as PsbtFileExport.Outcome.Failed).documentRemoved)
+        assertFalse(provider.live.containsKey("partial"))
+        assertEquals(listOf("partial"), provider.deletedIds)
+    }
+
+    private fun withoutUtxoTypes(bytes: ByteArray, drop: Set<Int>): ByteArray {
+        val parsed = PSBT.fromBytes(bytes, params())
+        val kept = parsed.psbtInputs.filter { entry ->
+            val kind = entry.key?.firstOrNull()?.toInt()?.and(0xff)
+            kind == null || kind !in drop
+        }
+        parsed.setPsbtInputs(kept)
+        return parsed.toBytes()
     }
 
     private fun params(): NetworkParameters = SentinelState.getNetworkParam()!!
