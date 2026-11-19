@@ -49,25 +49,6 @@
                 android:visibility="gone"
                 tools:text="🇸🇬"
                 tools:visibility="visible" />
-
-            <!-- Signed rows: the name and flag still come from the directory, unsigned. -->
-            <TextView
-                android:id="@+id/communityDojoUnverifiedChip"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="6dp"
-                android:background="@drawable/signer_unverified_chip_small"
-                android:fontFamily="sans-serif-medium"
-                android:letterSpacing="0.04"
-                android:paddingHorizontal="5dp"
-                android:paddingVertical="1dp"
-                android:text="@string/signer_unverified_chip"
-                android:textAllCaps="true"
-                android:textColor="#9A9A9A"
-                android:textSize="9sp"
-                android:visibility="gone"
-                tools:visibility="visible" />
-
         </LinearLayout>
 
         <TextView

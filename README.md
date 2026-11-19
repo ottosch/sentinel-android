@@ -12,6 +12,7 @@ This is a community continuation, not a new project. Credit where it belongs:
   the Dojo Bay integration that gave the project its post-2024 purpose, and the
   Dojo-or-nothing direction after upstream infrastructure was seized
 - fixes adopted from wanderingking072's fork (authored by @MightyMercurian)
+- **Dojo Bay** — the Dojo Bay logo on the Network screen, from https://dojobay.org/favicon.svg, MIT License, Copyright (c) 2026 The Dojo Bay contributors (notice in `app/src/main/assets/DojoBayLogo/NOTICE.txt`)
 
 ## Lineage
 

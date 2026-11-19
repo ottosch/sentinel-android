@@ -1,7 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!--
+  The whole body scrolls, and the lead-in message lives here rather than on
+  the builder. An AlertDialog with both setMessage and setView has two
+  middle panels, so AlertDialogLayout falls back to a plain LinearLayout
+  measure and a tall body (the signer section) pushes Pair / Don't pair
+  off the bottom of the screen. With one scrolling middle panel the
+  buttons are measured first and always stay on screen.
+-->
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/dojoPairingScroll"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:fillViewport="false"
+    android:scrollbarStyle="outsideOverlay"
+    android:scrollbars="vertical">
+
+<LinearLayout
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
@@ -9,10 +25,20 @@
     android:paddingTop="8dp"
     android:paddingBottom="16dp">
 
+    <TextView
+        android:id="@+id/dojoPairingMessage"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        style="?attr/materialAlertDialogBodyTextStyle"
+        android:layout_marginBottom="12dp"
+        android:importantForAccessibility="yes"
+        tools:text="@string/dojo_pairing_confirm_message" />
+
     <!--
       #256: the PRE-PAIR confirmation dialog's detail view, carried by
-      MaterialAlertDialogBuilder.setView (title + lead-in message stay on
-      the builder). Grey 12sp labels over white 13sp values, values
+      MaterialAlertDialogBuilder.setView. The title stays on the builder; the
+      lead-in message is the first view above, in the dialog's message style.
+      Grey 12sp labels over white 13sp values, values
       wrapped - the fragment_dojo_credentials_bottomsheet row idiom - so
       long onion URLs never bleed into neighboring rows. The directory
       header and the jurisdiction/version/explorer rows default hidden:
@@ -46,24 +72,9 @@
             android:textSize="16sp"
             android:textStyle="bold"
             tools:text="Community Dojo" />
-
-        <!-- The directory's name and flag are not signed. -->
-        <TextView
-            android:id="@+id/dojoPairingDirectoryChip"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
-            android:background="@drawable/signer_unverified_chip"
-            android:fontFamily="sans-serif-medium"
-            android:letterSpacing="0.04"
-            android:paddingHorizontal="6dp"
-            android:paddingVertical="3dp"
-            android:text="@string/signer_unverified_chip"
-            android:textAllCaps="true"
-            android:textColor="#9A9A9A"
-            android:textSize="10sp" />
     </LinearLayout>
 
+    <!-- The directory's name, flag and location are not signed. -->
     <TextView
         android:id="@+id/dojoPairingDirectoryCaption"
         android:layout_width="match_parent"
@@ -175,6 +186,22 @@
             android:textSize="13sp"
             tools:text="1.19.1" />
     </LinearLayout>
+
+    <!--
+      The directory's own version for the picked listing, outside the
+      signature: shown only when it differs from the signed Dojo version
+      above, and always labelled as not signed.
+    -->
+    <TextView
+        android:id="@+id/dojoPairingDirectoryVersion"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:textColor="#9A9A9A"
+        android:textSize="12sp"
+        android:visibility="gone"
+        tools:text="Directory says 1.29.2 (not signed)"
+        tools:visibility="visible" />
 
     <LinearLayout
         android:id="@+id/dojoPairingExplorerRow"
@@ -332,3 +359,5 @@
     </LinearLayout>
 
 </LinearLayout>
+
+</androidx.core.widget.NestedScrollView>

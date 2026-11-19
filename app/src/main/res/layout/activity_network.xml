@@ -302,10 +302,13 @@
 
             </View>
 
-            <!-- #488: the status sits under the title+buttons, across the
-                 whole column, so a long progress label is not squeezed into
-                 the sliver beside Details and Disable. The counter's own
-                 line is progressText's newline. -->
+            <!-- The status sits right under the title, beside the buttons, like
+                 the Tor row. #488: while derivation paths register (or a
+                 partial round's residue shows), DojoRowLayout moves it below
+                 the buttons, across the whole column (network_dojo_column),
+                 so the long progress label is not squeezed beside Details
+                 and Disable. The counter's own line is progressText's
+                 newline. -->
             <LinearLayout
                 android:id="@+id/network_dojo_layout"
                 android:layout_width="match_parent"
@@ -323,6 +326,7 @@
                     app:tint="@color/disabledRed" />
 
                 <LinearLayout
+                    android:id="@+id/network_dojo_column"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
@@ -334,13 +338,29 @@
                         android:gravity="center_vertical"
                         android:orientation="horizontal">
 
-                        <TextView
+                        <LinearLayout
+                            android:id="@+id/network_dojo_title_block"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
-                            android:text="Dojo Full Node"
-                            android:textColor="@color/white"
-                            android:textStyle="bold" />
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:text="Dojo Full Node"
+                                android:textColor="@color/white"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:id="@+id/network_dojo_status"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginEnd="4dp"
+                                android:breakStrategy="simple"
+                                android:hyphenationFrequency="none"
+                                android:text="Disabled" />
+                        </LinearLayout>
 
                         <!-- Only visible while a Dojo is actually paired. -->
                         <Button
@@ -365,15 +385,6 @@
                             android:text="Disable"
                             android:textColor="#6eb8c5" />
                     </LinearLayout>
-
-                    <TextView
-                        android:id="@+id/network_dojo_status"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginEnd="4dp"
-                        android:breakStrategy="simple"
-                        android:hyphenationFrequency="none"
-                        android:text="Disabled" />
                 </LinearLayout>
             </LinearLayout>
 
@@ -447,21 +458,36 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center_vertical"
-                android:orientation="vertical"
-                android:paddingStart="64dp"
+                android:orientation="horizontal"
                 android:paddingEnd="16dp">
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/network_directory_row_title"
-                    android:textColor="@color/white"
-                    android:textStyle="bold" />
+                <!-- Dojo Bay's own mark in the status column the other rows use. -->
+                <ImageView
+                    android:id="@+id/network_directory_icon"
+                    android:layout_width="64dp"
+                    android:layout_height="24dp"
+                    android:contentDescription="@string/network_directory_logo_description"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_dojobay_logo" />
 
-                <TextView
-                    android:id="@+id/network_directory_status"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/network_directory_row_title"
+                        android:textColor="@color/white"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/network_directory_status"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" />
+                </LinearLayout>
             </LinearLayout>
 
             <View

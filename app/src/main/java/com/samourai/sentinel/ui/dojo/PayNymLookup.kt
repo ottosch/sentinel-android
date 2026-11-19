@@ -3,9 +3,12 @@ package com.samourai.sentinel.ui.dojo
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonPrimitive
+import com.google.gson.stream.JsonReader
+import com.google.gson.stream.JsonToken
 import com.samourai.sentinel.api.okHttp.await
 import com.samourai.sentinel.util.OkHttpLogRedaction
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -19,6 +22,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.net.Proxy
 import java.util.concurrent.TimeUnit
+import timber.log.Timber
 
 /**
  * The signer's PayNym avatar and +name for the pre-pair dialog, looked up
@@ -92,7 +96,9 @@ class PayNymLookup(
 
     companion object {
         const val MAX_AVATAR_BYTES = 2 * 1024 * 1024
-        const val MAX_NYM_BYTES = 64 * 1024
+        // The /api/v1/nym answer carries the nym's full follower and following
+        // lists: +max's was 65,763 bytes in Nov 2026, just over the old 64 KiB.
+        const val MAX_NYM_BYTES = 1024 * 1024
         const val TIMEOUT_SECONDS = 25L
         const val CACHE_MAX_AGE_MS = 7L * 24 * 60 * 60 * 1000
     }
@@ -112,7 +118,15 @@ interface PayNymTransport {
  * The rules, apart from the transport: redirects, status, PNG magic, size,
  * and the name's shape and code match.
  */
-class PayNymFetcher(private val transport: PayNymTransport) {
+class PayNymFetcher(
+    private val transport: PayNymTransport,
+    /**
+     * Where the /api/v1/nym answer (up to [PayNymLookup.MAX_NYM_BYTES]) is
+     * decoded and parsed: never the caller's thread, which is the main
+     * thread for the pre-pair dialog and View on PayNym.
+     */
+    private val parseDispatcher: CoroutineDispatcher = Dispatchers.Default,
+) {
 
     suspend fun avatar(code: String): ByteArray? {
         if (!DojoBaySignatures.isPaymentCodeShape(code)) return null
@@ -138,9 +152,24 @@ class PayNymFetcher(private val transport: PayNymTransport) {
         val reply = transport.post(PayNymLinks.NYM_PATH, body, PayNymLookup.MAX_NYM_BYTES) ?: return null
         if (reply.status != 200) return null
         val bytes = reply.body?.takeIf { it.size <= PayNymLookup.MAX_NYM_BYTES } ?: return null
-        val text = DojoBayJson.decodeBody(bytes) ?: return null
-        val doc = DojoBayJson.parseTree(text) as? JsonObject ?: return null
-        return nymFor(doc, code)
+        return withContext(parseDispatcher) {
+            // Streamed, not built into a tree: the answer carries the nym's
+            // full follower and following lists, and a 1 MiB answer as a Gson
+            // tree is up to ~46 MB. Only nymName and codes[*].code are read;
+            // everything else is skipped without being kept. Any Throwable,
+            // OutOfMemoryError and StackOverflowError included, is "no name",
+            // never a crash on this dispatcher (#567 rule 2).
+            try {
+                val text = DojoBayJson.decodeBody(bytes) ?: return@withContext null
+                nymFromAnswer(text, code)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                // The type only: the body is never logged.
+                Timber.w("PayNym name answer not read: %s", t.javaClass.simpleName)
+                null
+            }
+        }
     }
 
     companion object {
@@ -159,6 +188,72 @@ class PayNymFetcher(private val transport: PayNymTransport) {
             val target = from.resolve(loc) ?: return null
             if (target.scheme != "http" || target.host != PayNymLinks.ONION_HOST || target.port != 80) return null
             return target.encodedPath + (target.encodedQuery?.let { "?$it" } ?: "")
+        }
+
+        /**
+         * [nymFor] on the /api/v1/nym answer [text], streamed through
+         * DojoBayJson's strict reader (same strictness, same nesting
+         * limit, exactly one value) without building a tree: only the
+         * top-level codes[*].code and the name keys are read, everything
+         * else (followers, following, ...) is skipValue()d. A repeated key
+         * counts by its last value, as in the tree [nymFor] reads.
+         */
+        fun nymFromAnswer(text: String, code: String): String? = DojoBayJson.stream(text) { r ->
+            if (r.peek() != JsonToken.BEGIN_OBJECT) {
+                r.skipValue()
+                return@stream null
+            }
+            var listed = false
+            // Name keys -> last value if it was a string, null if it wasn't.
+            val names = HashMap<String, String?>()
+            r.beginObject()
+            while (r.hasNext()) {
+                when (val key = r.nextName()) {
+                    "codes" -> listed = codesList(r, code)
+                    "nymName", "nym_name", "nym" ->
+                        names[key] = if (r.peek() == JsonToken.STRING) r.nextString() else { r.skipValue(); null }
+                    else -> r.skipValue()
+                }
+            }
+            r.endObject()
+            if (!listed) return@stream null
+            val raw = listOf("nymName", "nym_name", "nym").firstNotNullOfOrNull { names[it] } ?: return@stream null
+            if (!NYM_NAME.matches(raw)) return@stream null
+            if (raw.startsWith("+")) raw else "+$raw"
+        }
+
+        /** True when the codes value is an array with an object whose "code" (last one wins) equals [code]. */
+        private fun codesList(r: JsonReader, code: String): Boolean {
+            if (r.peek() != JsonToken.BEGIN_ARRAY) {
+                r.skipValue()
+                return false
+            }
+            var found = false
+            r.beginArray()
+            while (r.hasNext()) {
+                if (r.peek() != JsonToken.BEGIN_OBJECT) {
+                    r.skipValue()
+                    continue
+                }
+                var match = false
+                r.beginObject()
+                while (r.hasNext()) {
+                    if (r.nextName() == "code") {
+                        // A JSON primitive's string form, as JsonPrimitive.asString gives it.
+                        match = when (r.peek()) {
+                            JsonToken.STRING, JsonToken.NUMBER -> r.nextString() == code
+                            JsonToken.BOOLEAN -> r.nextBoolean().toString() == code
+                            else -> { r.skipValue(); false }
+                        }
+                    } else {
+                        r.skipValue()
+                    }
+                }
+                r.endObject()
+                if (match) found = true
+            }
+            r.endArray()
+            return found
         }
 
         /**
@@ -205,6 +300,10 @@ class OkHttpPayNymTransport(
             throw e
         } catch (e: Exception) {
             // Never logged: the failure is simply "no avatar" or "no name".
+            null
+        } catch (e: OutOfMemoryError) {
+            // A capped body (2 MiB avatar, 1 MiB nym) that still can't be
+            // held is "nothing" too, not a dead process (#567 rule 2).
             null
         }
     }

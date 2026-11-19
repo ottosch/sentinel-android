@@ -268,6 +268,9 @@ data class DojoDisplaySnapshot(
     // Another listing in the same list used this name under a different
     // signer when it was picked: the pre-pair dialog warns. Not saved.
     val nameCollision: Boolean = false,
+    // The directory's version for the picked listing, as its row shows it.
+    // Not saved: only the pre-pair dialog reads it.
+    val version: String? = null,
 )
 
 /**
@@ -314,6 +317,8 @@ fun directoryHeader(
 data class PairingDetailRows(
     val jurisdiction: String?,
     val url: String?,
+    // The Dojo version from inside the signature: the same pairing payload
+    // that is stored when Pair commits. The one authoritative version row.
     val version: String?,
     val explorer: String?,
     // #250: the network evidence for the pre-pair dialog's network
@@ -321,6 +326,11 @@ data class PairingDetailRows(
     // whispered (URL mount). Null means the row stays hidden: no
     // evidence, never a guess.
     val network: DerivedNetwork? = null,
+    // The directory's own, unsigned version for the picked listing, only
+    // when it is version-shaped and differs from the signed [version]. The
+    // dialog shows it on a separate line labelled "not signed"; it never
+    // takes the place of the signed value.
+    val directoryVersion: String? = null,
 )
 
 fun pairingDetailRows(
@@ -336,14 +346,41 @@ fun pairingDetailRows(
     val declaredNetwork = snapshot
         ?.takeIf { pairingUrl != null && it.url == pairingUrl }
         ?.network?.let { normalizeDeclaredNetwork(it) }
+    val signedVersion = pairing.pairing?.version?.takeIf { it.isNotBlank() }
+    // The directory's version (unsigned), url-match-guarded like
+    // jurisdiction and shape-checked. Kept only when it says something the
+    // signed value doesn't: a Dojo upgraded since its pairing code was made
+    // lists a newer version than the code carries. Shown labelled "not
+    // signed", under the signed row, so it can inform but never pose as
+    // the version the user is consenting to.
+    val directoryVersion = snapshot
+        ?.takeIf { pairingUrl != null && it.url == pairingUrl }
+        ?.version?.let { listingVersionOrNull(it) }
+        ?.takeIf { it != signedVersion }
     return PairingDetailRows(
         jurisdiction = jurisdiction,
         url = pairingUrl,
-        version = pairing.pairing?.version?.takeIf { it.isNotBlank() },
+        // The signed version: pairing.version from the payload this dialog
+        // pairs and stores (for a directory pick, the JSON rebuilt from
+        // inside the listing's signature). The directory's top-level
+        // version sits outside the signature, so it never fills this row.
+        version = signedVersion,
         explorer = pairing.explorer?.url?.takeIf { it.isNotBlank() },
         network = declaredNetwork ?: NetworkClassifier.fromUrl(pairingUrl),
+        directoryVersion = directoryVersion,
     )
 }
+
+/** A directory version shape: 1 to 32 of A-Z, a-z, 0-9, '.', '+' and '-'. */
+private val LISTING_VERSION_SHAPE = Regex("^[0-9A-Za-z.+-]{1,32}$")
+
+/**
+ * The picked listing's directory version, or null when it is blank or not
+ * version-shaped. The directory's version is not signed: the pre-pair dialog
+ * shows it only as a labelled "not signed" line under the signed version.
+ */
+fun listingVersionOrNull(version: String?): String? =
+    version?.takeIf { LISTING_VERSION_SHAPE.matches(it) }
 
 /**
  * #256: the receipt's ONE identity line - a fixed ladder, never
@@ -875,10 +912,10 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
      * string. The directory header and the Jurisdiction row render
      * only for a matching directory snapshot; URL/Dojo
      * version/Explorer rows render only when the payload carries
-     * them - absent means absent, never a placeholder. Title,
-     * lead-in and Pair/Don't-pair stay on the builder. Non-cancelable
-     * by design: an outside tap would be a silent decline, and the
-     * explicit buttons own the decision. The apikey never renders
+     * them - absent means absent, never a placeholder. Title and
+     * Pair/Don't-pair stay on the builder; the lead-in sits at the top
+     * of the scrolling view. An outside tap does nothing (it would be a
+     * silent decline); Back is Don't pair. The apikey never renders
      * (see DojoUtility.getPairing's FLAG_SECURE note). #261: the
      * dialog opens BEFORE any network contact - directly on
      * selection - so the success checkmark that used to render behind
@@ -904,7 +941,10 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
         }
         val snapshot = pendingSnapshot.forDialog { readDisplaySnapshot() }
         val rows = pairingDetailRows(pairing, snapshot)
-        val view = layoutInflater.inflate(R.layout.dialog_dojo_pairing_details, null)
+        // Inflated in the dialog's own theme, so the lead-in message gets the
+        // same style a setMessage message would (materialAlertDialogBodyTextStyle).
+        val builder = MaterialAlertDialogBuilder(requireContext())
+        val view = LayoutInflater.from(builder.context).inflate(R.layout.dialog_dojo_pairing_details, null)
         val dialogViews = PrePairDialogViews(view)
         dialogViews.bindHeader(directoryHeader(snapshot, pairing.pairing?.url), getString(R.string.dojo_unnamed))
         // Who signed the picked listing: the full code its signature proved.
@@ -935,7 +975,9 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
             )
         }
         bindDetailRow(view, R.id.dojoPairingUrlRow, R.id.dojoPairingUrlValue, rows.url)
-        bindDetailRow(view, R.id.dojoPairingVersionRow, R.id.dojoPairingVersionValue, rows.version)
+        // The signed version only; the directory's unsigned one, if it differs,
+        // goes on its own line labelled not signed.
+        dialogViews.bindVersion(rows.version, rows.directoryVersion)
         bindDetailRow(view, R.id.dojoPairingExplorerRow, R.id.dojoPairingExplorerValue, rows.explorer)
         val decision = networkDecision
         val appNetworkName = networkName(prefsUtil.testnet == true)
@@ -961,18 +1003,29 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
                 )
             else -> ""
         }
-        val dialog = MaterialAlertDialogBuilder(requireContext())
+        // The message sits inside the scrolling view, not on the builder:
+        // setMessage plus setView gives the dialog two middle panels, and a
+        // tall body then pushes Pair / Don't pair off screen.
+        val messageView = view.findViewById<TextView>(R.id.dojoPairingMessage)
+        messageView.text = message
+        val dialog = builder
             .setTitle(getString(R.string.dojo_pairing_confirm_title))
-            .setMessage(message)
             .setView(view)
-            .setCancelable(false)
             .setPositiveButton(getString(R.string.dojo_pairing_confirm_accept)) { _, _ ->
                 onPairingConfirmTapped()
             }
             .setNegativeButton(getString(R.string.dojo_pairing_confirm_decline)) { _, _ ->
                 onPairingDeclineTapped()
             }
-            .show()
+            // Back is Don't pair. An outside tap still does nothing, so a
+            // stray touch is never a silent decline.
+            .setOnCancelListener { onPairingDeclineTapped() }
+            .create()
+        dialog.setCanceledOnTouchOutside(false)
+        // A setMessage message is read with the dialog; this one sits in the
+        // custom view, so screen readers are told it when the dialog opens.
+        dialog.setOnShowListener { messageView.announceForAccessibility(message) }
+        dialog.show()
         // The signer's PayNym avatar and +name, looked up now that the dialog
         // is open, from the signed code, over Tor only (PayNymLookup). This
         // goes to PayNym's onion, not to the Dojo: the Dojo still sees

@@ -268,10 +268,10 @@
     <string name="dojobay_address_invalid_port" translatable="false">The port must be between 1 and 65535.</string>
     <string name="dojobay_address_invalid_extras" translatable="false">Remove the user name, query, or fragment from the address</string>
     <string name="network_directory_row_title" translatable="false">Dojo Bay directory</string>
+    <string name="network_directory_logo_description" translatable="false">Dojo Bay</string>
     <string name="network_directory_default" translatable="false">Default · %1$s</string>
     <string name="network_directory_custom" translatable="false">Custom · %1$s</string>
     <string name="community_dojo_signed_by" translatable="false">Signed by %1$s</string>
-    <string name="signer_unverified_chip" translatable="false">Unverified</string>
     <string name="dojo_pairing_directory_not_signed" translatable="false">Name and location are set by the directory and are not signed.</string>
     <string name="dojo_pairing_row_signed_by" translatable="false">Signed by</string>
     <string name="dojo_pairing_signer_collision" translatable="false">Another listing uses this name with a different signer. Check the full code.</string>
@@ -545,6 +545,7 @@
     <string name="dojo_pairing_row_jurisdiction" translatable="false">Jurisdiction</string>
     <string name="dojo_pairing_row_url" translatable="false">Dojo URL</string>
     <string name="dojo_pairing_row_version" translatable="false">Dojo version</string>
+    <string name="dojo_pairing_directory_version" translatable="false">Directory says %1$s (not signed)</string>
     <string name="dojo_pairing_row_explorer" translatable="false">Explorer</string>
     <string name="dojo_pairing_success_title" translatable="false">Dojo paired</string>
     <string name="dojo_pairing_success_message" translatable="false">Sentinel is now paired with</string>

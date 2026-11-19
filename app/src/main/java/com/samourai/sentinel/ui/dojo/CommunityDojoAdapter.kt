@@ -61,7 +61,6 @@ class CommunityDojoAdapter(
         val flag: TextView = view.findViewById(R.id.communityDojoFlag)
         val name: TextView = view.findViewById(R.id.communityDojoName)
         val subtitle: TextView = view.findViewById(R.id.communityDojoSubtitle)
-        val chip: TextView = view.findViewById(R.id.communityDojoUnverifiedChip)
         val signer: TextView = view.findViewById(R.id.communityDojoSigner)
         val signerCode: TextView = view.findViewById(R.id.communityDojoSignerCode)
         val signerLink: TextView = view.findViewById(R.id.communityDojoSignerLink)
@@ -107,7 +106,6 @@ class CommunityDojoAdapter(
             communityDojoSubtitle(node) + "\n" +
                 context.getString(R.string.community_dojo_unverified, context.getString(failureText(failure)))
         }
-        holder.chip.visibility = if (verified != null) View.VISIBLE else View.GONE
         bindSigner(holder, item)
         holder.itemView.alpha = if (verified != null) 1f else 0.5f
         holder.copyButton.isEnabled = verified != null

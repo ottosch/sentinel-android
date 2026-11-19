@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ Dojo Bay's mark, converted from https://dojobay.org/favicon.svg (512x512):
+  ~ a red torii gate over three waves on a near-black rounded square.
+  ~
+  ~ Copyright (c) 2026 The Dojo Bay contributors
+  ~ Licensed under the MIT License (https://github.com/Dojobay/dojobay).
+  ~ The full notice ships in assets/DojoBayLogo/NOTICE.txt.
+  -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+
+    <!-- rect 512x512, rx 114 -->
+    <path
+        android:fillColor="#0B0B0C"
+        android:pathData="M114,0 H398 A114,114 0 0 1 512,114 V398 A114,114 0 0 1 398,512 H114 A114,114 0 0 1 0,398 V114 A114,114 0 0 1 114,0 Z" />
+
+    <!-- SVG transform="translate(24,-58.5) scale(1.45)": a group scales
+         first and translates after, the same order. -->
+    <group
+        android:scaleX="1.45"
+        android:scaleY="1.45"
+        android:translateX="24"
+        android:translateY="-58.5">
+
+        <!-- Torii gate -->
+        <path
+            android:fillColor="#B5302A"
+            android:pathData="M40,96 Q160,112 280,96 L280,116 Q160,132 40,116 Z" />
+        <path
+            android:fillColor="#B5302A"
+            android:pathData="M154,116 H166 V124 H154 Z" />
+        <path
+            android:fillColor="#B5302A"
+            android:pathData="M74,124 H246 V144 H74 Z" />
+        <path
+            android:fillColor="#B5302A"
+            android:pathData="M104,126 H124 L118,250 H98 Z" />
+        <path
+            android:fillColor="#B5302A"
+            android:pathData="M196,126 H216 L222,250 H202 Z" />
+
+        <!-- Waves -->
+        <path
+            android:pathData="M50,272 q13.75,-13 27.5,0 t27.5,0 t27.5,0 t27.5,0 t27.5,0 t27.5,0 t27.5,0 t27.5,0"
+            android:strokeColor="#D6534A"
+            android:strokeLineCap="round"
+            android:strokeWidth="14" />
+        <path
+            android:pathData="M50,300 q13.75,-13 27.5,0 t27.5,0 t27.5,0 t27.5,0 t27.5,0 t27.5,0 t27.5,0 t27.5,0"
+            android:strokeAlpha="0.72"
+            android:strokeColor="#D6534A"
+            android:strokeLineCap="round"
+            android:strokeWidth="14" />
+        <path
+            android:pathData="M50,328 q13.75,-13 27.5,0 t27.5,0 t27.5,0 t27.5,0 t27.5,0 t27.5,0 t27.5,0 t27.5,0"
+            android:strokeAlpha="0.48"
+            android:strokeColor="#D6534A"
+            android:strokeLineCap="round"
+            android:strokeWidth="14" />
+    </group>
+</vector>

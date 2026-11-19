@@ -1,6 +1,12 @@
 package com.samourai.sentinel.ui.dojo
 
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
+import kotlin.coroutines.CoroutineContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
@@ -146,6 +152,59 @@ class PayNymLookupTest {
         assertNull(nameFrom("""{"nymName":NULL,"codes":[{"code":"$code"}]}"""))
         assertNull(nameFrom("\uFEFF" + nymDoc()))
         assertNull(nameFrom("<html>"))
+    }
+
+    @Test
+    fun `a busy nym's answer over 64 KiB still gives its name, through the real transport cap`() {
+        // A nym with a few hundred followers: the answer lists them all
+        // (+max's was 65,763 bytes in Nov 2026).
+        val follower = """{"code":"PM8T${"x".repeat(112)}","nymId":"nymABCDEFGHIJKLMNOPQRSTUV","nymName":"+somefollower00","segwit":true}"""
+        val followers = (1..400).joinToString(",") { follower }
+        val body = """{"nymName":"+examplenym","nymID":"x","codes":[{"claimed":true,"code":"$code","segwit":true}],"followers":[$followers],"following":[]}"""
+        assertTrue(body.length > 64 * 1024)
+        assertTrue(body.length < PayNymLookup.MAX_NYM_BYTES)
+        val server = MockWebServer()
+        server.start()
+        try {
+            val client = OkHttpClient.Builder().followRedirects(false).callTimeout(5, TimeUnit.SECONDS).build()
+            val t = OkHttpPayNymTransport(client, server.url("/").toString().toHttpUrl())
+            server.enqueue(MockResponse().setBody(body))
+            assertEquals("+examplenym", runBlocking { PayNymFetcher(t).name(code) })
+            t.close()
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    /** Holds dispatched work until the test runs it, so it shows exactly what runs there. */
+    private class HeldDispatcher : CoroutineDispatcher() {
+        val held = ArrayDeque<Runnable>()
+        override fun dispatch(context: CoroutineContext, block: Runnable) {
+            held.addLast(block)
+        }
+    }
+
+    @Test
+    fun `the nym answer is decoded and parsed on the parse dispatcher, not the caller's thread`() {
+        val parse = HeldDispatcher()
+        val t = FakeTransport { _, _, _ -> ok(nymDoc().toByteArray()) }
+        runBlocking {
+            val name = async(start = CoroutineStart.UNDISPATCHED) { PayNymFetcher(t, parse).name(code) }
+            yield()
+            // The reply is in, but nothing is parsed until the parse dispatcher runs it.
+            assertEquals(1, t.requests.size)
+            assertFalse(name.isCompleted)
+            assertEquals(1, parse.held.size)
+            parse.held.removeFirst().run()
+            assertEquals("+examplenym", name.await())
+            assertTrue(parse.held.isEmpty())
+        }
+    }
+
+    @Test
+    fun `the default parse dispatcher is Dispatchers Default`() {
+        val f = PayNymFetcher::class.java.getDeclaredField("parseDispatcher").apply { isAccessible = true }
+        assertTrue(f.get(PayNymFetcher(FakeTransport { _, _, _ -> null })) === Dispatchers.Default)
     }
 
     // ---- the lookup: Tor only, cached ------------------------------------------------

@@ -369,9 +369,11 @@ class NetworkActivity : SentinelActivity() {
         runOnUiThread {
             if (isFinishing || isDestroyed) return@runOnUiThread
             when (event) {
-                is BurstEvent.Progress ->
+                is BurstEvent.Progress -> {
+                    placeDojoStatus(wide = true)
                     dojoConnectionStatus?.text =
                         KeyRegistrationBurst.progressText(event.done, event.total)
+                }
                 is BurstEvent.Finished -> {
                     // #98/#158: restore the row from holder state, then the
                     // tally - partial rounds keep the retry note.
@@ -396,6 +398,10 @@ class NetworkActivity : SentinelActivity() {
         }
     }
 
+    private fun placeDojoStatus(wide: Boolean) {
+        findViewById<View>(R.id.network_dojo_layout)?.let { DojoRowLayout.placeStatus(it, wide) }
+    }
+
     fun setDojoStatus() {
         if (dojoUtility.isDojoEnabled()) {
             // #158: a burst in flight or a partial registration still
@@ -408,7 +414,10 @@ class NetworkActivity : SentinelActivity() {
                 torReady = torReady,
                 checking = dojoProbe?.isActive == true,
             )
-            dojoConnectionStatus?.text = KeyRegistrationBurst.statusText(row.text)
+            val text = KeyRegistrationBurst.statusText(row.text)
+            // A burst label (progress or residue) is long: full width.
+            placeDojoStatus(wide = text != row.text)
+            dojoConnectionStatus?.text = text
             dojoButton?.text = getString(R.string.disable_dojo)
             val color = when (row.tone) {
                 DojoRowTone.GREEN -> activeColor
@@ -419,6 +428,7 @@ class NetworkActivity : SentinelActivity() {
             // Only offer pairing details when a payload actually exists.
             dojoDetailsButton?.visibility = View.VISIBLE
         } else {
+            placeDojoStatus(wide = false)
             dojoConnectionStatus?.text = getString(R.string.disabled)
             dojoButton?.text = getString(R.string.enable)
             dojoConnectionIcon!!.setColorFilter(disabledColor)
