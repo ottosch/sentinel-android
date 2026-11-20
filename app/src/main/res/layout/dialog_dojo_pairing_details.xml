@@ -74,7 +74,7 @@
             tools:text="Community Dojo" />
     </LinearLayout>
 
-    <!-- The directory's name, flag and location are not signed. -->
+    <!-- What the signature covers, and which rows come from the listing. -->
     <TextView
         android:id="@+id/dojoPairingDirectoryCaption"
         android:layout_width="match_parent"
@@ -184,24 +184,18 @@
             android:layout_height="wrap_content"
             android:textColor="@color/white"
             android:textSize="13sp"
-            tools:text="1.19.1" />
-    </LinearLayout>
+            tools:text="1.29.2" />
 
-    <!--
-      The directory's own version for the picked listing, outside the
-      signature: shown only when it differs from the signed Dojo version
-      above, and always labelled as not signed.
-    -->
-    <TextView
-        android:id="@+id/dojoPairingDirectoryVersion"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
-        android:textColor="#9A9A9A"
-        android:textSize="12sp"
-        android:visibility="gone"
-        tools:text="Directory says 1.29.2 (not signed)"
-        tools:visibility="visible" />
+        <!-- Where the version above was checked. Hidden with the row. -->
+        <TextView
+            android:id="@+id/dojoPairingVersionSource"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="@string/dojo_pairing_version_source"
+            android:textColor="#9A9A9A"
+            android:textSize="12sp" />
+    </LinearLayout>
 
     <LinearLayout
         android:id="@+id/dojoPairingExplorerRow"

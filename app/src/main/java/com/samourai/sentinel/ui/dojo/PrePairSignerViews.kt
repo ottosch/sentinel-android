@@ -33,10 +33,10 @@ fun prePairSigner(
 
 /**
  * Binds dialog_dojo_pairing_details: the directory header with its
- * name and flag and the "not signed" caption under them, the Dojo version
- * row (signed) with the directory's unsigned version labelled under it, and
- * the "Signed by" section. Kept apart from
- * the sheet so the dialog states can be bound and checked in tests.
+ * name and flag and the caption under them, the Dojo version row (the
+ * directory's checked version, with where it was checked), and the
+ * "Signed by" section. Kept apart from the sheet so the dialog states
+ * can be bound and checked in tests.
  */
 class PrePairDialogViews(val root: View) {
 
@@ -46,7 +46,6 @@ class PrePairDialogViews(val root: View) {
     private val caption: View = root.findViewById(R.id.dojoPairingDirectoryCaption)
     private val versionRow: View = root.findViewById(R.id.dojoPairingVersionRow)
     private val versionValue: TextView = root.findViewById(R.id.dojoPairingVersionValue)
-    private val directoryVersion: TextView = root.findViewById(R.id.dojoPairingDirectoryVersion)
     private val signerSection: View = root.findViewById(R.id.dojoPairingSignerSection)
     private val signerCode: TextView = root.findViewById(R.id.dojoPairingSignerCode)
     private val signerLink: TextView = root.findViewById(R.id.dojoPairingSignerLink)
@@ -115,24 +114,18 @@ class PrePairDialogViews(val root: View) {
     }
 
     /**
-     * The Dojo version row shows only [signed], the version inside the
-     * pairing payload that Pair stores. [directory] is the listing's own,
-     * unsigned version: when there is one (it already differs from
-     * [signed], see pairingDetailRows) it goes on its own grey line,
-     * labelled not signed, and never into the version row.
+     * The Dojo version row. [checked] is the directory's checked version,
+     * already shape-filtered by [listingVersionOrNull], or null to hide
+     * the row. The signed pairing.version is not a fallback and is not
+     * shown. The source line is part of the row, so it hides with it.
      */
-    fun bindVersion(signed: String?, directory: String?) {
-        if (signed != null) {
-            versionValue.text = signed
+    fun bindVersion(checked: String?) {
+        if (checked != null) {
+            versionValue.text = checked
             versionRow.visibility = View.VISIBLE
         } else {
+            versionValue.text = ""
             versionRow.visibility = View.GONE
-        }
-        if (directory != null) {
-            directoryVersion.text = root.context.getString(R.string.dojo_pairing_directory_version, directory)
-            directoryVersion.visibility = View.VISIBLE
-        } else {
-            directoryVersion.visibility = View.GONE
         }
     }
 
