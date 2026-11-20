@@ -1,5 +1,6 @@
 package com.samourai.sentinel.data.db.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 
@@ -14,6 +15,11 @@ import androidx.room.Index
  *
  * [network] ("mainnet"/"testnet") prevents label collisions if the install
  * is ever switched between networks.
+ *
+ * [badbank] is sticky. Once it is 1, an edit, import, or sync does not
+ * clear it. [label] holds the user part only (or the literal "Bad Bank"
+ * an auto-writer stored). The "(Bad Bank)" suffix is composed at render
+ * time and is not stored.
  */
 @Entity(
     tableName = "utxo_labels",
@@ -27,5 +33,7 @@ data class UtxoLabel(
     val label: String,
     val origin: String? = null,
     val createdAt: Long,
-    val updatedAt: Long
+    val updatedAt: Long,
+    @ColumnInfo(defaultValue = "0")
+    val badbank: Int = 0,
 )

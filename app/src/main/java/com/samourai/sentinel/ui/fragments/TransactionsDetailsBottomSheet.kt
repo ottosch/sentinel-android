@@ -215,8 +215,10 @@ class TransactionsDetailsBottomSheet() : GenericBottomSheet() {
         if (secure) {
             binding.txDetailsUtxoLabelsRow.visibility = View.GONE
         } else {
-            labelRepository.observeLabelMap().observe(viewLifecycleOwner) { map ->
-                val chips = TxUtxoLabels.chipsFor(tx, map)
+            labelRepository.observeUtxoLabels().observe(viewLifecycleOwner) { rows ->
+                val labels = rows.mapValues { it.value.label }
+                val badbank = rows.filterValues { it.badbank == 1 }.keys
+                val chips = TxUtxoLabels.chipsFor(tx, labels, badbank)
                 if (chips.isEmpty()) {
                     binding.txDetailsUtxoLabelsRow.visibility = View.GONE
                 } else {

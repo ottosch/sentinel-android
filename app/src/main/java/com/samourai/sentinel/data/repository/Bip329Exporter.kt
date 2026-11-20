@@ -5,6 +5,7 @@ import com.samourai.sentinel.data.db.dao.LabelEntryDao
 import com.samourai.sentinel.data.db.dao.UtxoLabelDao
 import com.samourai.sentinel.data.db.entity.UtxoLabel
 import com.samourai.sentinel.data.db.entity.LabelEntry
+import com.samourai.sentinel.data.whirlpool.CoinLabel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -27,6 +28,11 @@ import java.io.PrintWriter
  * their origin either way, so a backup round-trips back into an
  * `auto:` label. A wallet that ignores origin will show the stored
  * text ("Whirlpool Tx0", "Whirlpool Mix") as an ordinary label.
+ *
+ * A coin with the Bad Bank flag exports the composed label
+ * ("Bad Bank" or "<user> (Bad Bank)"). Origin is unchanged. Import
+ * strips the suffix back off a flagged row, so a second export
+ * matches the first.
  */
 class Bip329Exporter(
     private val utxoLabelDaoOverride: UtxoLabelDao? = null,
@@ -57,13 +63,19 @@ class Bip329Exporter(
     private fun writeOutputs(writer: PrintWriter, rows: List<UtxoLabel>) {
         rows.sortedWith(compareBy({ it.txid }, { it.vout }))
             .forEach { row ->
-                // A hand clear is a blank row with a manual origin.
-                // It stays on device: this export omits blank labels.
-                if (row.label.isBlank()) return@forEach
+                // A flagged coin with no user part exports as "Bad Bank",
+                // including a hand clear that kept the flag. An unflagged
+                // blank stays on device and is omitted.
+                val label = if (row.badbank == 1) {
+                    CoinLabel.display(row.label, true).orEmpty()
+                } else {
+                    row.label
+                }
+                if (label.isBlank()) return@forEach
                 val o = JSONObject()
                     .put("type", "output")
                     .put("ref", "${row.txid}:${row.vout}")
-                    .put("label", row.label)
+                    .put("label", label)
                 row.origin?.let { o.put("origin", it) }
                 writer.println(o.toString())
             }

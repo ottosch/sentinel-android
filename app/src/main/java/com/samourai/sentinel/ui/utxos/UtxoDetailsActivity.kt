@@ -11,7 +11,9 @@ import com.samourai.sentinel.R
 import com.samourai.sentinel.data.PubKeyCollection
 import com.samourai.sentinel.data.db.dao.UtxoDao
 import com.samourai.sentinel.data.repository.CollectionRepository
+import com.samourai.sentinel.data.db.entity.UtxoLabel
 import com.samourai.sentinel.data.repository.LabelRepository
+import com.samourai.sentinel.data.whirlpool.CoinLabel
 import com.samourai.sentinel.ui.collectionDetails.transactions.LabelEdit
 import com.samourai.sentinel.databinding.ActivityUtxoDetailsBinding
 import com.samourai.sentinel.ui.SentinelActivity
@@ -40,6 +42,10 @@ class UtxoDetailsActivity : SentinelActivity() {
     private var currentLabelText: String? = null
     private var storedLabel: String? = null
     private var storedOrigin: String? = null
+    private var labelRow: UtxoLabel? = null
+    private var coinPubKey: String = ""
+    private var coinMarked = false
+    private var watchesCoinLabel = false
     val df = DecimalFormat("#")
 
 
@@ -86,8 +92,10 @@ class UtxoDetailsActivity : SentinelActivity() {
                 return@observe
             }
             address = it[0].addr
+            coinPubKey = it[0].pubKey
             amountTextView.text = (df.format(it[0].value?.div(1e8))).toString() + " BTC"
             addressTextView.text = it[0].addr
+            if (watchesCoinLabel) renderCoinLabel()
         }
         hashTextView.setText(idx)
 
@@ -96,15 +104,14 @@ class UtxoDetailsActivity : SentinelActivity() {
         val txid = parts.getOrNull(0)
         val vout = parts.getOrNull(1)?.toIntOrNull()
         if (txid != null && vout != null) {
+            watchesCoinLabel = true
             labelRepository.observe(txid, vout).observe(this@UtxoDetailsActivity) { labelEntity ->
                 // Coin labels stay visible regardless of Whirlpool
                 // auto-labels. The setting hides transaction labels only.
+                labelRow = labelEntity
                 storedLabel = labelEntity?.label
                 storedOrigin = labelEntity?.origin
-                val shown = labelEntity?.label?.takeIf { it.isNotBlank() }
-                currentLabelText = shown
-                binding.utxoDetailsLabel.text =
-                    shown ?: getString(R.string.utxo_label_empty_hint)
+                renderCoinLabel()
             }
             binding.utxoDetailsLabel.setOnClickListener {
                 showLabelDialog(txid, vout)
@@ -160,10 +167,29 @@ class UtxoDetailsActivity : SentinelActivity() {
         }
     }
 
+    /**
+     * The row on screen is the composed label. A Bad Bank coin with
+     * no user part still reads "Bad Bank", from the flag or from the
+     * account on the coin's pub.
+     */
+    private fun renderCoinLabel() {
+        coinMarked = CoinLabel.isMarked(labelRow?.badbank ?: 0, coinPubKey)
+        val shown = CoinLabel.display(labelRow?.label, coinMarked)?.takeIf { it.isNotBlank() }
+        currentLabelText = shown
+        if (!::binding.isInitialized) return
+        binding.utxoDetailsLabel.text = shown ?: getString(R.string.utxo_label_empty_hint)
+    }
+
     private fun showLabelDialog(txid: String, vout: Int) {
+        val marked = coinMarked
+        val prefill = if (marked) CoinLabel.userPart(storedLabel) else (currentLabelText ?: "")
         val input = EditText(this).apply {
-            hint = getString(R.string.utxo_label_input_hint)
-            setText(currentLabelText ?: "")
+            hint = if (marked) {
+                getString(R.string.utxo_label_badbank_hint)
+            } else {
+                getString(R.string.utxo_label_input_hint)
+            }
+            setText(prefill)
             setSingleLine()
         }
         val pad = (20 * resources.displayMetrics.density).toInt()
@@ -178,10 +204,14 @@ class UtxoDetailsActivity : SentinelActivity() {
                 val text = input.text.toString()
                 // Unchanged text must not replace an auto origin with
                 // a manual one. That stops phase-1 Bad Bank propagation
-                // on this coin. Clearing a visible label still writes.
-                if (LabelEdit.isNoOp(text, storedLabel, storedOrigin, currentLabelText)) return@setPositiveButton
+                // on a coin that is not yet flagged. A Bad Bank coin
+                // compares user parts, so "Bad Bank" or the composed
+                // suffix over an unchanged user part does not write.
+                if (LabelEdit.isNoOp(text, storedLabel, storedOrigin, currentLabelText, marked)) {
+                    return@setPositiveButton
+                }
                 lifecycleScope.launch {
-                    labelRepository.setLabel(txid, vout, text)
+                    labelRepository.setLabel(txid, vout, text, markBadbank = marked)
                 }
             }
             .setNegativeButton("Cancel", null)

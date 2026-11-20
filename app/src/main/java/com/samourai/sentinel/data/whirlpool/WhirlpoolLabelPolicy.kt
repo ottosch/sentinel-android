@@ -33,8 +33,15 @@ object WhirlpoolLabelPolicy {
     }
 }
 
-/** A pre-existing tx label row, as the writer sees it. */
-data class ExistingLabel(val label: String, val origin: String?)
+/**
+ * A pre-existing label row, as the writer sees it.
+ * [badbank] is the sticky coin flag. Tx rows leave it at 0.
+ */
+data class ExistingLabel(
+    val label: String,
+    val origin: String?,
+    val badbank: Int = 0,
+)
 
 /**
  * What a hand edit or a hand clear stores. [origin] is null: the

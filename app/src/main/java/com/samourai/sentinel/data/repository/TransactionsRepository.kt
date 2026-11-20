@@ -13,6 +13,8 @@ import com.samourai.sentinel.data.WalletResponse
 import com.samourai.sentinel.data.db.dao.TxDao
 import com.samourai.sentinel.data.db.dao.TxEntropyDao
 import com.samourai.sentinel.data.db.dao.UtxoDao
+import com.samourai.sentinel.data.whirlpool.BadbankAccountLabeler
+import com.samourai.sentinel.data.whirlpool.LabelBadbankAccountSink
 import com.samourai.sentinel.data.whirlpool.WhirlpoolAutoWriter
 import com.samourai.sentinel.data.db.entity.TxEntropy
 import com.samourai.sentinel.data.entropy.ENTROPY_FEATURE_ENABLED
@@ -121,6 +123,9 @@ class TransactionsRepository {
     }
     private val badbankLabeler by lazy {
         BadbankLabeler(WhirlpoolLabelSink(labelRepository))
+    }
+    private val badbankAccountLabeler by lazy {
+        BadbankAccountLabeler(LabelBadbankAccountSink(labelRepository))
     }
     private val txEntropyDao: TxEntropyDao by inject(TxEntropyDao::class.java)
     private val txEntropyIngest by lazy {
@@ -807,6 +812,17 @@ class TransactionsRepository {
             ?: return
         withContext(Dispatchers.IO) {
             utxoDao.upsertCollectionUtxos(collectionId, utxos, keepIdxs)
+            // Bad Bank coin labels are always applied. No preference
+            // gate: the toggle covers transaction labels only. A failure
+            // here must not abort the sync that just stored the coins.
+            runCatching {
+                val coins = utxos.mapNotNull { utxo ->
+                    val txid = utxo.txHash ?: return@mapNotNull null
+                    val vout = utxo.txOutputN ?: return@mapNotNull null
+                    BadbankAccountLabeler.Coin(txid, vout, utxo.pubKey)
+                }
+                badbankAccountLabeler.apply(coins, labelRepository.currentNetwork())
+            }.onFailure { Timber.e(it, "badbank account labels failed") }
             // #530: preservePubKeys are the pubs whose fetch failed.
             // Their do-not-spend marks are not read, so a missing row
             // in [utxos] cannot clear them.

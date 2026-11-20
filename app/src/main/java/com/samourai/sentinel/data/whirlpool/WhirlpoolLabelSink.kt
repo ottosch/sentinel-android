@@ -27,12 +27,14 @@ class WhirlpoolLabelSink(
 
     override suspend fun findUtxoLabel(txid: String, vout: Int) =
         labelRepository.getUtxoLabel(txid, vout)?.let {
-            ExistingLabel(it.label, it.origin)
+            ExistingLabel(it.label, it.origin, it.badbank)
         }
 
     override suspend fun writeAutoUtxoLabel(
         txid: String, vout: Int, label: String, origin: String,
-    ) = labelRepository.setAutoUtxoLabel(txid, vout, label, origin)
+    ) = labelRepository.setAutoUtxoLabel(
+        txid, vout, label, origin, markBadbank = true,
+    )
 
     override suspend fun deleteAutoUtxoLabel(
         txid: String, vout: Int, ourLabel: String,

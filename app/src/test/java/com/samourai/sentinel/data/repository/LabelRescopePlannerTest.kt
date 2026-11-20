@@ -28,7 +28,8 @@ class LabelRescopePlannerTest {
     private fun mainnetUtxo() = UtxoLabel(
         network = "mainnet", txid = txid, vout = 22,
         label = "Bad Bank", origin = "auto:whirlpool:v1",
-        createdAt = 111L, updatedAt = 222L
+        createdAt = 111L, updatedAt = 222L,
+        badbank = 1,
     )
 
     private fun mainnetEntry() = LabelEntry(
@@ -53,6 +54,7 @@ class LabelRescopePlannerTest {
         assertEquals("auto:whirlpool:v1", copy.origin)
         assertEquals(111L, copy.createdAt)
         assertEquals(222L, copy.updatedAt)
+        assertEquals(1, copy.badbank)
         assertEquals(setOf("mainnet"), plan.purgeNetworks)
     }
 

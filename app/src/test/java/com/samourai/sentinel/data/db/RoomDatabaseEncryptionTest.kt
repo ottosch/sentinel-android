@@ -2,6 +2,7 @@ package com.samourai.sentinel.data.db
 
 import android.content.Context
 import androidx.room.Room
+import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.test.core.app.ApplicationProvider
 import com.samourai.sentinel.data.Tx
 import com.samourai.sentinel.data.Utxo
@@ -23,6 +24,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.sqlite.mc.SQLiteMCSqlCipherConfig
 import java.io.File
+import java.lang.reflect.Proxy
 import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.Types
@@ -91,7 +93,7 @@ class RoomDatabaseEncryptionTest {
             assertEquals("addr label", singleText(session, "SELECT label FROM label_entries"))
             assertEquals(1, singleLong(session, "SELECT count(*) FROM tx_entropy WHERE txid = 'ab'"))
             assertEquals(1, singleLong(session, "SELECT count(*) FROM room_master_table"))
-            assertEquals(5, singleLong(session, "PRAGMA user_version").toInt())
+            assertEquals(6, singleLong(session, "PRAGMA user_version").toInt())
         }
     }
 
@@ -153,7 +155,7 @@ class RoomDatabaseEncryptionTest {
             assertEquals(0, singleLong(session, "SELECT count(*) FROM label_entries"))
             assertEquals(0, singleLong(session, "SELECT count(*) FROM tx_entropy"))
             assertEquals(1, singleLong(session, "SELECT count(*) FROM room_master_table"))
-            assertEquals(5, singleLong(session, "PRAGMA user_version").toInt())
+            assertEquals(6, singleLong(session, "PRAGMA user_version").toInt())
         }
     }
 
@@ -227,7 +229,7 @@ class RoomDatabaseEncryptionTest {
         assertEquals(0, db.labelEntryDao().getAllNetworks().size)
         assertEquals(null, db.txEntropyDao().findByTxid("ab"))
         val session = SupportSqlSession(db.openHelper.writableDatabase)
-        assertEquals(5, singleLong(session, "PRAGMA user_version").toInt())
+        assertEquals(6, singleLong(session, "PRAGMA user_version").toInt())
         assertEquals(1, singleLong(session, "SELECT count(*) FROM room_master_table"))
     }
 
@@ -326,6 +328,65 @@ class RoomDatabaseEncryptionTest {
         assertFalse(PlaintextSqlite.isPlaintext(dbFile))
         DatabaseMigrator.openEncrypted(opener, dbFile.absolutePath, key).use { session ->
             assertEquals("xpub-recovered", singleText(session, "SELECT associatedPubKey FROM transactions"))
+            assertEquals(5, singleLong(session, "PRAGMA user_version").toInt())
+        }
+    }
+
+    @Test
+    fun migration5to6OnSqlCipherAddsBadbankAndBackfillsAutoRows() {
+        val key = DatabasePassphrase.random()
+        opener.open(dbFile.absolutePath, key).use { session ->
+            session.exec(
+                "CREATE TABLE utxo_labels (" +
+                    "network TEXT NOT NULL, txid TEXT NOT NULL, vout INTEGER NOT NULL, " +
+                    "label TEXT NOT NULL, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL, " +
+                    "origin TEXT, PRIMARY KEY(network, txid, vout))"
+            )
+            fun put(txid: String, label: String, origin: String?) {
+                val originSql = if (origin == null) "NULL" else "'$origin'"
+                session.exec(
+                    "INSERT INTO utxo_labels " +
+                        "(network, txid, vout, label, createdAt, updatedAt, origin) " +
+                        "VALUES ('mainnet', '$txid', 0, '$label', 1, 1, $originSql)"
+                )
+            }
+            put("aa", "Bad Bank", "auto:whirlpool:v1")
+            put("bb", "Bad Bank", null)
+            put("cc", "rent", null)
+            put("dd", "notes", "auto:whirlpool:v1")
+            put("ee", "bad bank", "auto:whirlpool:v1")
+            session.exec("PRAGMA user_version = 5")
+
+            val database = Proxy.newProxyInstance(
+                SupportSQLiteDatabase::class.java.classLoader,
+                arrayOf(SupportSQLiteDatabase::class.java),
+            ) { _, method, args ->
+                if (method.name == "execSQL" && args != null && args.isNotEmpty() && args[0] is String) {
+                    session.exec(args[0] as String)
+                    return@newProxyInstance null
+                }
+                throw UnsupportedOperationException(method.name)
+            } as SupportSQLiteDatabase
+            SentinelRoomDb.MIGRATION_5_6.migrate(database)
+
+            fun flag(txid: String) =
+                singleLong(session, "SELECT badbank FROM utxo_labels WHERE txid = '$txid'").toInt()
+            assertEquals(1, flag("aa"))
+            assertEquals("manual Bad Bank waits for the account labeller", 0, flag("bb"))
+            assertEquals(0, flag("cc"))
+            assertEquals(0, flag("dd"))
+            assertEquals(0, flag("ee"))
+            assertEquals("rent", singleText(session, "SELECT label FROM utxo_labels WHERE txid = 'cc'"))
+            assertEquals("Bad Bank", singleText(session, "SELECT label FROM utxo_labels WHERE txid = 'bb'"))
+            val createSql = singleText(session, "SELECT sql FROM sqlite_master WHERE name = 'utxo_labels'")
+            assertTrue(createSql.contains("badbank"))
+            assertTrue(createSql.contains("DEFAULT 0"))
+
+            session.exec(
+                "INSERT INTO utxo_labels (network, txid, vout, label, createdAt, updatedAt) " +
+                    "VALUES ('mainnet', 'ff', 1, 'later', 2, 2)"
+            )
+            assertEquals(0, flag("ff"))
             assertEquals(5, singleLong(session, "PRAGMA user_version").toInt())
         }
     }

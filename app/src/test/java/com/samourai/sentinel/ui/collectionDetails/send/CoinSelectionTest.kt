@@ -1,6 +1,8 @@
 package com.samourai.sentinel.ui.collectionDetails.send
 
 import com.samourai.sentinel.data.Utxo
+import com.samourai.sentinel.data.whirlpool.WhirlpoolConfig
+import com.samourai.wallet.util.XPUB
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
@@ -88,10 +90,45 @@ class CoinSelectionTest {
     }
 
     @Test
+    fun aCustomUserLabelOnAFlaggedCoinStillWarnsAndTwoFlaggedCoinsDoNot() {
+        val labels = mapOf("aa:0" to "Cold storage", "bb:1" to "Savings", "cc:0" to "salary")
+        val flagged = setOf("aa:0", "bb:1")
+        assertTrue(CoinSelection.isBadBank(a, labels, flagged))
+        assertTrue(CoinSelection.mixesBadBank(listOf(a, c), labels, flagged))
+        assertFalse(CoinSelection.mixesBadBank(listOf(a, b), labels, flagged))
+    }
+
+    @Test
+    fun theBadBankAccountWarnsWithoutARowAndAHandTypedSuffixDoesNot() {
+        val badPub = accountXpub(WhirlpoolConfig.DEFAULT.badbankAccount)
+        val bad = utxo("aa", 0, 1L).also { it.pubKey = badPub }
+        val deposit = utxo("cc", 0, 1L).also { it.pubKey = accountXpub(WhirlpoolConfig.DEFAULT.depositAccount) }
+        val hand = utxo("bb", 1, 1L)
+        val labels = mapOf("bb:1" to "x (Bad Bank)", "cc:0" to "salary")
+        assertTrue(CoinSelection.isBadBank(bad, emptyMap()))
+        assertFalse(CoinSelection.isBadBank(hand, labels))
+        assertFalse(CoinSelection.isBadBank(deposit, labels))
+        assertTrue(CoinSelection.mixesBadBank(listOf(bad, deposit), labels))
+        assertFalse(CoinSelection.mixesBadBank(listOf(hand, deposit), labels))
+    }
+
+    @Test
     fun badBankMatchIsCaseAndWhitespaceTolerantAndTxidCaseTolerant() {
         val upper = utxo("AA", 0, 1L)
         val labels = mapOf("aa:0" to " bad bank ")
         assertTrue(CoinSelection.isBadBank(upper, labels))
         assertEquals(" bad bank ", CoinSelection.labelFor(upper, labels))
+    }
+
+    private fun accountXpub(account: Long): String {
+        val child = (account - 2_147_483_648L).toInt()
+        return XPUB.makeXPUB(
+            XPUB.MAGIC_ZPUB,
+            3,
+            0,
+            child,
+            ByteArray(32) { 0x11 },
+            ByteArray(33) { 0x02 },
+        )
     }
 }

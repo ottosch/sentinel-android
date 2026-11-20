@@ -1,6 +1,7 @@
 package com.samourai.sentinel.ui.collectionDetails.send
 
 import com.samourai.sentinel.data.Utxo
+import com.samourai.sentinel.data.whirlpool.AccountKey
 
 /**
  * #190: manual coin control - the pure rules for a pinned input set.
@@ -70,22 +71,41 @@ object CoinSelection {
      * them together links the badbank change back to the rest of the
      * wallet - the pre-flight warning the issue asks for at compose time.
      *
-     * [labels] is LabelRepository.observeLabelMap(): "txid:vout" -> label.
-     * Keys are compared lowercased, the invariant the #46 writer stores by.
+     * [labels] is "txid:vout" -> stored label. [badbank] is the set of
+     * those keys whose row has the sticky flag. A coin in the Bad Bank
+     * account is Bad Bank even with no row and even when the user
+     * label is something else. Keys are compared lowercased, the
+     * invariant the writer stores by.
      */
-    fun mixesBadBank(selected: List<Utxo>, labels: Map<String, String>): Boolean {
+    fun mixesBadBank(
+        selected: List<Utxo>,
+        labels: Map<String, String>,
+        badbank: Set<String> = emptySet(),
+    ): Boolean {
         if (selected.size < 2) return false
-        val flags = selected.map { isBadBank(it, labels) }
+        val flags = selected.map { isBadBank(it, labels, badbank) }
         return flags.any { it } && flags.any { !it }
     }
 
-    fun isBadBank(utxo: Utxo, labels: Map<String, String>): Boolean =
-        labelFor(utxo, labels)?.trim()?.equals(BAD_BANK_LABEL, ignoreCase = true) == true
+    fun isBadBank(
+        utxo: Utxo,
+        labels: Map<String, String>,
+        badbank: Set<String> = emptySet(),
+    ): Boolean {
+        if (AccountKey.isBadBank(utxo.pubKey)) return true
+        val key = keyOf(utxo)
+        val lower = "${utxo.txHash?.lowercase()}:${utxo.txOutputN}"
+        if (key in badbank || lower in badbank) return true
+        return labelFor(utxo, labels)?.trim()?.equals(BAD_BANK_LABEL, ignoreCase = true) == true
+    }
 
     /** The utxo label for [utxo], tolerant of txid case. */
-    fun labelFor(utxo: Utxo, labels: Map<String, String>): String? =
-        labels[keyOf(utxo)]
-            ?: labels["${utxo.txHash?.lowercase()}:${utxo.txOutputN}"]
+    fun labelFor(utxo: Utxo, labels: Map<String, String>): String? = lookup(utxo, labels)
+
+    /** Map value for [utxo], tolerant of txid case. */
+    fun <T> lookup(utxo: Utxo, values: Map<String, T>): T? =
+        values[keyOf(utxo)]
+            ?: values["${utxo.txHash?.lowercase()}:${utxo.txOutputN}"]
 
     /** WhirlpoolConfig's badbank label, as the #46 auto-writer stores it. */
     const val BAD_BANK_LABEL = "Bad Bank"
