@@ -41,8 +41,9 @@ open class TransactionAdapter : ListAdapter<Tx, TransactionAdapter.ViewHolder>(D
      * txid -> stored label + origin, from
      * [com.samourai.sentinel.data.repository.LabelRepository.observeTxLabelMap].
      * Labels are not part of the list items, so a new map re-renders the rows.
-     * Origin is only used to decide whether an auto Tx0 may be shown per
-     * account; the stored text is never rewritten.
+     * Origin decides whether an auto Tx0 may be shown per account, and
+     * whether an auto: label is hidden while Whirlpool auto-labels is
+     * off. The stored text is never rewritten.
      */
     var txLabels: Map<String, TxLabelDetail> = emptyMap()
         set(value) {
@@ -52,8 +53,9 @@ open class TransactionAdapter : ListAdapter<Tx, TransactionAdapter.ViewHolder>(D
 
     /**
      * associatedPubKey -> account role, built by the list fragment from
-     * the collection's pub labels. Lookup only; an unknown pub keeps the
-     * stored label ([TxPerspectiveLabel.Role.OTHER]).
+     * the xpub account, with the pub label as the fallback. Lookup
+     * only; an unknown pub keeps the stored label
+     * ([TxPerspectiveLabel.Role.OTHER]).
      */
     var pubRoles: Map<String, TxPerspectiveLabel.Role> = emptyMap()
         set(value) {
@@ -136,7 +138,15 @@ open class TransactionAdapter : ListAdapter<Tx, TransactionAdapter.ViewHolder>(D
             val txid = tx.hash.split("-")[0].lowercase()
             val stored = txLabels[txid]
             val role = pubRoles[tx.associatedPubKey] ?: TxPerspectiveLabel.Role.OTHER
-            val label = TxPerspectiveLabel.display(stored?.label, stored?.origin, role)
+            // The auto-labels setting is read here, at bind time. Resume
+            // rebinds the list, so returning from Settings hides or
+            // restores automatic labels without rewriting them.
+            val label = TxPerspectiveLabel.display(
+                stored?.label,
+                stored?.origin,
+                role,
+                showAuto = prefsUtil.whirlpoolAutoLabels == true,
+            )
             if (label.isNullOrBlank()) {
                 holder.txLabel.visibility = View.GONE
             } else {

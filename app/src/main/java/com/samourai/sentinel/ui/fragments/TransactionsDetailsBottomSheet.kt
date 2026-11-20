@@ -21,10 +21,12 @@ import com.samourai.sentinel.data.Tx
 import com.samourai.sentinel.data.repository.ExchangeRateRepository
 import com.samourai.sentinel.data.repository.LabelRepository
 import com.samourai.sentinel.data.db.dao.TxEntropyDao
+import com.samourai.sentinel.data.db.entity.LabelEntry
 import com.samourai.sentinel.data.entropy.ENTROPY_FEATURE_ENABLED
 import com.samourai.sentinel.data.entropy.EntropyBand
 import com.samourai.sentinel.data.entropy.EntropyBands
 import com.samourai.sentinel.databinding.ContentTransactionsDetailsBinding
+import com.samourai.sentinel.ui.collectionDetails.transactions.LabelEdit
 import com.samourai.sentinel.ui.collectionDetails.transactions.TxPerspectiveLabel
 import com.samourai.sentinel.ui.collectionDetails.transactions.TxUtxoLabels
 import com.samourai.sentinel.ui.utils.PrefsUtil
@@ -99,6 +101,10 @@ class TransactionsDetailsBottomSheet() : GenericBottomSheet() {
     var job: Job? = null
 
     private var currentLabel: String? = null
+    private var currentOrigin: String? = null
+    private var currentShown: String? = null
+    private var lastLabelEntry: LabelEntry? = null
+    private var hasLabelSnapshot = false
 
     private var _binding: ContentTransactionsDetailsBinding? = null
     private val binding get() = _binding!!
@@ -170,30 +176,28 @@ class TransactionsDetailsBottomSheet() : GenericBottomSheet() {
             }
         }
 
-        // Label row: shows the label, or a dimmed "Add label" prompt.
+        // Label row: the text on screen, or a dimmed "Add label".
         // An auto Tx0 is shown from the opening row's account (the same
-        // perspective as the list). Click still edits the stored label.
-        // A blank save is a hand clear: the row stays, with a manual
-        // origin, so the next sync does not write an auto label back.
-        // The perspective string is display only and is never written.
-        // Long-press copies the text on screen. The list and sheet
-        // re-render themselves via Room LiveData when the write lands.
+        // perspective as the list). Whirlpool auto-labels off hides
+        // every auto: transaction label. The stored row is not touched,
+        // and onResume re-reads the setting so coming back from
+        // Settings updates this row without a resync.
+        // The editor opens on the text on screen. Saving that text, or
+        // the stored text of a visible auto row, writes nothing, so a
+        // tap on Save does not turn the row manual. A blank save over
+        // a hidden auto row is the same no-op. A real edit, including
+        // clearing a visible label, stores a manual label: a blank
+        // manual row is a hand clear and the next sync does not write
+        // an auto label back. Long-press copies the text on screen.
         labelRepository.observeTxLabel(tx.hash.split("-")[0]).observe(viewLifecycleOwner) { entry ->
-            currentLabel = entry?.label
-            val shown = TxPerspectiveLabel.display(entry?.label, entry?.origin, perspectiveRole)
-            if (entry != null && !shown.isNullOrBlank()) {
-                binding.txDetailsLabel.text = shown
-                binding.txDetailsLabel.alpha = 1f
-            } else {
-                binding.txDetailsLabel.text = "Add label"
-                binding.txDetailsLabel.alpha = 0.5f
-            }
+            renderTxLabel(entry)
         }
         // #210: durable result listener for the label editor - registered
         // on every onViewCreated, so a label sheet that survives a
-        // recreation still saves. Blank input is a hand clear.
+        // recreation still saves. An unchanged save does not write.
         childFragmentManager.setFragmentResultListener(REQUEST_KEY_TX_LABEL, viewLifecycleOwner) { _, bundle ->
             val text = bundle.getString(InputBottomSheet.RESULT_INPUT).orEmpty()
+            if (LabelEdit.isNoOp(text, currentLabel, currentOrigin, currentShown)) return@setFragmentResultListener
             apiScope.launch { labelRepository.setTxLabel(tx.hash.split("-")[0], text) }
         }
         binding.txDetailsLabel.setOnClickListener { showLabelEditor() }
@@ -248,6 +252,41 @@ class TransactionsDetailsBottomSheet() : GenericBottomSheet() {
         ExplorerOpener(requireContext()).open(ExplorerBinding.ExplorerPage.TX, txid)
     }
 
+    override fun onResume() {
+        super.onResume()
+        // LiveData does not re-emit when only the setting changes.
+        // Returning from Settings re-reads it against the last row.
+        if (_binding != null && hasLabelSnapshot) {
+            renderTxLabel(lastLabelEntry)
+        }
+    }
+
+    /**
+     * Applies the account perspective and the auto-labels setting to
+     * one stored row. [entry] null is "no label". The editor prefill
+     * and the save guard both read the fields this sets.
+     */
+    private fun renderTxLabel(entry: LabelEntry?) {
+        lastLabelEntry = entry
+        hasLabelSnapshot = true
+        currentLabel = entry?.label
+        currentOrigin = entry?.origin
+        val shown = TxPerspectiveLabel.display(
+            entry?.label,
+            entry?.origin,
+            perspectiveRole,
+            showAuto = prefsUtil.whirlpoolAutoLabels == true,
+        )
+        currentShown = shown
+        if (!shown.isNullOrBlank()) {
+            binding.txDetailsLabel.text = shown
+            binding.txDetailsLabel.alpha = 1f
+        } else {
+            binding.txDetailsLabel.text = "Add label"
+            binding.txDetailsLabel.alpha = 0.5f
+        }
+    }
+
     private fun showLabelEditor() {
         // #210: recreation-safe label editor. The old construction wired a
         // captured lambda through InputBottomSheet's onViewReady; the
@@ -255,11 +294,13 @@ class TransactionsDetailsBottomSheet() : GenericBottomSheet() {
         // arguments and posts the typed text to REQUEST_KEY_TX_LABEL,
         // received by the durable listener in onViewCreated. maxLen 64
         // kept - the helper default (34) is address-length; labels need
-        // more room.
+        // more room. The prefill is the text on screen, so a remapped
+        // Tx0 opens as "Bad Bank" or "Whirlpool Premix", and a hidden
+        // auto label opens empty.
         val editor = InputBottomSheet.newInstance(
             label = "Transaction label",
             buttonLabel = "Save",
-            value = currentLabel ?: "",
+            value = LabelEdit.prefill(currentShown),
             maxLen = 64,
             requestKey = REQUEST_KEY_TX_LABEL
         )

@@ -12,6 +12,7 @@ import com.samourai.sentinel.data.PubKeyCollection
 import com.samourai.sentinel.data.db.dao.UtxoDao
 import com.samourai.sentinel.data.repository.CollectionRepository
 import com.samourai.sentinel.data.repository.LabelRepository
+import com.samourai.sentinel.ui.collectionDetails.transactions.LabelEdit
 import com.samourai.sentinel.databinding.ActivityUtxoDetailsBinding
 import com.samourai.sentinel.ui.SentinelActivity
 import com.samourai.sentinel.ui.webview.ExplorerBinding
@@ -37,6 +38,8 @@ class UtxoDetailsActivity : SentinelActivity() {
     private val utxoDao: UtxoDao by inject(UtxoDao::class.java)
     private val labelRepository: LabelRepository by inject(LabelRepository::class.java)
     private var currentLabelText: String? = null
+    private var storedLabel: String? = null
+    private var storedOrigin: String? = null
     val df = DecimalFormat("#")
 
 
@@ -94,6 +97,10 @@ class UtxoDetailsActivity : SentinelActivity() {
         val vout = parts.getOrNull(1)?.toIntOrNull()
         if (txid != null && vout != null) {
             labelRepository.observe(txid, vout).observe(this@UtxoDetailsActivity) { labelEntity ->
+                // Coin labels stay visible regardless of Whirlpool
+                // auto-labels. The setting hides transaction labels only.
+                storedLabel = labelEntity?.label
+                storedOrigin = labelEntity?.origin
                 val shown = labelEntity?.label?.takeIf { it.isNotBlank() }
                 currentLabelText = shown
                 binding.utxoDetailsLabel.text =
@@ -168,8 +175,13 @@ class UtxoDetailsActivity : SentinelActivity() {
             .setTitle(getString(R.string.utxo_label_dialog_title))
             .setView(container)
             .setPositiveButton("Save") { _, _ ->
+                val text = input.text.toString()
+                // Unchanged text must not replace an auto origin with
+                // a manual one. That stops phase-1 Bad Bank propagation
+                // on this coin. Clearing a visible label still writes.
+                if (LabelEdit.isNoOp(text, storedLabel, storedOrigin, currentLabelText)) return@setPositiveButton
                 lifecycleScope.launch {
-                    labelRepository.setLabel(txid, vout, input.text.toString())
+                    labelRepository.setLabel(txid, vout, text)
                 }
             }
             .setNegativeButton("Cancel", null)

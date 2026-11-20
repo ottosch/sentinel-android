@@ -21,6 +21,12 @@ import java.io.PrintWriter
  * wallet produces byte-identical files, so diffs between exports
  * show only real label changes. "origin" is emitted only when
  * present, exactly as imported (opaque pass-through).
+ *
+ * The Whirlpool auto-labels setting is display-only and is not
+ * consulted here. Automatic transaction rows are exported with
+ * their origin either way, so a backup round-trips back into an
+ * `auto:` label. A wallet that ignores origin will show the stored
+ * text ("Whirlpool Tx0", "Whirlpool Mix") as an ordinary label.
  */
 class Bip329Exporter(
     private val utxoLabelDaoOverride: UtxoLabelDao? = null,
