@@ -802,7 +802,7 @@ class TransactionsRepository {
     // null - take the same early-skip saveTx uses. Nothing to
     // reconcile, and writing rows for a gone collection would
     // resurrect data into a freshly wiped wallet.
-    private suspend fun saveUtxos(
+    internal suspend fun saveUtxos(
         utxos: ArrayList<Utxo>,
         collectionId: String,
         keepIdxs: Collection<String> = emptyList(),
@@ -822,7 +822,10 @@ class TransactionsRepository {
                     BadbankAccountLabeler.Coin(txid, vout, utxo.pubKey)
                 }
                 badbankAccountLabeler.apply(coins, labelRepository.currentNetwork())
-            }.onFailure { Timber.e(it, "badbank account labels failed") }
+            }.onFailure {
+                if (it is CancellationException) throw it
+                Timber.e(it, "badbank account labels failed")
+            }
             // #530: preservePubKeys are the pubs whose fetch failed.
             // Their do-not-spend marks are not read, so a missing row
             // in [utxos] cannot clear them.

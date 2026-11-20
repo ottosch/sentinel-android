@@ -355,6 +355,8 @@ class RoomDatabaseEncryptionTest {
             put("cc", "rent", null)
             put("dd", "notes", "auto:whirlpool:v1")
             put("ee", "bad bank", "auto:whirlpool:v1")
+            put("ag", "Bad Bank", "AUTO:whirlpool:v1")
+            put("ah", "Bad Bank", "auto:evil")
             session.exec("PRAGMA user_version = 5")
 
             val database = Proxy.newProxyInstance(
@@ -376,6 +378,8 @@ class RoomDatabaseEncryptionTest {
             assertEquals(0, flag("cc"))
             assertEquals(0, flag("dd"))
             assertEquals(0, flag("ee"))
+            assertEquals(0, flag("ag"))
+            assertEquals(0, flag("ah"))
             assertEquals("rent", singleText(session, "SELECT label FROM utxo_labels WHERE txid = 'cc'"))
             assertEquals("Bad Bank", singleText(session, "SELECT label FROM utxo_labels WHERE txid = 'bb'"))
             val createSql = singleText(session, "SELECT sql FROM sqlite_master WHERE name = 'utxo_labels'")

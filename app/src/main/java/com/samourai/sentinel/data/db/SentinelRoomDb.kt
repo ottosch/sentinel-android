@@ -133,15 +133,17 @@ abstract class SentinelRoomDb : RoomDatabase() {
 
         /**
          * v5 -> v6: sticky Bad Bank flag on coin labels. Additive.
-         * Existing rows default to 0. Auto-written "Bad Bank" rows are
-         * backfilled so an upgrade keeps the marking without waiting
-         * for the next sync. Manual rows stay 0 until the account
-         * labeller sees the live coin.
+         * Existing rows default to 0. Our auto-written "Bad Bank" rows
+         * are backfilled so an upgrade keeps the marking without
+         * waiting for the next sync. The origin match is exact:
+         * SQLite LIKE is case-insensitive for ASCII, so `auto:%`
+         * would also flag `AUTO:` and `auto:evil`. Manual rows stay
+         * 0 until the account labeller sees the live coin.
          */
         const val UTXO_LABELS_ADD_BADBANK =
             "ALTER TABLE utxo_labels ADD COLUMN badbank INTEGER NOT NULL DEFAULT 0"
         const val UTXO_LABELS_BACKFILL_BADBANK =
-            "UPDATE utxo_labels SET badbank = 1 WHERE label = 'Bad Bank' AND origin LIKE 'auto:%'"
+            "UPDATE utxo_labels SET badbank = 1 WHERE label = 'Bad Bank' AND origin = 'auto:whirlpool:v1'"
 
         val MIGRATION_5_6 = object : Migration(5, 6) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -149,6 +151,15 @@ abstract class SentinelRoomDb : RoomDatabase() {
                 db.execSQL(UTXO_LABELS_BACKFILL_BADBANK)
             }
         }
+
+        /** The list [getDatabase] registers. Tests open upgrades with this same array. */
+        val MIGRATIONS = arrayOf(
+            MIGRATION_1_2,
+            MIGRATION_2_3,
+            MIGRATION_3_4,
+            MIGRATION_4_5,
+            MIGRATION_5_6,
+        )
 
         @Volatile
         private var INSTANCE: SentinelRoomDb? = null
@@ -186,7 +197,7 @@ abstract class SentinelRoomDb : RoomDatabase() {
                                 rawKey.copyOf()
                             )
                         )
-                        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                        .addMigrations(*MIGRATIONS)
                         .build()
                 INSTANCE = instance
                 return instance

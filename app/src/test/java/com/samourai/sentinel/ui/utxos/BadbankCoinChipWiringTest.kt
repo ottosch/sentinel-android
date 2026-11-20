@@ -19,9 +19,12 @@ import com.samourai.sentinel.data.Utxo
 import com.samourai.sentinel.data.db.SentinelRoomDb
 import com.samourai.sentinel.data.db.entity.UtxoLabel
 import com.samourai.sentinel.data.repository.LabelRepository
+import com.samourai.sentinel.data.db.SentinelCollectionStore
+import com.samourai.sentinel.data.repository.CollectionRepository
 import com.samourai.sentinel.data.whirlpool.WhirlpoolConfig
 import com.samourai.sentinel.ui.collectionDetails.send.CoinPickerBottomSheet
 import com.samourai.sentinel.ui.collectionDetails.send.SendViewModel
+import com.samourai.sentinel.ui.dojo.DojoUtility
 import com.samourai.sentinel.ui.utils.PrefsUtil
 import com.samourai.wallet.util.XPUB
 import java.util.concurrent.Executor
@@ -64,9 +67,6 @@ class BadbankCoinChipWiringTest {
         prefs.clearAll()
         prefs.testnet = false
         prefs.autoOriginHandEditsMigrated = true
-        val field = SentinelState::class.java.getDeclaredField("networkParams")
-        field.isAccessible = true
-        field.set(null, MainNetParams.get())
         db = Room.inMemoryDatabaseBuilder(app, SentinelRoomDb::class.java)
             .allowMainThreadQueries()
             .setQueryExecutor(direct)
@@ -83,9 +83,15 @@ class BadbankCoinChipWiringTest {
                 single { db.txDao() }
                 single { db.txEntropyDao() }
                 single { ApiService() }
+                single { SentinelCollectionStore() }
+                single { DojoUtility() }
+                single { CollectionRepository() }
                 single { LabelRepository() }
             })
         }
+        val field = SentinelState::class.java.getDeclaredField("networkParams")
+        field.isAccessible = true
+        field.set(null, MainNetParams.get())
         labels = org.koin.java.KoinJavaComponent.get(LabelRepository::class.java)
     }
 
@@ -146,7 +152,45 @@ class BadbankCoinChipWiringTest {
         assertTrue(chips.all { !it.isClickable })
     }
 
-    private fun awaitChips(recycler: RecyclerView): List<Chip> {
+    @Test
+    fun mixedSpendWarnsForAFlaggedCustomLabelBesideADeposit() {
+        val depositPub = accountXpub(WhirlpoolConfig.DEFAULT.depositAccount)
+        val flagged = utxo("bb", 1, depositPub)
+        val deposit = utxo("cc", 2, depositPub)
+        insert("bb", 1, "Cold storage", badbank = 1)
+        val host = Robolectric.buildActivity(AppCompatActivity::class.java)
+        host.get().setTheme(R.style.AppThemeV3)
+        val activity = host.setup().get()
+        val parent = Fragment()
+        activity.supportFragmentManager.beginTransaction()
+            .add(android.R.id.content, parent)
+            .commitNow()
+        val sheet = CoinPickerBottomSheet()
+        sheet.show(parent.childFragmentManager, CoinPickerBottomSheet.TAG)
+        parent.childFragmentManager.executePendingTransactions()
+        shadowOf(Looper.getMainLooper()).idle()
+        val model = ViewModelProvider(parent)[SendViewModel::class.java]
+        val field = SendViewModel::class.java.getDeclaredField("_utxoPool")
+        field.isAccessible = true
+        @Suppress("UNCHECKED_CAST")
+        val pool = field.get(model) as MutableLiveData<List<Utxo>>
+        pool.value = listOf(flagged, deposit)
+        val recycler = sheet.requireView().findViewById<RecyclerView>(R.id.coinPickerList)
+        val chips = awaitChips(recycler, minCount = 1)
+        assertEquals(listOf("Cold storage (Bad Bank)"), chips.map { it.text.toString() })
+        val warning = sheet.requireView().findViewById<View>(R.id.coinPickerCoSpendWarning)
+        assertEquals(View.GONE, warning.visibility)
+        val rows = viewsWithId(recycler, R.id.coinPickerRow)
+        assertEquals(2, rows.size)
+        rows[0].performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(View.GONE, warning.visibility)
+        rows[1].performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(View.VISIBLE, warning.visibility)
+    }
+
+    private fun awaitChips(recycler: RecyclerView, minCount: Int = 2): List<Chip> {
         val deadline = System.currentTimeMillis() + 5_000
         var found = emptyList<Chip>()
         while (System.currentTimeMillis() < deadline) {
@@ -157,10 +201,24 @@ class BadbankCoinChipWiringTest {
             )
             recycler.layout(0, 0, 1080, 2400)
             found = chipsUnder(recycler)
-            if (found.size >= 2) return found
+            if (found.size >= minCount) return found
             Thread.sleep(20)
         }
         assertFalse("chips: ${found.map { it.text }}", found.isEmpty())
+        return found
+    }
+
+    private fun viewsWithId(root: View, id: Int): List<View> {
+        val found = ArrayList<View>()
+        val stack = ArrayDeque<View>()
+        stack.add(root)
+        while (stack.isNotEmpty()) {
+            val view = stack.removeFirst()
+            if (view.id == id) found.add(view)
+            if (view is ViewGroup) {
+                for (i in 0 until view.childCount) stack.add(view.getChildAt(i))
+            }
+        }
         return found
     }
 

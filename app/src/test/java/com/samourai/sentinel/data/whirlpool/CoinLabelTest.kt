@@ -49,4 +49,16 @@ class CoinLabelTest {
             assertEquals(CoinLabel.display(sample, true), CoinLabel.display(CoinLabel.display(sample, true), true))
         }
     }
+
+    @Test(timeout = 2_000)
+    fun userPartIsLinearOnHostileLabels() {
+        val inputs = listOf(
+            "a" + " ".repeat(200_000) + "b",
+            "a" + " ".repeat(200_000) + "(Bad Bank",
+            "(Bad Bank)".repeat(20_000),
+            "x" + " (bad bank)".repeat(20_000),
+        )
+        for (s in inputs) CoinLabel.display(s, true)
+        assertEquals("x (Bad Bank)", CoinLabel.display("x" + " (bad bank)".repeat(20_000), true))
+    }
 }

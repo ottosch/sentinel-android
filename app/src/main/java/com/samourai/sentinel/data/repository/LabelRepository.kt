@@ -413,7 +413,15 @@ class LabelRepository {
             plan.purgeNetworks.isEmpty()
         ) return@withContext
         roomDb.withTransaction {
-            if (plan.utxoCopies.isNotEmpty()) dao.upsertAll(plan.utxoCopies)
+            if (plan.utxoCopies.isNotEmpty()) {
+                // Re-read the target row. A foreign badbank = 0 must
+                // not clear a flag that is already 1 on this outpoint.
+                val merged = plan.utxoCopies.map { copy ->
+                    val existing = dao.find(copy.network, copy.txid, copy.vout)
+                    copy.copy(badbank = maxOf(copy.badbank, existing?.badbank ?: 0))
+                }
+                dao.upsertAll(merged)
+            }
             if (plan.entryCopies.isNotEmpty()) entryDao.upsertAll(plan.entryCopies)
             plan.purgeNetworks.forEach { network ->
                 if (network != target) {

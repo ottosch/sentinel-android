@@ -170,6 +170,19 @@ class BadbankAccountLabelerTest {
         assertEquals(listOf(key), sink.flags)
     }
 
+    @Test(timeout = 2_000)
+    fun keysLongerThan120CharsAreRejectedBeforeBase58() {
+        val valid = accountXpub(cfg.badbankAccount)
+        assertTrue(valid.length <= AccountKey.MAX_KEY_CHARS)
+        assertEquals(cfg.badbankAccount, AccountKey.accountOf(valid))
+        assertEquals(null, AccountKey.accountOf("x".repeat(AccountKey.MAX_KEY_CHARS)))
+        assertEquals(null, AccountKey.accountOf("x".repeat(AccountKey.MAX_KEY_CHARS + 1)))
+        val pastTheCap = "z".repeat(AccountKey.MAX_KEY_CHARS) + valid
+        assertTrue(pastTheCap.length > AccountKey.MAX_KEY_CHARS)
+        assertEquals(null, AccountKey.accountOf(pastTheCap))
+        assertEquals(null, AccountKey.accountOf("z".repeat(100_000)))
+    }
+
     @Test
     fun saveUtxosHooksTheLabellerWithNoPreferenceGate() {
         val src = source(
@@ -177,7 +190,7 @@ class BadbankAccountLabelerTest {
             "app/src/main/java/com/samourai/sentinel/data/repository/TransactionsRepository.kt",
         )
         val fn = src.substring(
-            src.indexOf("private suspend fun saveUtxos"),
+            src.indexOf("suspend fun saveUtxos"),
             src.indexOf("suspend fun removeTxsRelatedToPubKey"),
         )
         val upsert = fn.indexOf("upsertCollectionUtxos")

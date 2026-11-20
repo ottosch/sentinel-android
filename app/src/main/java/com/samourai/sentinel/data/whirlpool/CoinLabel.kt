@@ -20,13 +20,31 @@ object CoinLabel {
      */
     fun userPart(stored: String?): String {
         if (stored == null) return ""
-        var text = stored.trim()
+        val text = stored.trim()
+        // Linear scan from the end. A regex find() here is quadratic on
+        // long whitespace runs and on repeated suffixes (ICU and JVM),
+        // and labels come from BIP-329 files of up to 32 MiB.
+        var end = text.length
         while (true) {
-            val match = TRAILING_SUFFIX.find(text) ?: break
-            text = text.substring(0, match.range.first).trim()
+            while (end > 0 && text[end - 1].isWhitespace()) end--
+            if (!endsWithMark(text, end)) break
+            end -= MARK.length
         }
-        if (text.equals(BAD_BANK, ignoreCase = true)) return ""
-        return text
+        val user = text.substring(0, end)
+        if (user.equals(BAD_BANK, ignoreCase = true)) return ""
+        return user
+    }
+
+    /** ASCII-only case-insensitive "(bad bank)" ending at [end], like the old (?i) regex. */
+    private fun endsWithMark(text: String, end: Int): Boolean {
+        val start = end - MARK.length
+        if (start < 0) return false
+        for (i in MARK.indices) {
+            var c = text[start + i]
+            if (c in 'A'..'Z') c = (c.code + 32).toChar()
+            if (c != MARK[i]) return false
+        }
+        return true
     }
 
     /**
@@ -50,5 +68,5 @@ object CoinLabel {
     fun isMarked(badbank: Int, pubKey: String?): Boolean =
         badbank == 1 || AccountKey.isBadBank(pubKey)
 
-    private val TRAILING_SUFFIX = Regex("(?i)\\s*\\(bad bank\\)\\s*$")
+    private const val MARK = "(bad bank)"
 }
