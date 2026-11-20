@@ -3,6 +3,7 @@ package com.samourai.sentinel.ui.dojo
 import com.samourai.sentinel.api.ApiService
 import com.samourai.sentinel.api.TlsPolicy
 import com.samourai.sentinel.core.DojoReachability
+import com.samourai.sentinel.core.DojoReportedVersion
 import com.samourai.sentinel.data.db.SentinelCollectionStore
 import com.samourai.sentinel.data.repository.PubSyncHealth
 import com.samourai.sentinel.data.db.PayloadRecord
@@ -198,6 +199,19 @@ class DojoUtility {
         notePairingChanged()
     }
 
+    /**
+     * The Dojo half of committing a pairing after its /auth/login answered:
+     * the payload, the endpoints, then the version that login reported.
+     * The version is set last, once the endpoints name the new Dojo, so an
+     * answer still in flight from the old one can't take its place.
+     */
+    fun commitPairedDojo(payloadString: String, url: String?, loginVersionHeader: String?) {
+        setDojoPayload(payloadString)
+        prefsUtil.apiEndPointTor = url
+        prefsUtil.apiEndPoint = url
+        DojoReportedVersion.setFromPairingLogin(prefsUtil, loginVersionHeader)
+    }
+
     fun import(dojoPairing: JSONObject) {
         if (!validate(dojoPairing.toString())) throw Exception("Invalid payload")
         dojoPayload = fromJSON(dojoPairing.toString())
@@ -213,6 +227,8 @@ class DojoUtility {
     private fun notePairingChanged() {
         DojoReachability.reset()
         PubSyncHealth.clearAll()
+        // The reported version belonged to the old pairing.
+        DojoReportedVersion.clear(prefsUtil)
     }
 
     companion object {

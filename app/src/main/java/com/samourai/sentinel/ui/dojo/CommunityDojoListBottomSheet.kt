@@ -154,9 +154,6 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
                 // Another listing in this list uses the same name under
                 // a different signer: the dialog says so.
                 nameCollision = adapter.nameCollides(item),
-                // The directory's checked version, for the pre-pair dialog.
-                // Display only: pairing still uses the signed payload.
-                version = node.version?.takeIf { it.isNotBlank() },
             )
             // #221: the configure sheet is the parent. onScanPayload
             // validates, stores the payload, and moves to the connect

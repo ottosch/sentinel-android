@@ -5,6 +5,7 @@ package com.samourai.sentinel.api
 import com.samourai.sentinel.BuildConfig
 import com.samourai.sentinel.api.okHttp.await
 import com.samourai.sentinel.core.DojoReachability
+import com.samourai.sentinel.core.DojoReportedVersion
 import com.samourai.sentinel.core.SentinelState
 import com.samourai.sentinel.core.dojoErrorEnvelope
 import com.samourai.sentinel.data.AddressTypes
@@ -116,10 +117,18 @@ open class ApiService {
         maxBodyBytes: Int? = null,
     ): Response {
         beforeNewCall?.invoke(captured, request)
-        val dojoCall = isDojoCall(request)
+        // Taken at send time: the pairing and the Dojo URL this request
+        // went to. The version on its answer is saved only if both still
+        // hold when it comes back (noteDojoVersion).
+        val sentGeneration = DojoReportedVersion.pairingGeneration()
+        val sentTo = runCatching { getAPIUrl() }.getOrNull()
+        val dojoCall = isDojoCall(sentTo, request)
         return try {
             val response = captured.newCall(request).await(maxBodyBytes = maxBodyBytes)
-            if (dojoCall) noteDojoResponse(response)
+            if (dojoCall) {
+                noteDojoResponse(response)
+                noteDojoVersion(response, sentTo, sentGeneration)
+            }
             response
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
@@ -146,8 +155,8 @@ open class ApiService {
     private fun isWalletRequest(request: Request): Boolean =
         request.url.encodedPath.removeSuffix("/").endsWith("/wallet")
 
-    private fun isDojoCall(request: Request): Boolean {
-        val configured = runCatching { getAPIUrl() }.getOrNull() ?: return false
+    private fun isDojoCall(configured: String?, request: Request): Boolean {
+        configured ?: return false
         return TokenAuthenticator.isDojoTarget(configured, request.url)
     }
 
@@ -158,6 +167,27 @@ open class ApiService {
             false
         }
         DojoReachability.recordHttp(response.code, envelope)
+    }
+
+    /**
+     * Dojo puts its running version on every response (X-Dojo-Version).
+     * Read it here, from calls already being made (DojoReportedVersion).
+     * Only for calls [isDojoCall] matched, and only when the configured
+     * Dojo is still the one [sentTo] named and the answer came from it:
+     * a call that left before a re-pair must not label the new pairing.
+     */
+    private fun noteDojoVersion(response: Response, sentTo: String?, sentGeneration: Long) {
+        try {
+            val current = runCatching { getAPIUrl() }.getOrNull() ?: return
+            if (current != sentTo) return
+            if (!TokenAuthenticator.isDojoTarget(current, response.request.url)) return
+            DojoReportedVersion.observe(
+                prefsUtil, sentGeneration, response.isSuccessful,
+                DojoReportedVersion.headerOf(response.headers),
+            )
+        } catch (e: Exception) {
+            Timber.w("Dojo version not saved (%s)", e.javaClass.simpleName)
+        }
     }
 
 

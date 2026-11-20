@@ -142,30 +142,42 @@ class PrePairDirectoryCopyTest {
     private fun caption(d: AlertDialog) =
         d.findViewById<TextView>(R.id.dojoPairingDirectoryCaption)!!.text.toString()
 
-    private fun source(d: AlertDialog) =
-        d.findViewById<TextView>(R.id.dojoPairingVersionSource)!!.text.toString()
+    /** Every text in the dialog, shown or hidden: none is a version. */
+    private fun assertNoVersion(d: AlertDialog) {
+        val parts = ArrayList<String>()
+        fun walk(v: android.view.View) {
+            if (v is TextView) parts.add(v.text?.toString().orEmpty())
+            if (v is android.view.ViewGroup) for (i in 0 until v.childCount) walk(v.getChildAt(i))
+        }
+        walk(d.window!!.decorView)
+        val all = parts.joinToString("\n")
+        assertFalse(all.lowercase().contains("version"))
+        assertFalse(all.contains("1.29.2"))
+        assertFalse(all.contains("1.27.0"))
+        assertFalse(all.contains("Last checked"))
+    }
 
     @Test
     fun `the default directory is DojoBay org and the explorer is mentioned only when signed`() {
         assertTrue(DojoBaySource.isDefault(DojoBaySource.effectiveBaseUrl(prefs.dojoBayUrl)))
         val withExplorer = openDialog(listing("http://explorer.example"))
-        assertEquals("Last checked by DojoBay.org", source(withExplorer))
         assertEquals(
             "The signature covers this Dojo's URL, connection details and block explorer. " +
-                "Name, location and version come from the DojoBay.org listing.",
+                "Name and location come from the DojoBay.org listing.",
             caption(withExplorer),
         )
+        assertNoVersion(withExplorer)
         withExplorer.dismiss()
         idle()
 
         val without = openDialog(listing(null))
-        assertEquals("Last checked by DojoBay.org", source(without))
         assertEquals(
             "The signature covers this Dojo's URL and connection details. " +
-                "Name, location and version come from the DojoBay.org listing.",
+                "Name and location come from the DojoBay.org listing.",
             caption(without),
         )
         assertFalse(caption(without).contains("block explorer"))
+        assertNoVersion(without)
         without.dismiss()
     }
 
@@ -180,15 +192,13 @@ class PrePairDirectoryCopyTest {
         assertFalse(label.contains("DojoBay.org"))
 
         val d = openDialog(listing(null))
-        assertEquals("Last checked by $label", source(d))
         assertEquals(
             "The signature covers this Dojo's URL and connection details. " +
-                "Name, location and version come from the $label listing.",
+                "Name and location come from the $label listing.",
             caption(d),
         )
         assertFalse(caption(d).contains("DojoBay.org"))
         assertFalse(caption(d).contains("block explorer"))
-        assertFalse(source(d).contains("DojoBay.org"))
     }
 
     @Test
@@ -196,7 +206,7 @@ class PrePairDirectoryCopyTest {
         val d = openDialog(listing(""))
         assertEquals(
             "The signature covers this Dojo's URL and connection details. " +
-                "Name, location and version come from the DojoBay.org listing.",
+                "Name and location come from the DojoBay.org listing.",
             caption(d),
         )
         assertFalse(caption(d).contains("block explorer"))

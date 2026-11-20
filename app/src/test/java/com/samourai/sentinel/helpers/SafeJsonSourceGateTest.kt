@@ -61,15 +61,20 @@ class SafeJsonSourceGateTest {
 
         val sheet = readMain("com/samourai/sentinel/ui/dojo/DojoConfigureBottomSheet.kt")
         val callback = sheet.substringAfter("override fun onResponse")
-        val parse = callback.indexOf("readDojoAuthTokens")
+        // The login answer is read and its tokens parsed in readPairingLogin,
+        // on this callback's thread, before anything is posted to main.
+        val parse = callback.indexOf("readPairingLogin(response)")
         val post = callback.indexOf("mainHandler.post { commitPairing")
         assertTrue(parse in 0 until post)
         assertTrue(!callback.substring(post).contains("readDojoAuthTokens"))
+        assertTrue(!callback.substring(post).contains("readPairingLogin"))
         assertTrue(!callback.substring(post).contains("toString()"))
         assertTrue(callback.contains("catch (e: Exception)"))
         assertTrue(callback.contains("dojo pairing response was not usable") ||
             callback.contains("Dojo pairing response was not usable"))
-        assertTrue(callback.contains("readUtf8Capped(SafeJson.AUTH_MAX_BYTES)"))
+        val reader = sheet.substringAfter("internal fun readPairingLogin(").substringBefore("\n}\n")
+        assertTrue(reader.contains("readUtf8Capped(SafeJson.AUTH_MAX_BYTES)"))
+        assertTrue(reader.contains("readDojoAuthTokens(body)"))
     }
 
     @Test
