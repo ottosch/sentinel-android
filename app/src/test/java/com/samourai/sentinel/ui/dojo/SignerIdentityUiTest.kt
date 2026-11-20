@@ -19,7 +19,7 @@ import org.robolectric.annotation.Config
 
 /**
  * The dialog and row states for the signer: the directory name and flag
- * with the dialog's "not signed" caption (no chip, here or on list rows), the grouped full code and PayNym link, the same-name warning, and
+ * with the caption of what the signature covers (no chip, here or on list rows), the grouped full code and PayNym link, the same-name warning, and
  * a row's collapsed and expanded code. Inflated from the real layouts.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -38,20 +38,22 @@ class SignerIdentityUiTest {
     private fun View.text(id: Int) = findViewById<TextView>(id).text.toString()
 
     @Test
-    fun `a picked listing shows the name and flag, the not-signed caption, the full grouped code and the link`() {
+    fun `a picked listing shows the name and flag, the signature caption, the full grouped code and the link`() {
         val view = dialog()
         val views = PrePairDialogViews(view)
         views.bindHeader(DojoDirectoryHeader("🇸🇬", "QA valid (signed)"), "Unnamed")
+        views.bindSignatureScope("DojoBay.org", coversExplorer = true)
         var opened: String? = null
         views.bindSigner(prePairSigner(qa, DojoDisplaySnapshot("u", "QA valid (signed)", "🇸🇬", null), "u")) { opened = it }
 
         assertTrue(view.shown(R.id.dojoPairingDirectoryHeader))
         assertEquals("QA valid (signed)", view.text(R.id.dojoPairingDirectoryName))
         assertEquals("🇸🇬", view.text(R.id.dojoPairingDirectoryFlag))
-        // The name and flag are the directory's, outside the signature: one short caption says so.
+        // The caption says what the signature covers and where name, location and version come from.
         assertTrue(view.shown(R.id.dojoPairingDirectoryCaption))
         assertEquals(
-            "Name and location are set by the directory and are not signed.",
+            "The signature covers this Dojo's URL, connection details and block explorer. " +
+                "Name, location and version come from the DojoBay.org listing.",
             view.text(R.id.dojoPairingDirectoryCaption),
         )
         assertTrue(view.shown(R.id.dojoPairingSignerSection))

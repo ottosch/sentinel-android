@@ -195,7 +195,7 @@ class PairingAckGateTest {
             PairingDetailRows(
                 jurisdiction = "Singapore",
                 url = "http://community.example",
-                version = "1.19.1",
+                version = null,
                 explorer = "http://explorer.example",
             ),
             pairingDetailRows(communityPairing, communitySnapshot),
@@ -203,52 +203,53 @@ class PairingAckGateTest {
     }
 
     @Test
-    fun `the version row shows the signed version, the listing's own only as a separate unsigned line`() {
+    fun `the version row is the directory's checked version and never the signed pairing version`() {
         val listed = communitySnapshot.copy(version = "1.29.2")
         val rows = pairingDetailRows(communityPairing, listed)
-        // The version row is the payload's (signed) version, never the directory's.
-        assertEquals("1.19.1", rows.version)
-        assertEquals("1.29.2", rows.directoryVersion)
-        // A snapshot for another URL never supplies a directory version.
-        assertNull(pairingDetailRows(communityPairing, listed.copy(url = "http://other.example")).directoryVersion)
-        // The same version as the signed one: no second line.
-        assertNull(pairingDetailRows(communityPairing, listed.copy(version = "1.19.1")).directoryVersion)
-        // No listing version, or a scan/paste: the payload's, and no second line.
+        // The row is the directory's version. The payload still carries 1.19.1.
+        assertEquals("1.19.1", communityPairing.pairing?.version)
+        assertEquals("1.29.2", rows.version)
+        // A snapshot for another URL never supplies a version.
+        assertNull(pairingDetailRows(communityPairing, listed.copy(url = "http://other.example")).version)
+        // The same string as the signed pairing version still shows: it is the directory's.
+        assertEquals("1.19.1", pairingDetailRows(communityPairing, listed.copy(version = "1.19.1")).version)
+        // No listing version, a blank one, or a scan/paste: the row is hidden.
+        // The signed pairing version is not a fallback.
         for (snap in listOf(communitySnapshot, listed.copy(version = " "), null)) {
-            val r = pairingDetailRows(communityPairing, snap)
-            assertEquals("1.19.1", r.version)
-            assertNull(r.directoryVersion)
+            assertNull(pairingDetailRows(communityPairing, snap).version)
         }
+        val manualWithVersion = manualPairing.copy(
+            pairing = manualPairing.pairing!!.copy(version = "1.4.5"),
+        )
+        assertEquals("1.4.5", manualWithVersion.pairing?.version)
+        assertNull(pairingDetailRows(manualWithVersion, null).version)
     }
 
     @Test
-    fun `a listing version that isn't version-shaped is dropped, the signed version stays`() {
+    fun `a listing version that isn't version-shaped hides the row and does not fall back`() {
         // Accepted: 1 to 32 of A-Z, a-z, 0-9, '.', '+' and '-'.
         for (ok in listOf("1.29.2", "1", "1.29.2-rc1+build.5", "v1.29.2", "a".repeat(32))) {
             assertEquals(ok, listingVersionOrNull(ok))
-            val r = pairingDetailRows(communityPairing, communitySnapshot.copy(version = ok))
-            assertEquals("1.19.1", r.version)
-            assertEquals(ok, r.directoryVersion)
+            assertEquals(ok, pairingDetailRows(communityPairing, communitySnapshot.copy(version = ok)).version)
         }
-        // Refused: no directory line at all.
+        // Refused: the row is hidden. The signed pairing version stays in the
+        // payload and is not shown in its place.
         val bad = listOf(
             "", " ", " 1.29.2", "1.29.2 ", "1.29.2\n", "1.29\u202E2", "1 29 2", "1.29/../2",
             "<b>1.29.2</b>", "1.29.2;", "１.２９.２", "1.29.2\u0000", "a".repeat(33),
         )
         for (no in bad) {
             assertNull(no, listingVersionOrNull(no))
-            val r = pairingDetailRows(communityPairing, communitySnapshot.copy(version = no))
-            assertEquals(no, "1.19.1", r.version)
-            assertNull(no, r.directoryVersion)
+            assertNull(no, pairingDetailRows(communityPairing, communitySnapshot.copy(version = no)).version)
         }
         assertNull(listingVersionOrNull(null))
-        // No signed version: no version row. A good listing version still
-        // only appears as the unsigned line, never as the version.
+        assertEquals("1.19.1", communityPairing.pairing?.version)
         val noPayloadVersion = communityPairing.copy(pairing = communityPairing.pairing!!.copy(version = null))
         assertNull(pairingDetailRows(noPayloadVersion, communitySnapshot.copy(version = "<b>")).version)
-        val unsignedOnly = pairingDetailRows(noPayloadVersion, communitySnapshot.copy(version = "1.29.2"))
-        assertNull(unsignedOnly.version)
-        assertEquals("1.29.2", unsignedOnly.directoryVersion)
+        assertEquals(
+            "1.29.2",
+            pairingDetailRows(noPayloadVersion, communitySnapshot.copy(version = "1.29.2")).version,
+        )
     }
 
     @Test

@@ -268,8 +268,9 @@ data class DojoDisplaySnapshot(
     // Another listing in the same list used this name under a different
     // signer when it was picked: the pre-pair dialog warns. Not saved.
     val nameCollision: Boolean = false,
-    // The directory's version for the picked listing, as its row shows it.
-    // Not saved: only the pre-pair dialog reads it.
+    // The directory's checked version for the picked listing. The pre-pair
+    // dialog shows it, after the shape check, as its only Dojo version.
+    // Not saved: pairing stores the signed payload, not this string.
     val version: String? = null,
 )
 
@@ -317,8 +318,10 @@ fun directoryHeader(
 data class PairingDetailRows(
     val jurisdiction: String?,
     val url: String?,
-    // The Dojo version from inside the signature: the same pairing payload
-    // that is stored when Pair commits. The one authoritative version row.
+    // The one Dojo version the pre-pair dialog shows: the directory's
+    // checked version, after [listingVersionOrNull]. Informational only.
+    // Null hides the row. The signed pairing.version is what Pair stores
+    // and is never substituted when this is null.
     val version: String?,
     val explorer: String?,
     // #250: the network evidence for the pre-pair dialog's network
@@ -326,11 +329,6 @@ data class PairingDetailRows(
     // whispered (URL mount). Null means the row stays hidden: no
     // evidence, never a guess.
     val network: DerivedNetwork? = null,
-    // The directory's own, unsigned version for the picked listing, only
-    // when it is version-shaped and differs from the signed [version]. The
-    // dialog shows it on a separate line labelled "not signed"; it never
-    // takes the place of the signed value.
-    val directoryVersion: String? = null,
 )
 
 fun pairingDetailRows(
@@ -346,28 +344,19 @@ fun pairingDetailRows(
     val declaredNetwork = snapshot
         ?.takeIf { pairingUrl != null && it.url == pairingUrl }
         ?.network?.let { normalizeDeclaredNetwork(it) }
-    val signedVersion = pairing.pairing?.version?.takeIf { it.isNotBlank() }
-    // The directory's version (unsigned), url-match-guarded like
-    // jurisdiction and shape-checked. Kept only when it says something the
-    // signed value doesn't: a Dojo upgraded since its pairing code was made
-    // lists a newer version than the code carries. Shown labelled "not
-    // signed", under the signed row, so it can inform but never pose as
-    // the version the user is consenting to.
-    val directoryVersion = snapshot
+    // Display only, and only the directory's checked version. Url-match
+    // guarded like jurisdiction, then shape-checked. A missing or
+    // ill-shaped value hides the row: the signed pairing.version is what
+    // Pair stores, and it is not a fallback for this row.
+    val shownVersion = snapshot
         ?.takeIf { pairingUrl != null && it.url == pairingUrl }
         ?.version?.let { listingVersionOrNull(it) }
-        ?.takeIf { it != signedVersion }
     return PairingDetailRows(
         jurisdiction = jurisdiction,
         url = pairingUrl,
-        // The signed version: pairing.version from the payload this dialog
-        // pairs and stores (for a directory pick, the JSON rebuilt from
-        // inside the listing's signature). The directory's top-level
-        // version sits outside the signature, so it never fills this row.
-        version = signedVersion,
+        version = shownVersion,
         explorer = pairing.explorer?.url?.takeIf { it.isNotBlank() },
         network = declaredNetwork ?: NetworkClassifier.fromUrl(pairingUrl),
-        directoryVersion = directoryVersion,
     )
 }
 
@@ -375,9 +364,10 @@ fun pairingDetailRows(
 private val LISTING_VERSION_SHAPE = Regex("^[0-9A-Za-z.+-]{1,32}$")
 
 /**
- * The picked listing's directory version, or null when it is blank or not
- * version-shaped. The directory's version is not signed: the pre-pair dialog
- * shows it only as a labelled "not signed" line under the signed version.
+ * The picked listing's directory version when it matches
+ * [LISTING_VERSION_SHAPE], otherwise null. The pre-pair dialog shows this
+ * as its only Dojo version, or hides the row. It never substitutes the
+ * signed pairing.version.
  */
 fun listingVersionOrNull(version: String?): String? =
     version?.takeIf { LISTING_VERSION_SHAPE.matches(it) }
@@ -946,7 +936,17 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
         val builder = MaterialAlertDialogBuilder(requireContext())
         val view = LayoutInflater.from(builder.context).inflate(R.layout.dialog_dojo_pairing_details, null)
         val dialogViews = PrePairDialogViews(view)
+        val directoryBase = DojoBaySource.effectiveBaseUrl(prefsUtil.dojoBayUrl)
+        val directoryName = if (DojoBaySource.isDefault(directoryBase)) {
+            getString(R.string.dojo_pairing_default_directory_name)
+        } else {
+            DojoBaySource.label(directoryBase)
+        }
         dialogViews.bindHeader(directoryHeader(snapshot, pairing.pairing?.url), getString(R.string.dojo_unnamed))
+        dialogViews.bindSignatureScope(
+            directoryName,
+            pairing.explorer?.url?.isNotBlank() == true,
+        )
         // Who signed the picked listing: the full code its signature proved.
         val signer = prePairSigner(pendingSignerPin.forDialog(), snapshot, pairing.pairing?.url)
         dialogViews.bindSigner(signer) { code -> context?.let { PayNymPage.openSigner(it, lifecycleScope, code) } }
@@ -975,9 +975,9 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
             )
         }
         bindDetailRow(view, R.id.dojoPairingUrlRow, R.id.dojoPairingUrlValue, rows.url)
-        // The signed version only; the directory's unsigned one, if it differs,
-        // goes on its own line labelled not signed.
-        dialogViews.bindVersion(rows.version, rows.directoryVersion)
+        // Informational. The signed pairing.version stays in the payload
+        // Pair stores and is not shown.
+        dialogViews.bindVersion(rows.version, directoryName)
         bindDetailRow(view, R.id.dojoPairingExplorerRow, R.id.dojoPairingExplorerValue, rows.explorer)
         val decision = networkDecision
         val appNetworkName = networkName(prefsUtil.testnet == true)
