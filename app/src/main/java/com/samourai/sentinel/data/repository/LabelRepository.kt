@@ -10,7 +10,9 @@ import com.samourai.sentinel.data.db.dao.UtxoLabelDao
 import com.samourai.sentinel.data.db.entity.LabelEntry
 import com.samourai.sentinel.data.db.entity.LabelType
 import com.samourai.sentinel.data.db.entity.UtxoLabel
+import com.samourai.sentinel.data.whirlpool.CoinLabel
 import com.samourai.sentinel.data.whirlpool.ManualLabelWrite
+import com.samourai.sentinel.data.whirlpool.WhirlpoolConfig
 import com.samourai.sentinel.data.whirlpool.manualLabelWrite
 import com.samourai.sentinel.ui.utils.PrefsUtil
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +27,13 @@ import org.koin.java.KoinJavaComponent.inject
  * for a BIP-329 import. Display code may read it; nothing here writes.
  */
 data class TxLabelDetail(val label: String, val origin: String?)
+
+/**
+ * One stored coin label and its Bad Bank flag. [badbank] is 1 when
+ * the marking sticks. [label] is the user part, not the composed
+ * display string.
+ */
+data class UtxoLabelView(val label: String, val badbank: Int)
 
 /**
  * User-defined labels (BIP329).
@@ -77,6 +86,21 @@ class LabelRepository {
         return result
     }
 
+    /**
+     * Live map of "txid:vout" -> stored label plus the sticky Bad Bank
+     * flag. Render sites compose the suffix from this; they do not
+     * read the flag off the label text.
+     */
+    fun observeUtxoLabels(): LiveData<Map<String, UtxoLabelView>> {
+        val result = MediatorLiveData<Map<String, UtxoLabelView>>()
+        result.addSource(dao.observeAll(currentNetwork())) { labels ->
+            result.value = labels.associate {
+                "${it.txid}:${it.vout}" to UtxoLabelView(it.label, it.badbank)
+            }
+        }
+        return result
+    }
+
     suspend fun getAll(): List<UtxoLabel> =
         withContext(Dispatchers.IO) { dao.getAll(currentNetwork()) }
 
@@ -84,26 +108,39 @@ class LabelRepository {
      * Sets, updates, or clears a utxo label by hand. The auto origin
      * is replaced with the manual origin. A blank label is kept, so
      * the next sync does not treat the outpoint as unlabelled.
+     *
+     * The Bad Bank flag is sticky. [markBadbank] sets it when the coin
+     * is in the Bad Bank account and no row exists yet. A row that
+     * already has the flag keeps it. The "(Bad Bank)" suffix is stored
+     * only for a coin that is not Bad Bank; a Bad Bank coin stores
+     * [CoinLabel.userPart].
      */
-    suspend fun setLabel(txid: String, vout: Int, label: String) =
-        withContext(Dispatchers.IO) {
-            migrateHandEditedAutoOrigins()
-            val network = currentNetwork()
-            val write = manualLabelWrite(label)
-            val now = System.currentTimeMillis()
-            val existing = dao.find(network, txid, vout)
-            dao.upsert(
-                UtxoLabel(
-                    network = network,
-                    txid = txid,
-                    vout = vout,
-                    label = write.label,
-                    origin = write.origin,
-                    createdAt = existing?.createdAt ?: now,
-                    updatedAt = now
-                )
+    suspend fun setLabel(
+        txid: String,
+        vout: Int,
+        label: String,
+        markBadbank: Boolean = false,
+    ) = withContext(Dispatchers.IO) {
+        migrateHandEditedAutoOrigins()
+        val network = currentNetwork()
+        val existing = dao.find(network, txid, vout)
+        val marked = existing?.badbank == 1 || markBadbank
+        val write = manualLabelWrite(label)
+        val stored = if (marked) CoinLabel.userPart(write.label) else write.label
+        val now = System.currentTimeMillis()
+        dao.upsert(
+            UtxoLabel(
+                network = network,
+                txid = txid,
+                vout = vout,
+                label = stored,
+                origin = write.origin,
+                createdAt = existing?.createdAt ?: now,
+                updatedAt = now,
+                badbank = if (marked) 1 else 0,
             )
-        }
+        )
+    }
 
     //
     // Transaction labels (label_entries, type "tx")
@@ -271,7 +308,11 @@ class LabelRepository {
      * as setAutoTxLabel.
      */
     suspend fun setAutoUtxoLabel(
-        txid: String, vout: Int, label: String, origin: String,
+        txid: String,
+        vout: Int,
+        label: String,
+        origin: String,
+        markBadbank: Boolean = false,
     ) = withContext(Dispatchers.IO) {
         migrateHandEditedAutoOrigins()
         val network = currentNetwork()
@@ -280,6 +321,7 @@ class LabelRepository {
         check(trimmed.isNotEmpty()) { "auto label must not be blank" }
         val now = System.currentTimeMillis()
         val existing = dao.find(network, ref, vout)
+        val marked = markBadbank || existing?.badbank == 1
         dao.upsert(
             UtxoLabel(
                 network = network,
@@ -288,10 +330,54 @@ class LabelRepository {
                 label = trimmed,
                 origin = origin,
                 createdAt = existing?.createdAt ?: now,
-                updatedAt = now
+                updatedAt = now,
+                badbank = if (marked) 1 else (existing?.badbank ?: 0),
             )
         )
     }
+
+    /**
+     * Row for [network], or null. The account labeller looks up by the
+     * network it was asked to write, so a testnet pass cannot see a
+     * mainnet row.
+     */
+    suspend fun readUtxoLabel(network: String, txid: String, vout: Int): UtxoLabel? =
+        withContext(Dispatchers.IO) {
+            migrateHandEditedAutoOrigins()
+            dao.find(network, txid.lowercase(), vout)
+        }
+
+    /** First sight of a live Bad Bank coin: auto label plus the flag. */
+    suspend fun insertAutoBadbank(network: String, txid: String, vout: Int, now: Long) =
+        withContext(Dispatchers.IO) {
+            migrateHandEditedAutoOrigins()
+            val config = WhirlpoolConfig.DEFAULT
+            dao.upsert(
+                UtxoLabel(
+                    network = network,
+                    txid = txid.lowercase(),
+                    vout = vout,
+                    label = config.labels.badbank,
+                    origin = config.origin,
+                    createdAt = now,
+                    updatedAt = now,
+                    badbank = 1,
+                )
+            )
+        }
+
+    /**
+     * Set the flag on a row that does not have it. Label, origin and
+     * createdAt stay. A row that is already flagged is left alone, so
+     * updatedAt is not rewritten on every sync.
+     */
+    suspend fun stickBadbankFlag(network: String, txid: String, vout: Int, now: Long) =
+        withContext(Dispatchers.IO) {
+            migrateHandEditedAutoOrigins()
+            val existing = dao.find(network, txid.lowercase(), vout) ?: return@withContext
+            if (existing.badbank == 1) return@withContext
+            dao.upsert(existing.copy(badbank = 1, updatedAt = now))
+        }
 
     /**
      * Terminator supersession (issue #46): remove OUR auto label only —
@@ -327,7 +413,15 @@ class LabelRepository {
             plan.purgeNetworks.isEmpty()
         ) return@withContext
         roomDb.withTransaction {
-            if (plan.utxoCopies.isNotEmpty()) dao.upsertAll(plan.utxoCopies)
+            if (plan.utxoCopies.isNotEmpty()) {
+                // Re-read the target row. A foreign badbank = 0 must
+                // not clear a flag that is already 1 on this outpoint.
+                val merged = plan.utxoCopies.map { copy ->
+                    val existing = dao.find(copy.network, copy.txid, copy.vout)
+                    copy.copy(badbank = maxOf(copy.badbank, existing?.badbank ?: 0))
+                }
+                dao.upsertAll(merged)
+            }
             if (plan.entryCopies.isNotEmpty()) entryDao.upsertAll(plan.entryCopies)
             plan.purgeNetworks.forEach { network ->
                 if (network != target) {

@@ -8,6 +8,8 @@ import com.samourai.sentinel.data.db.dao.UtxoLabelDao
 import com.samourai.sentinel.data.db.entity.LabelEntry
 import com.samourai.sentinel.data.db.entity.LabelType
 import com.samourai.sentinel.data.db.entity.UtxoLabel
+import com.samourai.sentinel.data.whirlpool.CoinLabel
+import com.samourai.sentinel.data.whirlpool.WhirlpoolConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.koin.java.KoinJavaComponent.inject
@@ -86,22 +88,47 @@ class Bip329Importer(private val dbOverride: SentinelRoomDb? = null) {
             db.withTransaction {
                 outputs.forEach { row ->
                     val existing = utxoLabelDao.find(row.network, row.txid, row.vout)
-                    if (row.label.isBlank()) {
-                        // A blank output import is a manual clear. Deleting
-                        // the row would let the next auto sync label it again.
+                    val badbank = existing?.badbank ?: 0
+                    val keepAutoBadBank = badbank == 1 &&
+                        row.origin == WhirlpoolConfig.DEFAULT.origin &&
+                        row.label.trim() == WhirlpoolConfig.DEFAULT.labels.badbank
+                    if (keepAutoBadBank) {
+                        // The auto row exports as "Bad Bank" with its
+                        // origin. Stripping that to an empty user part
+                        // would drop the origin on the next export.
                         if (existing == null) imported++ else updated++
                         utxoLabelDao.upsert(
                             row.copy(
-                                label = "",
-                                origin = null,
+                                label = WhirlpoolConfig.DEFAULT.labels.badbank,
                                 createdAt = existing?.createdAt ?: row.createdAt,
+                                badbank = badbank,
                             )
                         )
                     } else {
-                        if (existing == null) imported++ else updated++
-                        utxoLabelDao.upsert(
-                            row.copy(createdAt = existing?.createdAt ?: row.createdAt)
-                        )
+                        val label = if (badbank == 1) CoinLabel.userPart(row.label) else row.label
+                        if (label.isBlank()) {
+                            // A blank output import is a manual clear. Deleting
+                            // the row would let the next auto sync label it again.
+                            // The Bad Bank flag, once set, stays.
+                            if (existing == null) imported++ else updated++
+                            utxoLabelDao.upsert(
+                                row.copy(
+                                    label = "",
+                                    origin = null,
+                                    createdAt = existing?.createdAt ?: row.createdAt,
+                                    badbank = badbank,
+                                )
+                            )
+                        } else {
+                            if (existing == null) imported++ else updated++
+                            utxoLabelDao.upsert(
+                                row.copy(
+                                    label = label,
+                                    createdAt = existing?.createdAt ?: row.createdAt,
+                                    badbank = badbank,
+                                )
+                            )
+                        }
                     }
                 }
                 others.forEach { row ->

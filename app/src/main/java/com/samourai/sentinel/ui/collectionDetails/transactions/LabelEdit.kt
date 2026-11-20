@@ -1,5 +1,6 @@
 package com.samourai.sentinel.ui.collectionDetails.transactions
 
+import com.samourai.sentinel.data.whirlpool.CoinLabel
 import com.samourai.sentinel.data.whirlpool.WhirlpoolLabelPolicy
 
 /**
@@ -35,13 +36,24 @@ object LabelEdit {
      * stored text is unchanged, including saving a blank clear again.
      * A missing row is never a no-op: an empty save is still the
      * existing hand clear.
+     *
+     * [badBank] compares user parts. An unedited auto Bad Bank coin
+     * stores "Bad Bank", whose user part is empty, so saving blank,
+     * whitespace, or "Bad Bank" writes nothing. Saving
+     * "Cold storage (Bad Bank)" over a stored "Cold storage" is the
+     * same user part and writes nothing. The suffix is display-only.
      */
     fun isNoOp(
         input: String,
         stored: String?,
         origin: String?,
         shown: String?,
+        badBank: Boolean = false,
     ): Boolean {
+        if (badBank) {
+            if (stored == null) return false
+            return CoinLabel.userPart(input) == CoinLabel.userPart(stored)
+        }
         val trimmed = input.trim()
         val shownText = shown?.trim().orEmpty()
         val storedText = stored?.trim().orEmpty()

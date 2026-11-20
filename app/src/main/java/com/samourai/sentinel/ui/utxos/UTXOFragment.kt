@@ -19,6 +19,8 @@ import com.samourai.sentinel.ui.utils.SlideInItemAnimator
 import com.samourai.sentinel.util.ItemDividerDecorator
 import com.google.android.material.chip.Chip
 import com.samourai.sentinel.data.repository.LabelRepository
+import com.samourai.sentinel.data.repository.UtxoLabelView
+import com.samourai.sentinel.data.whirlpool.CoinLabel
 import com.samourai.sentinel.util.MonetaryUtil
 import com.samourai.sentinel.util.UtxoMetaUtil
 import org.koin.java.KoinJavaComponent.inject
@@ -75,8 +77,10 @@ class UTXOFragment : Fragment(), ActionMode.Callback {
             })
         }
 
-        // Live label map ("txid:vout" -> label); chips re-render on change.
-        labelRepository.observeLabelMap().observe(viewLifecycleOwner) { labels ->
+        // Live coin labels. The chip is the composed display, so a
+        // Bad Bank coin shows the suffix even when the stored text
+        // is only the user part.
+        labelRepository.observeUtxoLabels().observe(viewLifecycleOwner) { labels ->
             utxoAdapter.setLabels(labels)
         }
 
@@ -142,9 +146,9 @@ class UTXOFragment : Fragment(), ActionMode.Callback {
         private var onLongClick: () -> Unit = {};
         private var onClickListener: (Utxo) -> Unit = {}
         private var multiSelectLister: (Utxo) -> Unit = {}
-        private var labels: Map<String, String> = emptyMap()
+        private var labels: Map<String, UtxoLabelView> = emptyMap()
 
-        fun setLabels(newLabels: Map<String, String>) {
+        fun setLabels(newLabels: Map<String, UtxoLabelView>) {
             labels = newLabels
             notifyDataSetChanged()
         }
@@ -224,13 +228,14 @@ class UTXOFragment : Fragment(), ActionMode.Callback {
                     holder.amount.text = "${df.format(it.div(1e8))} BTC"
                 }
                 holder.address.text = utxo.addr.toString()
-                val labelKey = "${utxo.txHash}:${utxo.txOutputN}"
-                val label = labels[labelKey]
-                if (!label.isNullOrBlank()) {
+                val row = labelFor(utxo)
+                val marked = CoinLabel.isMarked(row?.badbank ?: 0, utxo.pubKey)
+                val shown = CoinLabel.display(row?.label, marked)?.takeIf { it.isNotBlank() }
+                if (shown != null) {
                     holder.notesLayout.visibility = View.VISIBLE
                     holder.notes.removeAllViews()
                     val chip = Chip(holder.notes.context)
-                    chip.text = label
+                    chip.text = shown
                     chip.isClickable = false
                     chip.isCheckable = false
                     holder.notes.addView(chip)
@@ -279,6 +284,12 @@ class UTXOFragment : Fragment(), ActionMode.Callback {
 
         override fun getItemCount(): Int {
             return mDiffer.currentList.size;
+        }
+
+        private fun labelFor(utxo: Utxo): UtxoLabelView? {
+            val direct = labels["${utxo.txHash}:${utxo.txOutputN}"]
+            if (direct != null) return direct
+            return labels["${utxo.txHash?.lowercase()}:${utxo.txOutputN}"]
         }
 
         fun submitList(items: ArrayList<Utxo>) {

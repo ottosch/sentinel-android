@@ -2,6 +2,9 @@ package com.samourai.sentinel.ui.collectionDetails.transactions
 
 import com.samourai.sentinel.data.Out
 import com.samourai.sentinel.data.Tx
+import com.samourai.sentinel.data.Xpub
+import com.samourai.sentinel.data.whirlpool.WhirlpoolConfig
+import com.samourai.wallet.util.XPUB
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -100,8 +103,37 @@ class TxUtxoLabelsTest {
     }
 
     @Test
+    fun aBadBankOutputWithNoRowStillShowsTheChip() {
+        val pub = accountXpub(WhirlpoolConfig.DEFAULT.badbankAccount)
+        val bad = Out(n = 4, value = 1000L, addr = null, xpub = Xpub(pub, null))
+        assertEquals(listOf("Bad Bank"), TxUtxoLabels.chipsFor(tx(bad), emptyMap()))
+    }
+
+    @Test
+    fun aFlaggedUserPartComposesAndAHandTypedSuffixDoesNot() {
+        val labels = mapOf("$TXID:1" to "Cold storage", "$TXID:2" to "x (Bad Bank)")
+        val flagged = setOf("$TXID:1")
+        assertEquals(
+            listOf("Cold storage (Bad Bank)", "x (Bad Bank)"),
+            TxUtxoLabels.chipsFor(tx(out(1), out(2)), labels, flagged),
+        )
+    }
+
+    @Test
     fun outputlessTxYieldsNothing() {
         val labels = mapOf("$TXID:0" to "Bad Bank")
         assertEquals(emptyList<String>(), TxUtxoLabels.chipsFor(tx(), labels))
+    }
+
+    private fun accountXpub(account: Long): String {
+        val child = (account - 2_147_483_648L).toInt()
+        return XPUB.makeXPUB(
+            XPUB.MAGIC_ZPUB,
+            3,
+            0,
+            child,
+            ByteArray(32) { 0x11 },
+            ByteArray(33) { 0x02 },
+        )
     }
 }

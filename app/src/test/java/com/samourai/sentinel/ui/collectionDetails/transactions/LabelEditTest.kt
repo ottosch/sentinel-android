@@ -92,6 +92,28 @@ class LabelEditTest {
     }
 
     @Test
+    fun badBankSaveComparesUserParts() {
+        assertTrue(LabelEdit.isNoOp("", "Bad Bank", auto, "Bad Bank", badBank = true))
+        assertTrue(LabelEdit.isNoOp("   ", "Bad Bank", auto, "Bad Bank", badBank = true))
+        assertTrue(LabelEdit.isNoOp("Bad Bank", "Bad Bank", auto, "Bad Bank", badBank = true))
+        assertTrue(LabelEdit.isNoOp("  bad bank  ", "Bad Bank", auto, "Bad Bank", badBank = true))
+        assertTrue(
+            LabelEdit.isNoOp(
+                "Cold storage (Bad Bank)",
+                "Cold storage",
+                null,
+                "Cold storage (Bad Bank)",
+                badBank = true,
+            )
+        )
+        assertTrue(LabelEdit.isNoOp("Cold storage", "Cold storage", null, "Cold storage (Bad Bank)", badBank = true))
+        assertFalse(LabelEdit.isNoOp("notes", "Bad Bank", auto, "Bad Bank", badBank = true))
+        assertFalse(LabelEdit.isNoOp("", "Cold storage", null, "Cold storage (Bad Bank)", badBank = true))
+        assertFalse(LabelEdit.isNoOp("", null, null, null, badBank = true))
+        assertFalse(LabelEdit.isNoOp("Vault", null, null, "Bad Bank", badBank = true))
+    }
+
+    @Test
     fun onlyTheAutoNamespaceIsTreatedAsAutomatic() {
         assertFalse(LabelEdit.isNoOp("other", tx0, "AUTO:whirlpool:v1", badBank))
         assertTrue(LabelEdit.isNoOp(tx0, tx0, "AUTO:whirlpool:v1", tx0))

@@ -20,6 +20,8 @@ import com.google.android.material.chip.ChipGroup
 import com.samourai.sentinel.R
 import com.samourai.sentinel.data.Utxo
 import com.samourai.sentinel.data.repository.LabelRepository
+import com.samourai.sentinel.data.repository.UtxoLabelView
+import com.samourai.sentinel.data.whirlpool.CoinLabel
 import com.samourai.sentinel.ui.views.GenericBottomSheet
 import com.samourai.sentinel.util.MonetaryUtil
 import com.samourai.sentinel.util.UtxoMetaUtil
@@ -53,7 +55,7 @@ class CoinPickerBottomSheet : GenericBottomSheet() {
 
     private val selected = linkedSetOf<String>()
     private var pool: List<Utxo> = emptyList()
-    private var labels: Map<String, String> = emptyMap()
+    private var coinLabels: Map<String, UtxoLabelView> = emptyMap()
     private val adapter = CoinAdapter()
 
     private lateinit var summary: TextView
@@ -123,8 +125,8 @@ class CoinPickerBottomSheet : GenericBottomSheet() {
             prune()
             render()
         }
-        labelRepository.observeLabelMap().observe(viewLifecycleOwner) {
-            labels = it
+        labelRepository.observeUtxoLabels().observe(viewLifecycleOwner) {
+            coinLabels = it
             render()
         }
         // #301 signal: a do-not-spend mark changed somewhere - re-check rows.
@@ -160,8 +162,10 @@ class CoinPickerBottomSheet : GenericBottomSheet() {
                 MonetaryUtil.getInstance().getBTCDecimalFormat(total)
             )
         }
+        val storedLabels = coinLabels.mapValues { it.value.label }
+        val badbank = coinLabels.filterValues { it.badbank == 1 }.keys
         coSpendWarning.visibility =
-            if (CoinSelection.mixesBadBank(chosen, labels)) View.VISIBLE else View.GONE
+            if (CoinSelection.mixesBadBank(chosen, storedLabels, badbank)) View.VISIBLE else View.GONE
         empty.visibility = if (pool.isEmpty()) View.VISIBLE else View.GONE
         confirmBtn.text = getString(R.string.coin_picker_confirm, chosen.size)
         confirmBtn.isEnabled = chosen.isNotEmpty()
@@ -212,9 +216,18 @@ class CoinPickerBottomSheet : GenericBottomSheet() {
             if (blocked) {
                 holder.chips.addView(chip(holder.chips, getString(R.string.coin_picker_do_not_spend), R.color.md_red_A700))
             }
-            CoinSelection.labelFor(utxo, labels)?.takeIf { it.isNotBlank() }?.let { label ->
-                val tint = if (CoinSelection.isBadBank(utxo, labels)) R.color.md_amber_700 else null
-                holder.chips.addView(chip(holder.chips, label, tint))
+            val row = CoinSelection.lookup(utxo, coinLabels)
+            val marked = CoinLabel.isMarked(row?.badbank ?: 0, utxo.pubKey)
+            val shown = CoinLabel.display(row?.label, marked)?.takeIf { it.isNotBlank() }
+            if (shown != null) {
+                val storedLabels = coinLabels.mapValues { it.value.label }
+                val badbank = coinLabels.filterValues { it.badbank == 1 }.keys
+                val tint = if (CoinSelection.isBadBank(utxo, storedLabels, badbank)) {
+                    R.color.md_amber_700
+                } else {
+                    null
+                }
+                holder.chips.addView(chip(holder.chips, shown, tint))
             }
             holder.chips.visibility = if (holder.chips.childCount > 0) View.VISIBLE else View.GONE
 

@@ -208,6 +208,22 @@ class BadbankLabelerTest {
         assertTrue(sink.rows.size == 1)   // preloaded only
     }
 
+    @Test fun flaggedUserEditStillPropagates() = runBlocking {
+        val sink = FakeUtxoSink(
+            mapOf(("t1" to 0) to ExistingLabel("Cold storage", null, badbank = 1)),
+        )
+        val view = WhirlpoolTxView(
+            "f2".repeat(32),
+            listOf(io(90_000_000, spentTxid = "t1", spentVout = 0)),
+            listOf(io(89_000_000, account = cfg.depositAccount, vout = 0)),
+        )
+        assertEquals(
+            BadbankLabeler.Outcome.PROPAGATED,
+            BadbankLabeler(sink).process(view),
+        )
+        assertEquals(ourLabel, sink.rows["f2".repeat(32) to 0])
+    }
+
     @Test fun manualBadbankText_isNotLineageEvidence() = runBlocking {
         // A user-typed "Bad Bank" (origin null) must never propagate.
         val sink = FakeUtxoSink(mapOf(("t1" to 0) to ExistingLabel("Bad Bank", null)))

@@ -132,10 +132,15 @@ class BadbankLabeler(
         return Outcome.PROPAGATED
     }
 
-    /** Our auto-origin badbank lineage only — manual "Bad Bank" or a
-     *  foreign import is never propagation evidence. */
+    /**
+     * Lineage for phase-1 propagation. The sticky flag counts even
+     * after a user edit (the label is no longer "Bad Bank" and the
+     * origin is no longer auto). Without the flag, only our own
+     * auto "Bad Bank" counts: a hand-typed "Bad Bank" is not evidence.
+     */
     private suspend fun isOurBadbank(txid: String, vout: Int): Boolean {
         val existing = sink.findUtxoLabel(txid, vout) ?: return false
+        if (existing.badbank == 1) return true
         // NB: a binary operator must never START a line — Kotlin ends
         // the expression at the newline (the `== true` line-start was
         // this file's only compile red). Parenthesized regions are exempt.

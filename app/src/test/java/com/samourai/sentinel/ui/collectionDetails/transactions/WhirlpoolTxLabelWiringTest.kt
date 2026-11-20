@@ -19,6 +19,7 @@ import com.samourai.sentinel.data.Out
 import com.samourai.sentinel.data.PubKeyCollection
 import com.samourai.sentinel.data.PubKeyModel
 import com.samourai.sentinel.data.Tx
+import com.samourai.sentinel.data.Xpub
 import com.samourai.sentinel.data.db.SentinelCollectionStore
 import com.samourai.sentinel.data.db.SentinelRoomDb
 import com.samourai.sentinel.data.db.entity.LabelEntry
@@ -356,9 +357,53 @@ class WhirlpoolTxLabelWiringTest {
         val chips = sheet.requireView().findViewById<ChipGroup>(R.id.txDetailsUtxoLabelsChips)
         assertEquals(1, chips.childCount)
         assertEquals("Bad Bank", (chips.getChildAt(0) as Chip).text.toString())
+        assertFalse((chips.getChildAt(0) as Chip).isClickable)
         assertEquals(auto, runBlocking {
             db.utxoLabelDao().find(labels.currentNetwork(), tx0, 5)
         }!!.origin)
+    }
+
+    @Test
+    fun aSpentBadBankOutputWithNoRowShowsAReadOnlyChip() {
+        val sheet = show(
+            TxPerspectiveLabel.Role.DEPOSIT,
+            secure = false,
+            withOutput = true,
+            outputXpub = accountXpub(WhirlpoolConfig.DEFAULT.badbankAccount),
+        )
+        awaitUntil {
+            sheet.requireView().findViewById<View>(R.id.txDetailsUtxoLabelsRow).visibility == View.VISIBLE
+        }
+        val chips = sheet.requireView().findViewById<ChipGroup>(R.id.txDetailsUtxoLabelsChips)
+        assertEquals(1, chips.childCount)
+        val chip = chips.getChildAt(0) as Chip
+        assertEquals("Bad Bank", chip.text.toString())
+        assertFalse(chip.isClickable)
+    }
+
+    @Test
+    fun aFlaggedUserPartComposesOnTheDetailsChip() {
+        runBlocking {
+            db.utxoLabelDao().upsert(
+                UtxoLabel(
+                    network = labels.currentNetwork(),
+                    txid = tx0,
+                    vout = 5,
+                    label = "Cold storage",
+                    origin = null,
+                    createdAt = 1,
+                    updatedAt = 1,
+                    badbank = 1,
+                )
+            )
+        }
+        val sheet = show(TxPerspectiveLabel.Role.OTHER, secure = false, withOutput = true)
+        awaitUntil {
+            val chips = sheet.requireView().findViewById<ChipGroup>(R.id.txDetailsUtxoLabelsChips)
+            chips.childCount == 1 && (chips.getChildAt(0) as Chip).text.toString() == "Cold storage (Bad Bank)"
+        }
+        val chip = sheet.requireView().findViewById<ChipGroup>(R.id.txDetailsUtxoLabelsChips).getChildAt(0) as Chip
+        assertFalse(chip.isClickable)
     }
 
     @Test
@@ -376,13 +421,15 @@ class WhirlpoolTxLabelWiringTest {
         bareTxid: String = tx0,
         secure: Boolean = true,
         withOutput: Boolean = false,
-    ): TransactionsDetailsBottomSheet = showHost(role, bareTxid, secure, withOutput).second
+        outputXpub: String? = null,
+    ): TransactionsDetailsBottomSheet = showHost(role, bareTxid, secure, withOutput, outputXpub).second
 
     private fun showHost(
         role: TxPerspectiveLabel.Role,
         bareTxid: String = tx0,
         secure: Boolean = true,
         withOutput: Boolean = false,
+        outputXpub: String? = null,
     ): Pair<ActivityController<AppCompatActivity>, TransactionsDetailsBottomSheet> {
         controller?.destroy()
         val host = Robolectric.buildActivity(AppCompatActivity::class.java)
@@ -390,7 +437,14 @@ class WhirlpoolTxLabelWiringTest {
         val activity = host.setup().get()
         controller = host
         val output = if (withOutput) {
-            listOf(Out(n = 5, value = 180_000L, addr = "bc1qchange", xpub = null))
+            listOf(
+                Out(
+                    n = 5,
+                    value = 180_000L,
+                    addr = "bc1qchange",
+                    xpub = outputXpub?.let { Xpub(it, null) },
+                )
+            )
         } else {
             emptyList()
         }

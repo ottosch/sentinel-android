@@ -271,6 +271,95 @@ class Bip329ImporterTest {
         assertEquals(first, export())
     }
 
+    @Test
+    fun flaggedBadBankExportRoundTripsWithoutADoubleSuffix() {
+        val origin = "auto:whirlpool:v1"
+        val autoTx = "61".repeat(32)
+        val userTx = "62".repeat(32)
+        val clearedTx = "63".repeat(32)
+        val composedTx = "64".repeat(32)
+        val plainTx = "65".repeat(32)
+        runBlocking {
+            db.utxoLabelDao().upsert(output(autoTx, 0, "Bad Bank", origin, badbank = 1))
+            db.utxoLabelDao().upsert(output(userTx, 1, "Cold storage", null, badbank = 1))
+            db.utxoLabelDao().upsert(output(clearedTx, 2, "", null, badbank = 1))
+            db.utxoLabelDao().upsert(output(composedTx, 3, "Cold storage (Bad Bank)", null, badbank = 1))
+            db.utxoLabelDao().upsert(output(plainTx, 4, "x (Bad Bank)", null, badbank = 0))
+        }
+        val first = export()
+        val lines = first.lineSequence().filter { it.isNotBlank() }.map { JSONObject(it) }.toList()
+        fun row(ref: String) = lines.single { it.getString("type") == "output" && it.getString("ref") == ref }
+        assertEquals("Bad Bank", row("$autoTx:0").getString("label"))
+        assertEquals(origin, row("$autoTx:0").getString("origin"))
+        assertEquals("Cold storage (Bad Bank)", row("$userTx:1").getString("label"))
+        assertFalse(row("$userTx:1").has("origin"))
+        assertEquals("Bad Bank", row("$clearedTx:2").getString("label"))
+        assertFalse(row("$clearedTx:2").has("origin"))
+        assertEquals("Cold storage (Bad Bank)", row("$composedTx:3").getString("label"))
+        assertEquals("x (Bad Bank)", row("$plainTx:4").getString("label"))
+        assertFalse(first.contains("(Bad Bank) (Bad Bank)"))
+
+        val imported = import(first.lineSequence().filter { it.isNotBlank() }.toList())
+        assertEquals(0, imported.skipped + imported.noLabel)
+        val auto = runBlocking { db.utxoLabelDao().find("mainnet", autoTx, 0) }!!
+        assertEquals("Bad Bank", auto.label)
+        assertEquals(origin, auto.origin)
+        assertEquals(1, auto.badbank)
+        val user = runBlocking { db.utxoLabelDao().find("mainnet", userTx, 1) }!!
+        assertEquals("Cold storage", user.label)
+        assertEquals(1, user.badbank)
+        val cleared = runBlocking { db.utxoLabelDao().find("mainnet", clearedTx, 2) }!!
+        assertEquals("", cleared.label)
+        assertEquals(1, cleared.badbank)
+        val plain = runBlocking { db.utxoLabelDao().find("mainnet", plainTx, 4) }!!
+        assertEquals("x (Bad Bank)", plain.label)
+        assertEquals(0, plain.badbank)
+        val composed = runBlocking { db.utxoLabelDao().find("mainnet", composedTx, 3) }!!
+        assertEquals("Cold storage", composed.label)
+        assertEquals(1, composed.badbank)
+        assertEquals(first, export())
+    }
+
+    @Test
+    fun blankAndNonBlankImportKeepTheBadBankFlag() {
+        val tx = "71".repeat(32)
+        runBlocking {
+            db.utxoLabelDao().upsert(output(tx, 0, "Cold storage", null, badbank = 1))
+        }
+        val blank = import(listOf("""{"type":"output","ref":"$tx:0","label":""}"""), now = 50)
+        assertEquals(1, blank.updated)
+        val cleared = runBlocking { db.utxoLabelDao().find("mainnet", tx, 0) }!!
+        assertEquals("", cleared.label)
+        assertNull(cleared.origin)
+        assertEquals(1, cleared.badbank)
+        val restored = import(
+            listOf("""{"type":"output","ref":"$tx:0","label":"Exchange (Bad Bank)","origin":"sparrow"}"""),
+            now = 60,
+        )
+        assertEquals(1, restored.updated)
+        val row = runBlocking { db.utxoLabelDao().find("mainnet", tx, 0) }!!
+        assertEquals("Exchange", row.label)
+        assertEquals("sparrow", row.origin)
+        assertEquals(1, row.badbank)
+    }
+
+    private fun output(
+        txid: String,
+        vout: Int,
+        label: String,
+        origin: String?,
+        badbank: Int,
+    ) = UtxoLabel(
+        network = "mainnet",
+        txid = txid,
+        vout = vout,
+        label = label,
+        origin = origin,
+        createdAt = 1,
+        updatedAt = 1,
+        badbank = badbank,
+    )
+
     private fun txEntry(ref: String, label: String, origin: String?) = LabelEntry(
         network = "mainnet",
         type = "tx",

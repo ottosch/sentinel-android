@@ -28,7 +28,8 @@ class LabelRescopePlannerTest {
     private fun mainnetUtxo() = UtxoLabel(
         network = "mainnet", txid = txid, vout = 22,
         label = "Bad Bank", origin = "auto:whirlpool:v1",
-        createdAt = 111L, updatedAt = 222L
+        createdAt = 111L, updatedAt = 222L,
+        badbank = 1,
     )
 
     private fun mainnetEntry() = LabelEntry(
@@ -53,7 +54,32 @@ class LabelRescopePlannerTest {
         assertEquals("auto:whirlpool:v1", copy.origin)
         assertEquals(111L, copy.createdAt)
         assertEquals(222L, copy.updatedAt)
+        assertEquals(1, copy.badbank)
         assertEquals(setOf("mainnet"), plan.purgeNetworks)
+    }
+
+    @Test
+    fun `foreign zero flag does not clear a flagged target row`() {
+        val foreign = UtxoLabel(
+            network = "mainnet",
+            txid = txid,
+            vout = 22,
+            label = "rent",
+            origin = null,
+            createdAt = 111L,
+            updatedAt = 222L,
+            badbank = 0,
+        )
+        val target = foreign.copy(network = "testnet", label = "Cold storage", badbank = 1)
+        val plan = LabelRescopePlanner.plan(
+            target = "testnet",
+            utxoLabels = listOf(target, foreign),
+            entries = emptyList(),
+        )
+        val copy = plan.utxoCopies.single()
+        assertEquals("testnet", copy.network)
+        assertEquals(1, copy.badbank)
+        assertEquals("rent", copy.label)
     }
 
     @Test

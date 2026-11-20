@@ -1,6 +1,8 @@
 package com.samourai.sentinel.ui.collectionDetails.transactions
 
 import com.samourai.sentinel.data.Tx
+import com.samourai.sentinel.data.whirlpool.AccountKey
+import com.samourai.sentinel.data.whirlpool.CoinLabel
 
 /**
  * #55: pure resolver for utxo-level label chips (details sheet).
@@ -31,12 +33,19 @@ import com.samourai.sentinel.data.Tx
  */
 object TxUtxoLabels {
 
-    fun chipsFor(tx: Tx, utxoLabels: Map<String, String>): List<String> {
-        if (utxoLabels.isEmpty() || tx.out.isEmpty()) return emptyList()
+    fun chipsFor(
+        tx: Tx,
+        utxoLabels: Map<String, String>,
+        badbank: Set<String> = emptySet(),
+    ): List<String> {
+        if (tx.out.isEmpty()) return emptyList()
         val txid = tx.hash.split("-")[0].lowercase()
-        return tx.out
-            .mapNotNull { utxoLabels["$txid:${it.n}"] }
-            .filter { it.isNotBlank() }
-            .distinct()
+        return tx.out.mapNotNull { out ->
+            val key = "$txid:${out.n}"
+            val stored = utxoLabels[key]
+            val marked = key in badbank || AccountKey.isBadBank(out.xpub?.m)
+            if (stored == null && !marked) return@mapNotNull null
+            CoinLabel.display(stored, marked)?.takeIf { it.isNotBlank() }
+        }.distinct()
     }
 }

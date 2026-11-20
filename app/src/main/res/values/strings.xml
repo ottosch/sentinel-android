@@ -449,10 +449,10 @@
     <string name="street_mode">Street mode</string>
     <string name="whirlpool_auto_labels_title" translatable="false">Whirlpool auto-labels</string>
     <string name="whirlpool_auto_labels_experimental" translatable="false">experimental</string>
-    <string name="whirlpool_auto_labels_summary_on" translatable="false">Tx0, Premix, Mix and Bad Bank transactions are labeled automatically</string>
-    <string name="whirlpool_auto_labels_summary_off" translatable="false">Whirlpool transactions are not labeled automatically</string>
+    <string name="whirlpool_auto_labels_summary_on" translatable="false">Tx0, Premix and Mix transactions are labeled automatically. Bad Bank coin labels are always applied.</string>
+    <string name="whirlpool_auto_labels_summary_off" translatable="false">Turning this off hides stored automatic Tx0, Premix and Mix transaction labels until it is turned back on. Bad Bank coin labels are always applied.</string>
     <string name="whirlpool_auto_labels_dialog_title" translatable="false">Whirlpool auto-labels (experimental)</string>
-    <string name="whirlpool_auto_labels_dialog_message" translatable="false">Turning this on reads the full transaction history once. On a large wallet that can take a while. Labels you set or edit yourself are never overwritten. For existing history to be labeled correctly, pull to refresh on the collections list. Some older Whirlpool transactions may remain unlabeled.</string>
+    <string name="whirlpool_auto_labels_dialog_message" translatable="false">Turning this on reads the full transaction history once. On a large wallet that can take a while. This labels Tx0, Premix and Mix transactions. Turning it off hides stored automatic transaction labels until it is turned back on. Bad Bank coin labels are always applied. Labels you set or edit yourself are never overwritten. For existing history to be labeled correctly, pull to refresh on the collections list. Some older Whirlpool transactions may remain unlabeled.</string>
     <string name="choose_collection">Choose collection</string>
     <string name="choose_pubkey">Choose Pubkey</string>
 
@@ -486,6 +486,7 @@
     <string name="utxo_label_empty_hint" translatable="false">Tap to add label</string>
     <string name="utxo_label_dialog_title" translatable="false">UTXO label</string>
     <string name="utxo_label_input_hint" translatable="false">Label (leave empty to remove)</string>
+    <string name="utxo_label_badbank_hint" translatable="false">Shown as \'&lt;label&gt; (Bad Bank)\'</string>
     <string name="tor_disable_dojo_blocked">You won\'t be able to disable Tor if Dojo is enabled</string>
     <string name="camera_permission_denied">Camera Permission Denied</string>
     <string name="no_dojo_connected">No Dojo connected</string>
