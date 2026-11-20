@@ -61,4 +61,9 @@ class CoinLabelTest {
         for (s in inputs) CoinLabel.display(s, true)
         assertEquals("x (Bad Bank)", CoinLabel.display("x" + " (bad bank)".repeat(20_000), true))
     }
+
+    @Test
+    fun userPartDoesNotFoldTheKelvinSign() {
+        assertEquals("x (Bad Ban\u212A)", CoinLabel.userPart("x (Bad Ban\u212A)"))
+    }
 }
