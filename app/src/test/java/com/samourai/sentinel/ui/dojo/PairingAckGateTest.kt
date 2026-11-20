@@ -4,6 +4,7 @@ import com.samourai.sentinel.core.DerivedNetwork
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -195,7 +196,6 @@ class PairingAckGateTest {
             PairingDetailRows(
                 jurisdiction = "Singapore",
                 url = "http://community.example",
-                version = null,
                 explorer = "http://explorer.example",
             ),
             pairingDetailRows(communityPairing, communitySnapshot),
@@ -203,53 +203,16 @@ class PairingAckGateTest {
     }
 
     @Test
-    fun `the version row is the directory's checked version and never the signed pairing version`() {
-        val listed = communitySnapshot.copy(version = "1.29.2")
-        val rows = pairingDetailRows(communityPairing, listed)
-        // The row is the directory's version. The payload still carries 1.19.1.
+    fun `the pre-pair rows carry no Dojo version at all`() {
+        // Sentinel shows a Dojo version only after pairing, the one the Dojo
+        // itself reports. Neither the directory's version nor the signed
+        // pairing.version has a place in the pre-pair rows or snapshot.
+        val fields = PairingDetailRows::class.java.declaredFields.map { it.name.lowercase() }
+        assertTrue(fields.toString(), fields.none { it.contains("version") })
+        val snapshotFields = DojoDisplaySnapshot::class.java.declaredFields.map { it.name.lowercase() }
+        assertTrue(snapshotFields.toString(), snapshotFields.none { it.contains("version") })
+        // The payload still carries its own version, untouched.
         assertEquals("1.19.1", communityPairing.pairing?.version)
-        assertEquals("1.29.2", rows.version)
-        // A snapshot for another URL never supplies a version.
-        assertNull(pairingDetailRows(communityPairing, listed.copy(url = "http://other.example")).version)
-        // The same string as the signed pairing version still shows: it is the directory's.
-        assertEquals("1.19.1", pairingDetailRows(communityPairing, listed.copy(version = "1.19.1")).version)
-        // No listing version, a blank one, or a scan/paste: the row is hidden.
-        // The signed pairing version is not a fallback.
-        for (snap in listOf(communitySnapshot, listed.copy(version = " "), null)) {
-            assertNull(pairingDetailRows(communityPairing, snap).version)
-        }
-        val manualWithVersion = manualPairing.copy(
-            pairing = manualPairing.pairing!!.copy(version = "1.4.5"),
-        )
-        assertEquals("1.4.5", manualWithVersion.pairing?.version)
-        assertNull(pairingDetailRows(manualWithVersion, null).version)
-    }
-
-    @Test
-    fun `a listing version that isn't version-shaped hides the row and does not fall back`() {
-        // Accepted: 1 to 32 of A-Z, a-z, 0-9, '.', '+' and '-'.
-        for (ok in listOf("1.29.2", "1", "1.29.2-rc1+build.5", "v1.29.2", "a".repeat(32))) {
-            assertEquals(ok, listingVersionOrNull(ok))
-            assertEquals(ok, pairingDetailRows(communityPairing, communitySnapshot.copy(version = ok)).version)
-        }
-        // Refused: the row is hidden. The signed pairing version stays in the
-        // payload and is not shown in its place.
-        val bad = listOf(
-            "", " ", " 1.29.2", "1.29.2 ", "1.29.2\n", "1.29\u202E2", "1 29 2", "1.29/../2",
-            "<b>1.29.2</b>", "1.29.2;", "１.２９.２", "1.29.2\u0000", "a".repeat(33),
-        )
-        for (no in bad) {
-            assertNull(no, listingVersionOrNull(no))
-            assertNull(no, pairingDetailRows(communityPairing, communitySnapshot.copy(version = no)).version)
-        }
-        assertNull(listingVersionOrNull(null))
-        assertEquals("1.19.1", communityPairing.pairing?.version)
-        val noPayloadVersion = communityPairing.copy(pairing = communityPairing.pairing!!.copy(version = null))
-        assertNull(pairingDetailRows(noPayloadVersion, communitySnapshot.copy(version = "<b>")).version)
-        assertEquals(
-            "1.29.2",
-            pairingDetailRows(noPayloadVersion, communitySnapshot.copy(version = "1.29.2")).version,
-        )
     }
 
     @Test
@@ -261,7 +224,6 @@ class PairingAckGateTest {
             PairingDetailRows(
                 jurisdiction = null,
                 url = "http://manual.example",
-                version = null,
                 explorer = null,
             ),
             pairingDetailRows(manualPairing, null),
@@ -289,10 +251,9 @@ class PairingAckGateTest {
             explorer = null,
         )
         val rows = pairingDetailRows(bare, null)
-        // The URL row is the one guarantee (validate); version,
-        // explorer and jurisdiction are absent, not blank-rendered.
+        // The URL row is the one guarantee (validate); explorer and
+        // jurisdiction are absent, not blank-rendered.
         assertEquals("http://onlyurl.example", rows.url)
-        assertNull(rows.version)
         assertNull(rows.explorer)
         assertNull(rows.jurisdiction)
     }
@@ -351,7 +312,7 @@ class PairingAckGateTest {
         // FLAG_SECURE note); rows, header and identity carry none of
         // it. Pinned so a future field addition fails loudly.
         val rows = pairingDetailRows(communityPairing, communitySnapshot)
-        listOf(rows.jurisdiction, rows.url, rows.version, rows.explorer).forEach { value ->
+        listOf(rows.jurisdiction, rows.url, rows.explorer).forEach { value ->
             assertFalse(value?.contains("secret-api-key") == true)
         }
         val header = directoryHeader(communitySnapshot, communityPairing.pairing?.url)

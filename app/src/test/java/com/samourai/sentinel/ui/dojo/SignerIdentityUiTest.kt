@@ -49,11 +49,11 @@ class SignerIdentityUiTest {
         assertTrue(view.shown(R.id.dojoPairingDirectoryHeader))
         assertEquals("QA valid (signed)", view.text(R.id.dojoPairingDirectoryName))
         assertEquals("🇸🇬", view.text(R.id.dojoPairingDirectoryFlag))
-        // The caption says what the signature covers and where name, location and version come from.
+        // The caption says what the signature covers and where name and location come from.
         assertTrue(view.shown(R.id.dojoPairingDirectoryCaption))
         assertEquals(
             "The signature covers this Dojo's URL, connection details and block explorer. " +
-                "Name, location and version come from the DojoBay.org listing.",
+                "Name and location come from the DojoBay.org listing.",
             view.text(R.id.dojoPairingDirectoryCaption),
         )
         assertTrue(view.shown(R.id.dojoPairingSignerSection))

@@ -32,6 +32,7 @@ import com.invertedx.hummingbird.QRScanner
 import com.samourai.sentinel.R
 import com.samourai.sentinel.api.TlsPolicy
 import com.samourai.sentinel.core.DerivedNetwork
+import com.samourai.sentinel.core.DojoReportedVersion
 import com.samourai.sentinel.core.NetworkClassifier
 import com.samourai.sentinel.core.SentinelState
 import com.samourai.sentinel.databinding.FragmentBottomsheetViewPagerBinding
@@ -134,6 +135,39 @@ fun buildPairingClient(torProxy: Proxy): OkHttpClient {
     builder.connectTimeout(180, TimeUnit.SECONDS)
     builder.proxy(torProxy)
     return builder.build()
+}
+
+/** The pairing's /auth/login request: the apikey in a form body, to the pairing URL. */
+internal fun pairingLoginRequest(pairing: DojoPairing): Request {
+    val requestBody = FormBody.Builder()
+        .add("apikey", pairing.pairing?.apikey.toString())
+        .build()
+    return Request.Builder()
+        .url(pairing.pairing!!.url!!.toString().plus("/auth/login"))
+        .post(requestBody)
+        .build()
+}
+
+/**
+ * A usable /auth/login answer: the tokens, and the raw X-Dojo-Version header
+ * the Dojo sent with it (checked later, by DojoReportedVersion).
+ */
+internal class PairingLogin(val tokens: DojoAuthTokens, val versionHeader: String?)
+
+/**
+ * Reads the pairing login's answer. Null for a rejected key (401, or a 200
+ * with no authorizations) and any other non-2xx; throws when a 200 is not
+ * usable (readDojoAuthTokens). The body is read capped (#567); the caller
+ * still closes the response (#293).
+ */
+internal fun readPairingLogin(response: Response): PairingLogin? {
+    val body = response.body?.readUtf8Capped(SafeJson.AUTH_MAX_BYTES) ?: "{}"
+    if (response.code == 401 || (response.isSuccessful && !body.contains("authorizations"))) {
+        Timber.d("Unauthorized: wrong API key")
+        return null
+    }
+    if (!response.isSuccessful) return null
+    return PairingLogin(readDojoAuthTokens(body), DojoReportedVersion.headerOf(response.headers))
 }
 
 // ---- #234/#261: the pairing decision, made pure ----
@@ -268,10 +302,6 @@ data class DojoDisplaySnapshot(
     // Another listing in the same list used this name under a different
     // signer when it was picked: the pre-pair dialog warns. Not saved.
     val nameCollision: Boolean = false,
-    // The directory's checked version for the picked listing. The pre-pair
-    // dialog shows it, after the shape check, as its only Dojo version.
-    // Not saved: pairing stores the signed payload, not this string.
-    val version: String? = null,
 )
 
 /**
@@ -318,11 +348,6 @@ fun directoryHeader(
 data class PairingDetailRows(
     val jurisdiction: String?,
     val url: String?,
-    // The one Dojo version the pre-pair dialog shows: the directory's
-    // checked version, after [listingVersionOrNull]. Informational only.
-    // Null hides the row. The signed pairing.version is what Pair stores
-    // and is never substituted when this is null.
-    val version: String?,
     val explorer: String?,
     // #250: the network evidence for the pre-pair dialog's network
     // row - declared (directory label, url-match-guarded) or
@@ -344,33 +369,13 @@ fun pairingDetailRows(
     val declaredNetwork = snapshot
         ?.takeIf { pairingUrl != null && it.url == pairingUrl }
         ?.network?.let { normalizeDeclaredNetwork(it) }
-    // Display only, and only the directory's checked version. Url-match
-    // guarded like jurisdiction, then shape-checked. A missing or
-    // ill-shaped value hides the row: the signed pairing.version is what
-    // Pair stores, and it is not a fallback for this row.
-    val shownVersion = snapshot
-        ?.takeIf { pairingUrl != null && it.url == pairingUrl }
-        ?.version?.let { listingVersionOrNull(it) }
     return PairingDetailRows(
         jurisdiction = jurisdiction,
         url = pairingUrl,
-        version = shownVersion,
         explorer = pairing.explorer?.url?.takeIf { it.isNotBlank() },
         network = declaredNetwork ?: NetworkClassifier.fromUrl(pairingUrl),
     )
 }
-
-/** A directory version shape: 1 to 32 of A-Z, a-z, 0-9, '.', '+' and '-'. */
-private val LISTING_VERSION_SHAPE = Regex("^[0-9A-Za-z.+-]{1,32}$")
-
-/**
- * The picked listing's directory version when it matches
- * [LISTING_VERSION_SHAPE], otherwise null. The pre-pair dialog shows this
- * as its only Dojo version, or hides the row. It never substitutes the
- * signed pairing.version.
- */
-fun listingVersionOrNull(version: String?): String? =
-    version?.takeIf { LISTING_VERSION_SHAPE.matches(it) }
 
 /**
  * #256: the receipt's ONE identity line - a fixed ladder, never
@@ -805,14 +810,7 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
                 ?: throw IllegalStateException("pairing path reached with no live SOCKS proxy (#233)")
             val client = buildPairingClient(torProxy)
 
-            val requestBody = FormBody.Builder()
-                .add("apikey", pairing.pairing?.apikey.toString())
-                .build()
-
-            val request = Request.Builder()
-                .url(pairing.pairing!!.url!!.toString().plus("/auth/login"))
-                .post(requestBody)
-                .build()
+            val request = pairingLoginRequest(pairing)
 
             client.newCall(request).enqueue(object : Callback {
 
@@ -822,33 +820,26 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
                     // throw before that, and a null body (close is a no-op).
                     // #567: the cap is applied while the socket is read.
                     try {
-                        val body = response.body?.readUtf8Capped(SafeJson.AUTH_MAX_BYTES) ?: "{}"
-                        if (response.code == 401 || (response.isSuccessful && !body.contains("authorizations"))) {
-                            Timber.d("Unauthorized: wrong API key")
+                        // #567: tokens are strings before anything is saved,
+                        // and before the main looper runs. An unusable 200
+                        // throws in readPairingLogin; the catch below is the
+                        // same failure toast as a rejected key, and
+                        // commitPairing is not called.
+                        val login = readPairingLogin(response)
+                        if (login == null) {
                             // #261: newly reachable AFTER consent - the
                             // deliberate wording lives in dismissAllOrToast.
                             dismissAllOrToast(false)
-                        }
-                        else if (response.isSuccessful) {
-                            // #567: tokens are strings before anything is
-                            // saved, and before the main looper runs.
-                            // A missing authorizations object, a non-object
-                            // authorizations value, or a non-finite number
-                            // (AOSP toString() returns null) throws here.
-                            // The catch below is the same failure toast as
-                            // a rejected key, and commitPairing is not called.
-                            val tokens = readDojoAuthTokens(body)
+                        } else {
                             // #261: consent is already spent - the Pair tap
                             // preceded this response - so a 200 commits
                             // directly. The gate has nothing left to decide
                             // here (its old arm was the dialog, which now
-                            // opens on selection); the pairing and the auth
-                            // tokens ride the mainHandler closure into
-                            // commitPairing(), the exact commit body #234
-                            // gated and #256 receipted.
-                            mainHandler.post { commitPairing(pairing, tokens) }
-                        }  else {
-                            dismissAllOrToast(false)
+                            // opens on selection); the pairing, the auth
+                            // tokens and the Dojo's reported version ride the
+                            // mainHandler closure into commitPairing(), the
+                            // exact commit body #234 gated and #256 receipted.
+                            mainHandler.post { commitPairing(pairing, login) }
                         }
                     } catch (e: Exception) {
                         Timber.w(e, "Dojo pairing response was not usable")
@@ -900,8 +891,8 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
      * #256: the pre-pair confirmation - a labeled-row view
      * (dialog_dojo_pairing_details) instead of one long same-color
      * string. The directory header and the Jurisdiction row render
-     * only for a matching directory snapshot; URL/Dojo
-     * version/Explorer rows render only when the payload carries
+     * only for a matching directory snapshot; URL/Explorer rows
+     * render only when the payload carries
      * them - absent means absent, never a placeholder. Title and
      * Pair/Don't-pair stay on the builder; the lead-in sits at the top
      * of the scrolling view. An outside tap does nothing (it would be a
@@ -975,9 +966,8 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
             )
         }
         bindDetailRow(view, R.id.dojoPairingUrlRow, R.id.dojoPairingUrlValue, rows.url)
-        // Informational. The signed pairing.version stays in the payload
-        // Pair stores and is not shown.
-        dialogViews.bindVersion(rows.version, directoryName)
+        // No Dojo version before Pair. Once paired, Sentinel shows the
+        // version the Dojo itself reports (DojoReportedVersion).
         bindDetailRow(view, R.id.dojoPairingExplorerRow, R.id.dojoPairingExplorerValue, rows.explorer)
         val decision = networkDecision
         val appNetworkName = networkName(prefsUtil.testnet == true)
@@ -1122,7 +1112,7 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
      * consented to, not a decision trailing an exchange that
      * already succeeded.
      */
-    private fun commitPairing(pairing: DojoPairing, tokens: DojoAuthTokens) {
+    private fun commitPairing(pairing: DojoPairing, login: PairingLogin) {
         val node = pairing.pairing ?: return
         // #250: the consented network set - the empty-keychain arm of
         // the guard. The pairing IS the network's establishment
@@ -1134,9 +1124,9 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
         (networkDecision as? PairingNetworkDecision.ProceedAndSetNetwork)?.let {
             prefsUtil.testnet = it.targetIsTestnet
         }
-        dojoUtil.setDojoPayload(payload)
-        prefsUtil.apiEndPointTor = node.url
-        prefsUtil.apiEndPoint = node.url
+        // Payload, endpoints, and the version this login reported: the
+        // old pairing's version is cleared and this Dojo's replaces it.
+        dojoUtil.commitPairedDojo(payload, node.url, login.versionHeader)
         prefsUtil.dojoExplorerUrl = pairing.explorer?.url
         prefsUtil.dojoExplorerType = pairing.explorer?.type
         // Operator name and flag were snapshotted from the community
@@ -1150,7 +1140,7 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
         // scan or paste has none, and clears a pin left by an earlier
         // directory pairing.
         DojoBaySignerPin.save(prefsUtil, pendingSignerPin.takeForCommit(node.url, committedSnapshot?.name))
-        dojoUtil.applyAuthTokens(tokens)
+        dojoUtil.applyAuthTokens(login.tokens)
         apiScope.launch {
             dojoUtil.writePayload(pairing);
             withContext(Dispatchers.Main) {

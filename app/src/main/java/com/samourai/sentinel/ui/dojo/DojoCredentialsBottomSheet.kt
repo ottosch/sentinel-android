@@ -20,6 +20,7 @@ import com.google.zxing.WriterException
 import com.google.zxing.client.android.Contents
 import com.google.zxing.client.android.encode.QRCodeEncoder
 import com.samourai.sentinel.R
+import com.samourai.sentinel.core.DojoReportedVersion
 import com.samourai.sentinel.ui.utils.PrefsUtil
 import com.samourai.sentinel.ui.views.GenericBottomSheet
 import com.samourai.sentinel.ui.views.keepScreenshotsBlocked
@@ -104,7 +105,11 @@ class DojoCredentialsBottomSheet : GenericBottomSheet() {
         urlValue.text = pairing?.url.orPlaceholder()
         apiKeyValue.text = pairing?.apikey.orPlaceholder()
         typeValue.text = pairing?.type.orPlaceholder()
-        versionValue.text = pairing?.version.orPlaceholder()
+        // The version the Dojo itself reports; the pairing code's only
+        // until the Dojo has first answered (DojoReportedVersion).
+        versionValue.text = DojoReportedVersion.display(
+            prefsUtil.dojoReportedVersion, pairing?.version,
+        ).orPlaceholder()
 
         // Pretty-print so the payload is readable rather than one long line.
         payloadValue.text = prettyPrint(rawPayload)

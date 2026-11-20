@@ -45,6 +45,7 @@ val PREFS_OMITTED_FROM_BACKUP = setOf(
     "notificationPromptDone",
     "dojoBayUrl",
     "dojoBayPinnedCode",
+    "dojoReportedVersion",
 )
 const val XPUB = "xpub"
 const val SCRAMBLE_PIN = "scramblePin"
@@ -136,6 +137,11 @@ class PrefsUtil(context: Context) : Preferences(context, "${context.packageName}
     // dojoDisplay* snapshot; it applies only while its URL is the paired one.
     var dojoTrustedSignerCode by stringPref(defaultValue = null)
     var dojoTrustedSignerUrl by stringPref(defaultValue = null)
+    // The version the paired Dojo reports in its X-Dojo-Version header. One
+    // value, owned by the current pairing: any pairing change clears it
+    // (DojoReportedVersion). Not in backups, so a restore reads it fresh
+    // from the Dojo.
+    var dojoReportedVersion by stringPref(defaultValue = null)
     // Custom Dojo Bay directory base address for the Community Dojos list.
     // Null means the built-in default (DojoBayConstants.BASE_URL), so a
     // change of default reaches everyone who never customized it. Stored

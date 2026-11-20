@@ -41,7 +41,7 @@
       Grey 12sp labels over white 13sp values, values
       wrapped - the fragment_dojo_credentials_bottomsheet row idiom - so
       long onion URLs never bleed into neighboring rows. The directory
-      header and the jurisdiction/version/explorer rows default hidden:
+      header and the jurisdiction/network/explorer rows default hidden:
       code shows a row only when it carries real data (absent means
       absent, never a placeholder); the URL row is the one guarantee
       (validate) and defaults visible.
@@ -159,41 +159,6 @@
             android:textColor="@color/white"
             android:textSize="13sp"
             tools:text="http://abcdef123456.onion/v2" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:id="@+id/dojoPairingVersionRow"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:orientation="vertical"
-        android:visibility="gone"
-        tools:visibility="visible">
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/dojo_pairing_row_version"
-            android:textColor="#9A9A9A"
-            android:textSize="12sp" />
-
-        <TextView
-            android:id="@+id/dojoPairingVersionValue"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textColor="@color/white"
-            android:textSize="13sp"
-            tools:text="1.29.2" />
-
-        <!-- Where the version above was checked. Hidden with the row. -->
-        <TextView
-            android:id="@+id/dojoPairingVersionSource"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:textColor="#9A9A9A"
-            android:textSize="12sp"
-            tools:text="Last checked by DojoBay.org" />
     </LinearLayout>
 
     <LinearLayout
