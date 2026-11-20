@@ -936,7 +936,17 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
         val builder = MaterialAlertDialogBuilder(requireContext())
         val view = LayoutInflater.from(builder.context).inflate(R.layout.dialog_dojo_pairing_details, null)
         val dialogViews = PrePairDialogViews(view)
+        val directoryBase = DojoBaySource.effectiveBaseUrl(prefsUtil.dojoBayUrl)
+        val directoryName = if (DojoBaySource.isDefault(directoryBase)) {
+            getString(R.string.dojo_pairing_default_directory_name)
+        } else {
+            DojoBaySource.label(directoryBase)
+        }
         dialogViews.bindHeader(directoryHeader(snapshot, pairing.pairing?.url), getString(R.string.dojo_unnamed))
+        dialogViews.bindSignatureScope(
+            directoryName,
+            pairing.explorer?.url?.isNotBlank() == true,
+        )
         // Who signed the picked listing: the full code its signature proved.
         val signer = prePairSigner(pendingSignerPin.forDialog(), snapshot, pairing.pairing?.url)
         dialogViews.bindSigner(signer) { code -> context?.let { PayNymPage.openSigner(it, lifecycleScope, code) } }
@@ -967,7 +977,7 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
         bindDetailRow(view, R.id.dojoPairingUrlRow, R.id.dojoPairingUrlValue, rows.url)
         // Informational. The signed pairing.version stays in the payload
         // Pair stores and is not shown.
-        dialogViews.bindVersion(rows.version)
+        dialogViews.bindVersion(rows.version, directoryName)
         bindDetailRow(view, R.id.dojoPairingExplorerRow, R.id.dojoPairingExplorerValue, rows.explorer)
         val decision = networkDecision
         val appNetworkName = networkName(prefsUtil.testnet == true)

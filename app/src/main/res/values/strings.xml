@@ -272,7 +272,9 @@
     <string name="network_directory_default" translatable="false">Default · %1$s</string>
     <string name="network_directory_custom" translatable="false">Custom · %1$s</string>
     <string name="community_dojo_signed_by" translatable="false">Signed by %1$s</string>
-    <string name="dojo_pairing_directory_not_signed" translatable="false">The signature covers this Dojo\'s URL, connection details and block explorer. Name, location and version come from the DojoBay.org listing.</string>
+    <string name="dojo_pairing_default_directory_name" translatable="false">DojoBay.org</string>
+    <string name="dojo_pairing_signature_scope" translatable="false">The signature covers this Dojo\'s URL and connection details. Name, location and version come from the %1$s listing.</string>
+    <string name="dojo_pairing_signature_scope_with_explorer" translatable="false">The signature covers this Dojo\'s URL, connection details and block explorer. Name, location and version come from the %1$s listing.</string>
     <string name="dojo_pairing_row_signed_by" translatable="false">Signed by</string>
     <string name="dojo_pairing_signer_collision" translatable="false">Another listing uses this name with a different signer. Check the full code.</string>
     <string name="community_dojo_signer_collision" translatable="false">Another listing uses this name with a different signer</string>
@@ -546,7 +548,7 @@
     <string name="dojo_pairing_row_jurisdiction" translatable="false">Jurisdiction</string>
     <string name="dojo_pairing_row_url" translatable="false">Dojo URL</string>
     <string name="dojo_pairing_row_version" translatable="false">Dojo version</string>
-    <string name="dojo_pairing_version_source" translatable="false">Last checked by DojoBay.org</string>
+    <string name="dojo_pairing_version_source" translatable="false">Last checked by %1$s</string>
     <string name="dojo_pairing_row_explorer" translatable="false">Explorer</string>
     <string name="dojo_pairing_success_title" translatable="false">Dojo paired</string>
     <string name="dojo_pairing_success_message" translatable="false">Sentinel is now paired with</string>

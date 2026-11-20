@@ -80,7 +80,6 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="6dp"
-        android:text="@string/dojo_pairing_directory_not_signed"
         android:textColor="#9A9A9A"
         android:textSize="12sp"
         android:visibility="gone"
@@ -192,9 +191,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
-            android:text="@string/dojo_pairing_version_source"
             android:textColor="#9A9A9A"
-            android:textSize="12sp" />
+            android:textSize="12sp"
+            tools:text="Last checked by DojoBay.org" />
     </LinearLayout>
 
     <LinearLayout

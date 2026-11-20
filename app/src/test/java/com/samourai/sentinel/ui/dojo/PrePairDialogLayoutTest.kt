@@ -56,7 +56,7 @@ class PrePairDialogLayoutTest {
             view.findViewById<TextView>(value).text = "http://" + "a".repeat(56) + ".onion/v2"
             view.findViewById<View>(row).visibility = View.VISIBLE
         }
-        views.bindVersion("http://" + "a".repeat(56) + ".onion/v2")
+        views.bindVersion("http://" + "a".repeat(56) + ".onion/v2", "DojoBay.org")
         return view
     }
 

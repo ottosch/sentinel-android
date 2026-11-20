@@ -43,9 +43,10 @@ class PrePairDialogViews(val root: View) {
     private val header: View = root.findViewById(R.id.dojoPairingDirectoryHeader)
     private val name: TextView = root.findViewById(R.id.dojoPairingDirectoryName)
     private val flag: TextView = root.findViewById(R.id.dojoPairingDirectoryFlag)
-    private val caption: View = root.findViewById(R.id.dojoPairingDirectoryCaption)
+    private val caption: TextView = root.findViewById(R.id.dojoPairingDirectoryCaption)
     private val versionRow: View = root.findViewById(R.id.dojoPairingVersionRow)
     private val versionValue: TextView = root.findViewById(R.id.dojoPairingVersionValue)
+    private val versionSource: TextView = root.findViewById(R.id.dojoPairingVersionSource)
     private val signerSection: View = root.findViewById(R.id.dojoPairingSignerSection)
     private val signerCode: TextView = root.findViewById(R.id.dojoPairingSignerCode)
     private val signerLink: TextView = root.findViewById(R.id.dojoPairingSignerLink)
@@ -114,14 +115,31 @@ class PrePairDialogViews(val root: View) {
     }
 
     /**
+     * What the signature covers, and which directory supplied the name,
+     * location and version. [coversExplorer] is true only when the signed
+     * payload carries a block explorer. [directoryName] is DojoBay.org for
+     * the default directory and that directory's label otherwise.
+     */
+    fun bindSignatureScope(directoryName: String, coversExplorer: Boolean) {
+        val res = if (coversExplorer) {
+            R.string.dojo_pairing_signature_scope_with_explorer
+        } else {
+            R.string.dojo_pairing_signature_scope
+        }
+        caption.text = root.context.getString(res, directoryName)
+    }
+
+    /**
      * The Dojo version row. [checked] is the directory's checked version,
      * already shape-filtered by [listingVersionOrNull], or null to hide
      * the row. The signed pairing.version is not a fallback and is not
-     * shown. The source line is part of the row, so it hides with it.
+     * shown. [checkedBy] is the directory the version was checked with.
+     * The source line is part of the row, so it hides with it.
      */
-    fun bindVersion(checked: String?) {
+    fun bindVersion(checked: String?, checkedBy: String) {
         if (checked != null) {
             versionValue.text = checked
+            versionSource.text = root.context.getString(R.string.dojo_pairing_version_source, checkedBy)
             versionRow.visibility = View.VISIBLE
         } else {
             versionValue.text = ""

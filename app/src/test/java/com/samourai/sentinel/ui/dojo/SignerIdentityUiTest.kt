@@ -42,6 +42,7 @@ class SignerIdentityUiTest {
         val view = dialog()
         val views = PrePairDialogViews(view)
         views.bindHeader(DojoDirectoryHeader("🇸🇬", "QA valid (signed)"), "Unnamed")
+        views.bindSignatureScope("DojoBay.org", coversExplorer = true)
         var opened: String? = null
         views.bindSigner(prePairSigner(qa, DojoDisplaySnapshot("u", "QA valid (signed)", "🇸🇬", null), "u")) { opened = it }
 

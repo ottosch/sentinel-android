@@ -73,6 +73,8 @@ class PrePairSignedVersionTest {
         val view = LayoutInflater.from(builder.context).inflate(R.layout.dialog_dojo_pairing_details, null)
         val views = PrePairDialogViews(view)
         views.bindHeader(directoryHeader(snapshot, pairing.pairing?.url), activity.getString(R.string.dojo_unnamed))
+        val directoryName = activity.getString(R.string.dojo_pairing_default_directory_name)
+        views.bindSignatureScope(directoryName, pairing.explorer?.url?.isNotBlank() == true)
         views.bindSigner(prePairSigner(signerCode, snapshot, pairing.pairing?.url)) {}
         bindRow(view, R.id.dojoPairingJurisdictionRow, R.id.dojoPairingJurisdictionValue, rows.jurisdiction)
         rows.network?.let { evidence ->
@@ -82,7 +84,7 @@ class PrePairSignedVersionTest {
             bindRow(view, R.id.dojoPairingNetworkRow, R.id.dojoPairingNetworkValue, label)
         }
         bindRow(view, R.id.dojoPairingUrlRow, R.id.dojoPairingUrlValue, rows.url)
-        views.bindVersion(rows.version)
+        views.bindVersion(rows.version, activity.getString(R.string.dojo_pairing_default_directory_name))
         bindRow(view, R.id.dojoPairingExplorerRow, R.id.dojoPairingExplorerValue, rows.explorer)
         view.findViewById<TextView>(R.id.dojoPairingMessage).setText(R.string.dojo_pairing_confirm_message)
         return view
