@@ -231,10 +231,12 @@ class WhirlpoolTxLabelWiringTest {
         val editor = openEditor(sheet)
         assertEquals("Bad Bank", editorText(editor))
         assertEquals("Bad Bank", editor.arguments?.getString(InputBottomSheet.ARG_VALUE))
+        val before = txRow(tx0)!!
         save(editor, "  Bad Bank  ")
-        assertStable(txRow(tx0)!!)
+        assertStable(before)
         save(openEditor(sheet), "Whirlpool Tx0")
-        assertStable(txRow(tx0)!!)
+        assertStable(before)
+        assertEquals(auto, txRow(tx0)!!.origin)
     }
 
     @Test
@@ -274,8 +276,10 @@ class WhirlpoolTxLabelWiringTest {
         awaitLabel(sheet, "rent")
         val editor = openEditor(sheet)
         assertEquals("rent", editorText(editor))
+        val before = txRow(manualTx)!!
         save(editor)
-        assertStable(txRow(manualTx)!!)
+        assertStable(before)
+        assertEquals(42L, txRow(manualTx)!!.updatedAt)
     }
 
     @Test
@@ -289,10 +293,12 @@ class WhirlpoolTxLabelWiringTest {
         val editor = openEditor(sheet)
         assertEquals("", editorText(editor))
         assertEquals("", editor.arguments?.getString(InputBottomSheet.ARG_VALUE))
+        val before = txRow(tx0)!!
         save(editor, "")
-        assertStable(txRow(tx0)!!)
+        assertStable(before)
         save(openEditor(sheet), "   ")
-        assertStable(txRow(tx0)!!)
+        assertStable(before)
+        assertEquals(auto, txRow(tx0)!!.origin)
     }
 
     @Test

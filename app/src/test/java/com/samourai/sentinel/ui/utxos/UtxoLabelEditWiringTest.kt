@@ -146,9 +146,10 @@ class UtxoLabelEditWiringTest {
         awaitText(activity, "Bad Bank")
         val dialog = openDialog(activity)
         assertEquals("Bad Bank", editText(dialog).text.toString())
+        val before = row()!!
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
         shadowOf(Looper.getMainLooper()).idle()
-        assertStable(row()!!)
+        assertStable(before)
         assertEquals(auto, row()!!.origin)
     }
 
@@ -159,9 +160,10 @@ class UtxoLabelEditWiringTest {
         awaitText(activity, "Bad Bank")
         val dialog = openDialog(activity)
         editText(dialog).setText("  Bad Bank  ")
+        val before = row()!!
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
         shadowOf(Looper.getMainLooper()).idle()
-        assertStable(row()!!)
+        assertStable(before)
     }
 
     @Test
@@ -194,9 +196,10 @@ class UtxoLabelEditWiringTest {
         awaitText(activity, "rent")
         val dialog = openDialog(activity)
         assertEquals("rent", editText(dialog).text.toString())
+        val before = row()!!
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
         shadowOf(Looper.getMainLooper()).idle()
-        assertStable(row()!!)
+        assertStable(before)
     }
 
     @Test
