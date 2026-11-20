@@ -190,4 +190,18 @@ class PrePairDirectoryCopyTest {
         assertFalse(caption(d).contains("block explorer"))
         assertFalse(source(d).contains("DojoBay.org"))
     }
+
+    @Test
+    fun `a signed explorer with a blank url is not named in the caption`() {
+        val d = openDialog(listing(""))
+        assertEquals(
+            "The signature covers this Dojo's URL and connection details. " +
+                "Name, location and version come from the DojoBay.org listing.",
+            caption(d),
+        )
+        assertFalse(caption(d).contains("block explorer"))
+        assertEquals(android.view.View.GONE, d.findViewById<android.view.View>(R.id.dojoPairingExplorerRow)!!.visibility)
+        d.dismiss()
+        idle()
+    }
 }
