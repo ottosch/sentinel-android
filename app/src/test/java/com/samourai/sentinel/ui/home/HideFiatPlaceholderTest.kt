@@ -12,7 +12,7 @@ class HideFiatPlaceholderTest {
     fun `missing rate is blank and hide clears the fiat line`() {
         val vm = source("app/src/main/java/com/samourai/sentinel/ui/home/HomeViewModel.kt")
         val fiat = vm.substringAfter("private fun getFiatBalance(balance: Long?, rate: ExchangeRateRepository.Rate?): String")
-            .substringBefore("fun getBTCDisplayAmount")
+            .substringBefore("private fun updateBalance")
         assertFalse(fiat.contains("00.00"))
         assertTrue(fiat.contains("prefsUtil.fiatDisabled == true"))
 

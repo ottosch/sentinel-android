@@ -341,7 +341,7 @@ class SyncRoundTerminalTest {
     fun bothRoundsShareTheTerminalDecisionAndLeaveTheTrailingBaselineAlone() {
         val src = source("app/src/main/java/com/samourai/sentinel/ui/home/HomeViewModel.kt")
         val collections = between(src, "private suspend fun syncCollections", "private suspend fun gateTxHistory")
-        val balance = between(src, "fun fetchBalance", "fun getErrorMessage")
+        val balance = between(src, "fun fetchBalance", "private val fiatBalance")
         val rerun = between(src, "private fun maybeTrailingRerun", "fun getBalance")
 
         assertTrue(collections.contains("SyncRoundTerminal.Kind.COLLECTIONS"))

@@ -29,7 +29,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
-import org.bitcoinj.core.Coin
 import org.koin.java.KoinJavaComponent.inject
 import timber.log.Timber
 import kotlin.reflect.KProperty
@@ -65,7 +64,6 @@ class HomeViewModel : ViewModel() {
     private val transactionsRepository: TransactionsRepository by inject(TransactionsRepository::class.java)
     private val feeRepository: FeeRepository by inject(FeeRepository::class.java)
 
-    private val errorMessage: MutableLiveData<String> = MutableLiveData()
     private val balance: MutableLiveData<Long> = MutableLiveData()
     private val frozen: MutableLiveData<Long> = MutableLiveData()
     private var netWorkJobs: ArrayList<Job?> = arrayListOf()
@@ -170,13 +168,43 @@ class HomeViewModel : ViewModel() {
             }
             return
         }
+
+        val plan = SyncRoundPlan.decide(
+            lastSignature = lastRoundSignature,
+            currentSignature = signature,
+            stateIsSuccess = syncState.value is SyncState.Success,
+        )
+
+        // Determine which collection ids need sync
+        val roundList: List<PubKeyCollection> = when (val p = plan) {
+            is SyncRoundPlan.Delta -> collections.filter { it.id in p.ids } // sync only those ids
+            SyncRoundPlan.Full -> collections // sync all
+            is SyncRoundPlan.Skip -> {
+                // We skip the round, but leave syncState untouched, unless it's
+                // WaitingForTor; in this case, we change it to Idle, otherwise the
+                // banner will not go away.
+                lastRoundSignature = signature
+                roundStartSignature = signature
+                if (syncState.value is SyncState.WaitingForTor) {
+                    syncState.postValue(SyncState.Idle)
+                }
+                Timber.i("sync round skipped: diff-empty round (delete/reorder only)")
+                return
+            }
+        }
         lastRoundSignature = signature
         // #489: baseline for the trailing re-run decision.
         roundStartSignature = signature
         // A round that actually starts accepts later external arms.
         // The block is only for the round that just cleared the signature.
         blockOwnListEmission = false
-        Timber.i("sync round begin: syncCollections collections=${collections.size}")
+        val deltaIds = (plan as? SyncRoundPlan.Delta)?.ids
+        Timber.i(
+            "sync round begin: syncCollections collections=%d/%d%s",
+            roundList.size,
+            collections.size,
+            if (deltaIds != null) " diff=${deltaIds.size}" else " full"
+        )
         syncRound = viewModelScope.launch(Dispatchers.IO) {
             val self = coroutineContext[Job]
             try {
@@ -201,7 +229,7 @@ class HomeViewModel : ViewModel() {
                     )
                     return@launch
                 }
-                syncCollections(collections, self)
+                syncCollections(ArrayList(roundList), self)
             } finally {
                 // Identity check: a cancelled/replaced round must never clear
                 // the guard state of its successor.
@@ -1018,10 +1046,6 @@ class HomeViewModel : ViewModel() {
         }
     }
 
-    fun getErrorMessage(): LiveData<String> {
-        return errorMessage
-    }
-
     // One shared instance, so callers reading .value see what observers see.
     private val fiatBalance: MediatorLiveData<String> by lazy {
         MediatorLiveData<String>().apply {
@@ -1049,12 +1073,6 @@ class HomeViewModel : ViewModel() {
             ""
         }
     }
-
-
-    fun getBTCDisplayAmount(value: Long): String? {
-        return Coin.valueOf(value).toPlainString()
-    }
-
 
     private fun updateBalance() {
         val collections = repository.collectionsLiveData.value ?: return

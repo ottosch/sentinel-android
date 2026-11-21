@@ -324,7 +324,7 @@ class SyncRoundNetworkScopeTest {
     fun bothRoundsFilterBeforeTheFetchTheGateAndTheTotal() {
         val vm = source("app/src/main/java/com/samourai/sentinel/ui/home/HomeViewModel.kt")
         val collections = between(vm, "private suspend fun syncCollections", "private suspend fun gateTxHistory")
-        val balance = between(vm, "fun fetchBalance", "fun getErrorMessage")
+        val balance = between(vm, "fun fetchBalance", "private val fiatBalance")
         listOf(collections, balance).forEach { fn ->
             assertTrue(fn.contains("collectionsForSyncRound("))
             assertTrue(fn.contains("activeIsTestnet = prefsUtil.testnet == true"))
