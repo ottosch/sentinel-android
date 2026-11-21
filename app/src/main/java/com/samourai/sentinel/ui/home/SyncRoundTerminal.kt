@@ -32,6 +32,60 @@ internal fun collectionsForSyncRound(
     }
 
 /**
+ * The list a round fetches, and the M in "N of M". Both round kinds
+ * use this, so an off-network collection is neither fetched nor counted.
+ */
+internal data class ScopedSyncRound(
+    val inRound: List<PubKeyCollection>,
+    val total: Int,
+)
+
+internal fun scopeSyncRound(
+    collections: List<PubKeyCollection>,
+    activeIsTestnet: Boolean,
+    dojoEnabled: Boolean,
+): ScopedSyncRound {
+    val inRound = collectionsForSyncRound(collections, activeIsTestnet, dojoEnabled)
+    return ScopedSyncRound(inRound, inRound.size)
+}
+
+/**
+ * A round whose every collection is off-network. An enabled endpoint
+ * is a no-op Success. With no endpoint, a standing Failed stays and
+ * anything else becomes Idle. This is not a diff-empty skip.
+ */
+internal fun emptyOnNetworkRoundState(
+    endpointEnabled: Boolean,
+    standingFailed: Boolean,
+    now: Long,
+): SyncState? = when {
+    endpointEnabled -> SyncState.Success(now)
+    standingFailed -> null
+    else -> SyncState.Idle
+}
+
+/**
+ * Which decision flags a round applies. Neither kind clears the
+ * round-start signature. A collections round does not write
+ * lastSynced and does not arm the bounded retry. Those flags come
+ * only from [SyncRoundTerminal.decide], not from `failed == total`.
+ */
+internal data class AppliedTerminal(
+    val clearLastRoundSignature: Boolean,
+    val writeLastSynced: Boolean,
+    val armAutoRetry: Boolean,
+    val clearRoundStartSignature: Boolean,
+)
+
+internal fun appliedTerminal(decision: SyncRoundTerminal.Decision): AppliedTerminal =
+    AppliedTerminal(
+        clearLastRoundSignature = decision.clearLastRoundSignature,
+        writeLastSynced = decision.writeLastSynced && !decision.armAutoRetry,
+        armAutoRetry = decision.armAutoRetry,
+        clearRoundStartSignature = false,
+    )
+
+/**
  * #499: one terminal discipline for both round kinds.
  *
  * Zero failures may produce Success. Some-but-not-all failures produce

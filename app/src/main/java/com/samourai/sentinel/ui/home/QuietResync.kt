@@ -26,3 +26,16 @@ internal object QuietResync {
 /** A real contact that was not already a real contact. A repeat is not a flip. */
 internal fun becameReachable(previous: DojoContact, next: DojoContact): Boolean =
     next is DojoContact.Reachable && previous !is DojoContact.Reachable
+
+/**
+ * Where a quiet round may be asked for. Resume always asks.
+ * A reachability callback asks only on a real flip. Sync rounds are
+ * not arms: the failure post must not start the next quiet round.
+ */
+internal enum class QuietResyncArm { HOME_RESUMED, REACHABILITY }
+
+internal fun quietResyncArmed(arm: QuietResyncArm, flippedToReachable: Boolean): Boolean =
+    when (arm) {
+        QuietResyncArm.HOME_RESUMED -> true
+        QuietResyncArm.REACHABILITY -> flippedToReachable
+    }

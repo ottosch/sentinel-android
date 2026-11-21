@@ -31,6 +31,10 @@ class SyncRoundDiffTest {
         assertNull(SyncRoundDiff.parse(null))
         assertNull(SyncRoundDiff.parse(""))
         assertNull(SyncRoundDiff.parse("   "))
+        // A blank id is not a collection. ":" is an empty id, and a
+        // leading separator makes the first segment blank too.
+        assertNull(SyncRoundDiff.parse(":"))
+        assertNull(SyncRoundDiff.parse("|idA:k1"))
     }
 
     @Test

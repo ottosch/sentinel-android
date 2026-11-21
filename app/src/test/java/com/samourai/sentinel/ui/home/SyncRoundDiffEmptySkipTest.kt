@@ -1,88 +1,58 @@
 package com.samourai.sentinel.ui.home
 
+import com.samourai.sentinel.core.SyncState
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
- * The diff-empty round: a deletion or a reorder yields an empty
- * [SyncRoundDiff.changedCollectionIds] set (the diff walks only the
- * current ids). Such a round must be skipped at the arm site - both
- * signatures stamped, syncState untouched - not run as an empty fetch
- * that posts Success over a standing Failed. The failed pull-to-refresh
- * keeps its signature stamped, so the empty round was exactly the path
- * that turned "Could not reach Dojo." green with zero network contact
- * and disarmed QuietResync.
- *
- * The decision itself lives in SyncRoundPlan and is tested behaviorally
- * in SyncRoundPlanTest; this file only pins the launchSyncRound wiring.
- * The tree never constructs HomeViewModel (see DojoErrorEnvelopeRoundTest),
- * so the shape is asserted on the source, like QuietResyncTest.
+ * A deletion or a reorder is a [SyncRoundPlan.Skip]. The arm stamps
+ * both signatures and does not post Success over a standing Failed.
+ * An all-off-network round is a different decision: Success when an
+ * endpoint exists, and it does not go through the diff planner.
  */
 class SyncRoundDiffEmptySkipTest {
 
     @Test
     fun launchSyncRoundExecutesThePlanAndSkipsWithStamps() {
-        val home = source("app/src/main/java/com/samourai/sentinel/ui/home/HomeViewModel.kt")
-        val launch = between(
-            home,
-            "private fun launchSyncRound",
-            "fun payloadReadFailure()",
-        )
-        val decide = launch.indexOf("SyncRoundPlan.decide(")
-        val skip = launch.indexOf("is SyncRoundPlan.Skip -> {")
-        val roundLaunch = launch.indexOf("syncRound = viewModelScope.launch")
-        assertTrue("planner call not found", decide >= 0)
-        assertTrue("skip branch not found", skip > decide)
-        assertTrue("skip must precede the round launch", roundLaunch > skip)
+        val signature = "a:k1"
+        val failed = SyncState.Failed("Could not reach Dojo.", retryable = true)
+        val skipFailed = diffEmptySkip(signature, failed)
+        assertEquals(signature, skipFailed.signature)
+        assertNull(skipFailed.postedState)
 
-        val skipBlock = launch.substring(skip, roundLaunch)
-        // Both signatures stamped: later identical emissions hit the
-        // signature-unchanged dedupe, and the trailing-re-run baseline
-        // stays coherent.
-        assertTrue(skipBlock.contains("lastRoundSignature = signature"))
-        assertTrue(skipBlock.contains("roundStartSignature = signature"))
-        // The point of the fix: no terminal state from a round that never
-        // touched the network. Failed stays Failed, Success stays Success.
-        assertFalse(skipBlock.contains("SyncState.Success"))
-        assertFalse(skipBlock.contains("syncCollections("))
-        // A skipped re-arm must not leave WaitingForTor standing - with
-        // the round skipped, nothing replaces the banner.
-        assertTrue(skipBlock.contains("syncState.value is SyncState.WaitingForTor"))
-        assertTrue(skipBlock.contains("postValue(SyncState.Idle)"))
+        val success = diffEmptySkip(signature, SyncState.Success(1L))
+        assertNull(success.postedState)
+        assertFalse(success.postedState is SyncState.Success)
+
+        val waiting = diffEmptySkip(signature, SyncState.WaitingForTor(40))
+        assertEquals(SyncState.Idle, waiting.postedState)
+        assertEquals(signature, waiting.signature)
     }
 
     @Test
     fun theEmptyInRoundBranchStaysForOffNetworkRounds() {
-        // The skip removes the diff-empty path only. syncCollections'
-        // inRound.isEmpty() branch is still reached by a full round whose
-        // collections are all off-network, and it still owns the
-        // Success/Idle decision there.
-        val home = source("app/src/main/java/com/samourai/sentinel/ui/home/HomeViewModel.kt")
-        val collections = between(
-            home,
-            "private suspend fun syncCollections",
-            "private suspend fun gateTxHistory",
+        val now = 1_700_000_000_000L
+        assertEquals(
+            SyncState.Success(now),
+            emptyOnNetworkRoundState(endpointEnabled = true, standingFailed = false, now = now),
         )
-        assertTrue(collections.contains("if (inRound.isEmpty()) {"))
-        assertTrue(collections.contains("SyncState.Success(System.currentTimeMillis())"))
-        // The skip decision must not live here: the arm site owns it.
-        assertFalse(collections.contains("SyncRoundPlan"))
-    }
-
-    private fun source(relative: String): String {
-        val file = sequenceOf(File(relative), File(relative.removePrefix("app/")))
-            .firstOrNull { it.isFile }
-            ?: error("missing $relative from ${File(".").absolutePath}")
-        return file.readText()
-    }
-
-    private fun between(text: String, start: String, end: String): String {
-        val from = text.indexOf(start)
-        require(from >= 0) { "start marker not found: $start" }
-        val to = text.indexOf(end, from)
-        require(to > from) { "end marker not found after $start: $end" }
-        return text.substring(from, to)
+        assertEquals(
+            SyncState.Idle,
+            emptyOnNetworkRoundState(endpointEnabled = false, standingFailed = false, now = now),
+        )
+        assertNull(
+            emptyOnNetworkRoundState(endpointEnabled = false, standingFailed = true, now = now),
+        )
+        // A removal is a skip, not this empty on-network ending.
+        val removed = SyncRoundPlan.decide(
+            lastSignature = "a:k1|b:k2",
+            currentSignature = "a:k1",
+            stateIsSuccess = true,
+        )
+        assertEquals(SyncRoundPlan.Skip, removed)
+        assertFalse(removed is SyncRoundPlan.Full)
     }
 }

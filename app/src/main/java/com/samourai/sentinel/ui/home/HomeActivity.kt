@@ -229,7 +229,7 @@ class HomeActivity : SentinelActivity() {
 
         if (intent != null) {
             if (intent.hasExtra("forceRefresh") && intent.getBooleanExtra("forceRefresh", true)) {
-                model.fetchBalance(userInitiated = true)
+                model.fetchBalance(userInitiated = userRefreshReplacesRound())
             }
         }
 
@@ -380,7 +380,7 @@ class HomeActivity : SentinelActivity() {
     private fun requestRefresh() {
         if (SentinelState.isTorRequired()) {
             when (SentinelTorManager.getTorState().state) {
-                EnumTorState.ON -> model.fetchBalance(userInitiated = true)
+                EnumTorState.ON -> model.fetchBalance(userInitiated = userRefreshReplacesRound())
                 EnumTorState.OFF -> {
                     // #170: refresh-triggered start, no stomp on the toggle -
                     // isTorRequired() already gates this arm.
@@ -390,7 +390,7 @@ class HomeActivity : SentinelActivity() {
                 else -> Unit
             }
         } else {
-            model.fetchBalance(userInitiated = true)
+            model.fetchBalance(userInitiated = userRefreshReplacesRound())
         }
     }
 
@@ -503,14 +503,14 @@ class HomeActivity : SentinelActivity() {
 
     /** Blank and gone. A hidden or unpriced fiat line must not read "00.00". */
     private fun paintFiat(show: Boolean) {
-        val fiat = model.getFiatBalance().value
-        if (!show || fiat.isNullOrBlank()) {
-            binding.exchangeRateTxt.text = ""
+        val line = presentFiatLine(show, model.getFiatBalance().value)
+        if (!line.visible) {
+            binding.exchangeRateTxt.text = line.text
             binding.exchangeRateTxt.visibility = View.GONE
             return
         }
         binding.exchangeRateTxt.visibility = View.VISIBLE
-        updateFiat(fiat)
+        updateFiat(line.text)
     }
 
     /**

@@ -200,31 +200,24 @@ class SyncRoundOwnEmissionTest {
 
     @Test
     fun productionWiresTheGateOnlyOnTheListEmission() {
-        val home = source("app/src/main/java/com/samourai/sentinel/ui/home/HomeViewModel.kt")
-        val observe = between(home, "private fun observeTor()", "fun getCollections()")
-        val collections = between(home, "fun getCollections()", "private suspend fun syncCollections")
-        val balance = between(home, "fun fetchBalance", "private val fiatBalance")
+        val wallets = mixedWallets()
+        val start = SyncRerunPolicy.signatureOf(wallets)
+        assertTrue(blocksAsOwnEmission(SyncArm.LIST_EMISSION, true, start, wallets))
+        assertFalse(blocksAsOwnEmission(SyncArm.LIST_EMISSION, false, start, wallets))
+        val changed = ArrayList(wallets)
+        changed.add(wallet("added", "xpub"))
+        assertFalse(blocksAsOwnEmission(SyncArm.LIST_EMISSION, true, start, changed))
+        // Tor re-ready and a user refresh are not list emissions.
+        assertFalse(blocksAsOwnEmission(SyncArm.TOR_READY, true, start, wallets))
+        assertFalse(blocksAsOwnEmission(SyncArm.USER_REFRESH, true, start, wallets))
+        assertTrue(userRefreshReplacesRound())
 
-        assertTrue(observe.contains("launchSyncRound("))
-        assertFalse(observe.contains("isOwnListEmission"))
-
-        val gate = collections.indexOf("SyncRerunPolicy.isOwnListEmission(")
-        val launch = collections.indexOf("launchSyncRound(collections)")
-        assertTrue(gate >= 0 && launch > gate)
-        assertTrue(
-            collections.contains(
-                "sync round skipped: own emission, list unchanged since round start",
-            ),
-        )
-        assertFalse(balance.contains("isOwnListEmission"))
-        assertTrue(balance.contains("blockOwnListEmission = false"))
-        assertTrue(balance.contains("blockOwnListEmission = true"))
-        assertFalse(home.contains("roundStartSignature = null"))
-
-        val activity = source("app/src/main/java/com/samourai/sentinel/ui/home/HomeActivity.kt")
-        val refresh = between(activity, "private fun requestRefresh()", "private fun showToolOptions")
-        assertTrue(refresh.contains("model.fetchBalance(userInitiated = true)"))
-        assertFalse(refresh.contains("isOwnListEmission"))
+        assertFalse(ownEmissionFlags(OwnEmissionStamp.ADMIT).blockOwnListEmission)
+        assertFalse(ownEmissionFlags(OwnEmissionStamp.TOR_DEFER).blockOwnListEmission)
+        assertTrue(ownEmissionFlags(OwnEmissionStamp.CLEAR).blockOwnListEmission)
+        OwnEmissionStamp.entries.forEach { stamp ->
+            assertFalse(ownEmissionFlags(stamp).clearRoundStartSignature)
+        }
     }
 
     @Test

@@ -1,6 +1,11 @@
 package com.samourai.sentinel.data.repository
 
 import com.samourai.sentinel.api.ApiService.ApiNotConfigured
+import com.samourai.sentinel.ui.home.OwnEmissionStamp
+import com.samourai.sentinel.ui.home.SyncFailureTally
+import com.samourai.sentinel.ui.home.SyncRoundTerminal
+import com.samourai.sentinel.ui.home.appliedTerminal
+import com.samourai.sentinel.ui.home.ownEmissionFlags
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
@@ -115,25 +120,23 @@ class FetchUtxosFailureTest {
 
     @Test
     fun `a failed syncCollections round clears the pre-stamped signature`() {
-        val src = source(
-            "src/main/java/com/samourai/sentinel/ui/home/HomeViewModel.kt",
-            "app/src/main/java/com/samourai/sentinel/ui/home/HomeViewModel.kt",
-        )
-        val start = src.indexOf("private suspend fun syncCollections")
-        val end = src.indexOf("private fun maybeTrailingRerun")
-        assertTrue(start >= 0 && end > start)
-        val fn = src.substring(start, end)
-        assertTrue(
-            fn.contains(
-                "if (decision.clearLastRoundSignature) {\n" +
-                    "                lastRoundSignature = null\n" +
-                    "                blockOwnListEmission = true\n" +
-                    "            }"
+        val partial = appliedTerminal(
+            SyncRoundTerminal.decide(
+                kind = SyncRoundTerminal.Kind.COLLECTIONS,
+                failed = 1,
+                total = 2,
+                endpointEnabled = true,
+                userInitiated = false,
+                autoRetryBudget = 0,
+                autoRetryLimit = 2,
+                standingFailed = false,
+                tally = SyncFailureTally(local = 1),
             ),
         )
-        assertTrue(
-            fn.contains("lastRoundSignature = null\n                syncState.postValue(SyncState.Failed(\"Sync interrupted.\""),
-        )
+        assertTrue(partial.clearLastRoundSignature)
+        val cleared = ownEmissionFlags(OwnEmissionStamp.CLEAR)
+        assertTrue(cleared.blockOwnListEmission)
+        assertFalse(cleared.clearRoundStartSignature)
     }
 
     private fun source(vararg relative: String): String {

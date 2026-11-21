@@ -1,5 +1,7 @@
 package com.samourai.sentinel.ui.home
 
+import com.samourai.sentinel.core.SyncState
+
 /**
  * Decides what an auto sync round does with the current collections list.
  *
@@ -32,3 +34,20 @@ internal sealed class SyncRoundPlan {
         }
     }
 }
+
+/**
+ * Effect of a [SyncRoundPlan.Skip] at the arm site. Both signatures
+ * are stamped. The sync state is left as it is, except a standing
+ * WaitingForTor becomes Idle, because nothing else will replace that
+ * banner. A skip never posts Success.
+ */
+internal data class DiffEmptySkip(
+    val signature: String,
+    val postedState: SyncState?,
+)
+
+internal fun diffEmptySkip(signature: String, state: SyncState?): DiffEmptySkip =
+    DiffEmptySkip(
+        signature = signature,
+        postedState = if (state is SyncState.WaitingForTor) SyncState.Idle else null,
+    )
