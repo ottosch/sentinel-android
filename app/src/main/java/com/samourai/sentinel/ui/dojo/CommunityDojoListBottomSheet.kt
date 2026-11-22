@@ -115,7 +115,6 @@ class CommunityDojoListBottomSheet() : GenericBottomSheet() {
     private val adapter: CommunityDojoAdapter = CommunityDojoAdapter(
         onSelect = { item -> selectListing(item) },
         onCopy = { item -> copyPairingJson(item) },
-        onOpenPayNym = { code -> context?.let { PayNymPage.openSigner(it, lifecycleScope, code) } },
     )
 
     /**

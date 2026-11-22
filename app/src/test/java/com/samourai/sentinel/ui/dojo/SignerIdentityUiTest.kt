@@ -20,7 +20,7 @@ import org.robolectric.annotation.Config
 /**
  * The dialog and row states for the signer: the directory name and flag
  * with the caption of what the signature covers (no chip, here or on list rows), the grouped full code and PayNym link, the same-name warning, and
- * a row's collapsed and expanded code. Inflated from the real layouts.
+ * a row's collapsed signer line. Inflated from the real layouts.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -101,31 +101,26 @@ class SignerIdentityUiTest {
     }
 
     @Test
-    fun `a row shows first 8 and last 8, and a tap expands the grouped code and the link`() {
-        var opened: String? = null
-        val adapter = CommunityDojoAdapter(onSelect = {}, onCopy = {}, onOpenPayNym = { opened = it })
-        adapter.submitList(listOf(checked("QA valid (signed)", qa), checked("QA missing signature", null)))
+    fun `a row shows first 8 and last 8, and a tap anywhere on the row selects it`() {
+        var selected: CheckedDojo? = null
+        val adapter = CommunityDojoAdapter(onSelect = { selected = it }, onCopy = {})
+        val signed = checked("QA valid (signed)", qa)
+        adapter.submitList(listOf(signed, checked("QA missing signature", null)))
 
-        var row = bound(adapter, 0)
+        val row = bound(adapter, 0)
         assertEquals("Signed by PM8TJUJH…eNoCEoum", row.signer.text.toString())
-        assertEquals(View.GONE, row.signerCode.visibility)
-        assertEquals(View.GONE, row.signerLink.visibility)
+        assertEquals(View.VISIBLE, row.signer.visibility)
 
-        row.signer.performClick()
-        row = bound(adapter, 0)
-        assertEquals("Signed by", row.signer.text.toString())
-        assertEquals(View.VISIBLE, row.signerCode.visibility)
-        assertEquals(SignerCodeFormat.displayCode(qa), row.signerCode.text.toString())
-        assertEquals(View.VISIBLE, row.signerLink.visibility)
-        row.signerLink.performClick()
-        assertEquals(qa, opened)
+        row.itemView.performClick()
+        assertEquals(signed, selected)
+        // Still the collapsed line: a tap does not expand the row.
+        assertEquals("Signed by PM8TJUJH…eNoCEoum", row.signer.text.toString())
 
-        // Tapping again folds it back.
-        row.signerCode.performClick()
-        row = bound(adapter, 0)
-        assertEquals(View.GONE, row.signerCode.visibility)
+        // The signer line is plain text, so a real tap reaches the row.
+        assertTrue(!row.signer.hasOnClickListeners())
+        assertTrue(!row.signer.isClickable)
 
-        // An unverified row is greyed out, with no signer and no expansion.
+        // An unverified row is greyed out, with no signer.
         val dim = bound(adapter, 1)
         assertEquals(0.5f, dim.itemView.alpha)
         assertFalse(dim.copyButton.isEnabled)
