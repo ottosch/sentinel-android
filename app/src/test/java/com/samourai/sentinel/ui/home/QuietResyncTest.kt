@@ -55,7 +55,7 @@ class QuietResyncTest {
         assertTrue(listener.contains("maybeQuietResync()"))
         val collections = home.substringAfter("private suspend fun syncCollections")
             .substringBefore("private suspend fun gateTxHistory")
-        val balance = home.substringAfter("fun fetchBalance").substringBefore("fun getErrorMessage")
+        val balance = home.substringAfter("fun fetchBalance").substringBefore("private val fiatBalance")
         assertFalse(collections.contains("maybeQuietResync"))
         assertFalse(balance.contains("maybeQuietResync"))
         assertEquals(3, Regex("maybeQuietResync\\(\\)").findAll(home).count())

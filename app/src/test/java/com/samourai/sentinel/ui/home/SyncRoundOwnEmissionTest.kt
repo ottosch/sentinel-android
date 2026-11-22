@@ -203,7 +203,7 @@ class SyncRoundOwnEmissionTest {
         val home = source("app/src/main/java/com/samourai/sentinel/ui/home/HomeViewModel.kt")
         val observe = between(home, "private fun observeTor()", "fun getCollections()")
         val collections = between(home, "fun getCollections()", "private suspend fun syncCollections")
-        val balance = between(home, "fun fetchBalance", "fun getErrorMessage")
+        val balance = between(home, "fun fetchBalance", "private val fiatBalance")
 
         assertTrue(observe.contains("launchSyncRound("))
         assertFalse(observe.contains("isOwnListEmission"))

@@ -327,7 +327,7 @@ class HomeActivity : SentinelActivity() {
                 val base = if (state.total > 1) {
                     "Syncing ${state.done} of ${state.total} collections\u2026"
                 } else {
-                    "Syncing\u2026"
+                    "Syncing 1 collection\u2026"
                 }
                 setText(
                     if (state.slow) {
