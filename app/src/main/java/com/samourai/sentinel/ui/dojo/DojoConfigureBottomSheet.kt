@@ -940,7 +940,13 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
         )
         // Who signed the picked listing: the full code its signature proved.
         val signer = prePairSigner(pendingSignerPin.forDialog(), snapshot, pairing.pairing?.url)
-        dialogViews.bindSigner(signer) { code -> context?.let { PayNymPage.openSigner(it, lifecycleScope, code) } }
+        dialogViews.bindSigner(signer) { code ->
+            val ctx = context ?: return@bindSigner
+            val job = PayNymPage.openSigner(ctx, lifecycleScope, code) { opened ->
+                if (dialogViews.root.isAttachedToWindow) dialogViews.endPayNymLookup(opened)
+            }
+            dialogViews.beginPayNymLookup(job)
+        }
         if (signer != null) dialogViews.showIdentityLoading()
         bindDetailRow(view, R.id.dojoPairingJurisdictionRow, R.id.dojoPairingJurisdictionValue, rows.jurisdiction)
         // #250: the network guard - evidence at dialog time, the
@@ -1025,12 +1031,15 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
                 PayNymCache.forDirectory(requireContext().applicationContext.noBackupFilesDir),
                 torProxy = { SentinelTorManager.getProxy() },
             )
-            val job = lifecycleScope.launch {
+            val identityJob = lifecycleScope.launch {
                 val result = lookup.load(signer.code)
                 val image = withContext(Dispatchers.Default) { PayNymAvatarImage.decode(result.avatarPng) }
                 if (dialog.isShowing) dialogViews.showIdentity(image, result.name)
             }
-            dialog.setOnDismissListener { job.cancel() }
+            dialog.setOnDismissListener {
+                identityJob.cancel()
+                dialogViews.cancelPayNymLookup()
+            }
         }
         // #250: the refuse arm is read-only - the reason renders and
         // Pair cannot fire; Decline is the one way out, spending the
