@@ -110,6 +110,7 @@
     <string name="deposit">Deposit</string>
 
     <string name="xpub_label">Label</string>
+    <string name="pubkey_fingerprint_missing_hint" translatable="false">Not included in this xpub, enter it from your signer</string>
     <string name="new_account">New account</string>
 
     <string name="total_title">Total</string>
