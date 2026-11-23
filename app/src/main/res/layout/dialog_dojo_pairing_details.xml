@@ -287,10 +287,10 @@
                 android:fontFamily="sans-serif-medium"
                 android:gravity="center_vertical"
                 android:text="@string/paynym_view_link"
-                android:textColor="@color/green_ui_2"
+                android:textColor="@color/paynym_link_color_state_list"
                 android:textSize="14sp"
                 app:drawableEndCompat="@drawable/ic_open_in_new_16"
-                app:drawableTint="@color/green_ui_2" />
+                app:drawableTint="@color/paynym_link_color_state_list" />
 
             <ProgressBar
                 android:id="@+id/dojoPairingSignerLinkProgress"

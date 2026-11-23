@@ -10,6 +10,7 @@ import com.samourai.sentinel.ui.webview.ExplorerOpener
 import com.samourai.sentinel.ui.webview.explorerLoadDecision
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -95,6 +96,7 @@ object PayNymPage {
         scope: CoroutineScope,
         signedCode: String,
         lookup: PayNymLookup? = null,
+        start: CoroutineStart = CoroutineStart.DEFAULT,
         onResult: ((opened: Boolean) -> Unit)? = null,
     ): Job {
         val app = context.applicationContext
@@ -102,20 +104,26 @@ object PayNymPage {
             PayNymCache.forDirectory(app.noBackupFilesDir),
             torProxy = { SentinelTorManager.getProxy() },
         )
-        return scope.launch {
-            val url = try {
-                urlForSigner(used, signedCode)
+        return scope.launch(start = start) {
+            var opened = false
+            var cancelled = false
+            try {
+                val url = urlForSigner(used, signedCode)
+                if (url != null) {
+                    open(context, url)
+                    opened = true
+                } else if (onResult == null) {
+                    // Callers with no callback (the list-row link) keep the toast.
+                    Toast.makeText(app, R.string.paynym_page_not_found, Toast.LENGTH_LONG).show()
+                }
             } catch (e: CancellationException) {
+                cancelled = true
                 throw e
-            }
-            if (url != null) {
-                open(context, url)
-                onResult?.invoke(true)
-            } else if (onResult != null) {
-                onResult(false)
-            } else {
-                // Callers with no callback (the list-row link) keep the toast.
-                Toast.makeText(app, R.string.paynym_page_not_found, Toast.LENGTH_LONG).show()
+            } catch (_: Throwable) {
+                // Non-cancellation failures (e.g. OOM or transport/open errors)
+                // fall through to finally so the lookup always ends.
+            } finally {
+                if (!cancelled) onResult?.invoke(opened)
             }
         }
     }

@@ -150,6 +150,7 @@ class PrePairDialogViews(val root: View) {
 
     /** The lookup for "View on PayNym" is in flight: spinner on, link disabled. */
     fun beginPayNymLookup(job: Job) {
+        if (job.isCompleted) return
         payNymJob = job
         signerLink.isEnabled = false
         signerLinkProgress.visibility = View.VISIBLE
