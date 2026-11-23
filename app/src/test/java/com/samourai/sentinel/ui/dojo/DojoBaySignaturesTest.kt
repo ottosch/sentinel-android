@@ -6,10 +6,14 @@ import com.samourai.sentinel.ui.dojo.DojoBaySignatures.NodeCheck
 import com.samourai.sentinel.ui.dojo.DojoBaySignatures.OperatorCheck
 import com.samourai.sentinel.ui.dojo.DojoBaySignatures.OperatorFailure
 import com.samourai.sentinel.ui.dojo.DojoBayTestVectors.ThrowawayPayNym
+import org.bitcoinj.core.ECKey
+import org.bitcoinj.core.Utils
+import org.bouncycastle.util.encoders.Base64
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.math.BigInteger
 
 /**
  * Valid, tampered, wrong-code, missing-signature, and replay vectors for the
@@ -43,6 +47,37 @@ class DojoBaySignaturesTest {
     fun `invalid payment codes derive nothing`() {
         assertTrue(DojoBaySignatures.notificationAddresses(null).isEmpty())
         assertTrue(DojoBaySignatures.notificationAddresses("PM8Tnotacode").isEmpty())
+    }
+
+    @Test
+    fun `HIGH-S signature is accepted, like Dojo Bay`() {
+        val message = DojoBayTestVectors.TEST_PAIRING_JSON + "\n\nBIP47: " + alice.code
+        val low = alice.notificationKey.signMessage(message)
+        val high = toHighS(low)
+        assertTrue(high != low)
+        assertTrue(DojoBaySignatures.verifyMessage(message, alice.address, high))
+
+        // End to end: a listing carrying the high-S form still verifies.
+        val block = "-----BEGIN BITCOIN SIGNED MESSAGE-----\n$message\n" +
+            "-----BEGIN BITCOIN SIGNATURE-----\nVersion: Bitcoin-qt (1.0)\n" +
+            "Address: ${alice.address}\n\n$high\n" +
+            "-----END BITCOIN SIGNATURE-----"
+        val node = CommunityDojoNode(payload = DojoBayTestVectors.testPayload(), signed = block)
+        assertTrue(DojoBaySignatures.checkNode(node) is NodeCheck.Verified)
+    }
+
+    @Test
+    fun `MALFORMED r and s are refused without throwing`() {
+        val n = ECKey.CURVE.n
+        val one = BigInteger.ONE
+        // r = 0, r >= n, and an in-range value that is not a curve x-coordinate.
+        for (r in listOf(BigInteger.ZERO, n, n.add(BigInteger.valueOf(2)), BigInteger.valueOf(5))) {
+            assertFalse("r=$r", DojoBaySignatures.verifyMessage("m", alice.address, encodeSignature(31, r, one)))
+        }
+        // s = 0 and s >= n.
+        for (s in listOf(BigInteger.ZERO, n)) {
+            assertFalse("s=$s", DojoBaySignatures.verifyMessage("m", alice.address, encodeSignature(31, one, s)))
+        }
     }
 
     // ---- listings: valid --------------------------------------------------
@@ -249,5 +284,24 @@ class DojoBaySignaturesTest {
     fun `VALID synthetic operator doc for a custom address`() {
         val onion = "http://" + "d".repeat(56) + ".onion/"
         assertEquals(OperatorCheck.Verified(alice.code), DojoBaySignatures.checkOperator(alice.operatorDoc(onion), onion))
+    }
+
+    private fun toHighS(signatureBase64: String): String {
+        val bytes = Base64.decode(signatureBase64)
+        val header = bytes[0].toInt() and 0xFF
+        val compressed = header >= 31
+        val recId = (if (compressed) header - 4 else header) - 27
+        val r = BigInteger(1, bytes.copyOfRange(1, 33))
+        val s = BigInteger(1, bytes.copyOfRange(33, 65))
+        // Negating s also flips the y parity of R, hence the recovery id.
+        return encodeSignature(27 + (recId xor 1) + (if (compressed) 4 else 0), r, ECKey.CURVE.n.subtract(s))
+    }
+
+    private fun encodeSignature(header: Int, r: BigInteger, s: BigInteger): String {
+        val encoded = ByteArray(65)
+        encoded[0] = header.toByte()
+        Utils.bigIntegerToBytes(r, 32).copyInto(encoded, 1)
+        Utils.bigIntegerToBytes(s, 32).copyInto(encoded, 33)
+        return String(Base64.encode(encoded), Charsets.US_ASCII)
     }
 }

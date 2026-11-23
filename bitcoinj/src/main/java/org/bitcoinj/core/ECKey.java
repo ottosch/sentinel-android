@@ -578,7 +578,7 @@ public class ECKey implements EncryptableItem {
             } finally {
                 if (decoder != null)
                     try { decoder.close(); } catch (IOException x) {}
-                Properties.removeThreadOverride("org.spongycastle.asn1.allow_unsafe_integer");
+                Properties.removeThreadOverride("org.bouncycastle.asn1.allow_unsafe_integer");
             }
         }
 
@@ -920,7 +920,13 @@ public class ECKey implements EncryptableItem {
             header -= 4;
         }
         int recId = header - 27;
-        ECKey key = ECKey.recoverFromSignature(recId, sig, messageHash, compressed);
+        ECKey key;
+        try {
+            key = ECKey.recoverFromSignature(recId, sig, messageHash, compressed);
+        } catch (RuntimeException e) {
+            // Malformed signature components must not escape as unchecked exceptions.
+            throw new SignatureException("Invalid signature", e);
+        }
         if (key == null)
             throw new SignatureException("Could not recover public key from signature");
         return key;
@@ -958,12 +964,18 @@ public class ECKey implements EncryptableItem {
      */
     public static ECKey recoverFromSignature(int recId, ECDSASignature sig, Sha256Hash message, boolean compressed) {
         Preconditions.checkArgument(recId >= 0, "recId must be positive");
-        Preconditions.checkArgument(sig.r.signum() >= 0, "r must be positive");
-        Preconditions.checkArgument(sig.s.signum() >= 0, "s must be positive");
+        Preconditions.checkNotNull(sig);
         Preconditions.checkNotNull(message);
+        BigInteger n = CURVE.getN();  // Curve order.
+        // ECDSA requires 0 < r < n and 0 < s < n. Values outside this range are malformed and cannot
+        // identify a public key; return null so callers can iterate to the next recId instead of
+        // accepting a signature that the signer never produced.
+        if (sig.r == null || sig.r.signum() <= 0 || sig.r.compareTo(n) >= 0)
+            return null;
+        if (sig.s == null || sig.s.signum() <= 0 || sig.s.compareTo(n) >= 0)
+            return null;
         // 1.0 For j from 0 to h   (h == recId here and the loop is outside this function)
         //   1.1 Let x = r + jn
-        BigInteger n = CURVE.getN();  // Curve order.
         BigInteger i = BigInteger.valueOf((long) recId / 2);
         BigInteger x = sig.r.add(i.multiply(n));
         //   1.2. Convert the integer x to an octet string X of length mlen using the conversion routine
@@ -980,7 +992,13 @@ public class ECKey implements EncryptableItem {
         }
         // Compressed keys require you to know an extra bit of data about the y-coord as there are two possibilities.
         // So it's encoded in the recId.
-        ECPoint R = decompressKey(x, (recId & 1) == 1);
+        ECPoint R;
+        try {
+            R = decompressKey(x, (recId & 1) == 1);
+        } catch (IllegalArgumentException e) {
+            // x is not the abscissa of a point on the curve, so this recId cannot have produced the signature.
+            return null;
+        }
         //   1.4. If nR != point at infinity, then do another iteration of Step 1 (callers responsibility).
         if (!R.multiply(n).isInfinity())
             return null;
@@ -1002,7 +1020,12 @@ public class ECKey implements EncryptableItem {
         BigInteger srInv = rInv.multiply(sig.s).mod(n);
         BigInteger eInvrInv = rInv.multiply(eInv).mod(n);
         ECPoint q = ECAlgorithms.sumOfTwoMultiplies(CURVE.getG(), eInvrInv, R, srInv);
-        return ECKey.fromPublicOnly(q, compressed);
+        try {
+            return ECKey.fromPublicOnly(q, compressed);
+        } catch (RuntimeException ex) {
+            // Degenerate recovery (for example the point at infinity) does not yield a usable key.
+            return null;
+        }
     }
 
     /** Decompress a compressed public key (x co-ord and low-bit of y-coord). */

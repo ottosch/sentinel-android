@@ -3,7 +3,6 @@ package com.samourai.wallet.util;
 import com.samourai.wallet.segwit.bech32.Bech32UtilGeneric;
 import com.samourai.wallet.segwit.SegwitAddress;
 import com.samourai.wallet.segwit.P2TRAddress;
-import java.security.SignatureException;
 import org.bitcoinj.core.ECKey;
 import org.bitcoinj.core.NetworkParameters;
 
@@ -96,7 +95,8 @@ public class MessageSignUtilGeneric {
 
         try {
             return ECKey.signedMessageToKey(strMessage, strSignature);
-        } catch(SignatureException e) {
+        } catch(Exception e) {
+            // A malformed signature must not escape this helper as an unchecked exception.
             return null;
         }
     }

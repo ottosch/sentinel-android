@@ -24,7 +24,7 @@ class DojoBayVerifierVectorsTest {
     @Test
     fun `listings get Dojo Bay's verdict`() {
         val listings = root.getAsJsonArray("listings")
-        assertEquals(17, listings.size())
+        assertEquals(24, listings.size())
         val wrong = listings.map { it.asJsonObject }.mapNotNull { o ->
             // Through the directory parser, as the app reads a served list.
             val node = CommunityDojoRepository.parseDirectory("""{"nodes":[${o.get("node")}]}""").single()

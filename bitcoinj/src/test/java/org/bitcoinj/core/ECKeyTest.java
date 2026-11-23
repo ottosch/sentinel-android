@@ -39,6 +39,7 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.bouncycastle.crypto.params.KeyParameter;
+import org.bouncycastle.util.encoders.Base64;
 
 import java.io.InputStream;
 import java.math.BigInteger;
@@ -234,6 +235,101 @@ public class ECKeyTest {
         ECKey key = ECKey.signedMessageToKey(message, sigBase64);
         Address gotAddress = key.toAddress(MainNetParams.get());
         assertEquals(expectedAddress, gotAddress);
+    }
+
+    @Test
+    public void recoverFromSignatureRejectsMalformedValues() throws Exception {
+        final BigInteger n = ECKey.CURVE.getN();
+        Sha256Hash hash = Sha256Hash.of(new byte[]{1});
+        ECDSASignature valid = new ECKey().sign(hash);
+
+        // Zero is not a valid ECDSA component.
+        assertNull(ECKey.recoverFromSignature(0, new ECDSASignature(BigInteger.ZERO, valid.s), hash, true));
+        assertNull(ECKey.recoverFromSignature(0, new ECDSASignature(valid.r, BigInteger.ZERO), hash, true));
+        // Negative values are not valid either.
+        assertNull(ECKey.recoverFromSignature(0, new ECDSASignature(BigInteger.ONE.negate(), valid.s), hash, true));
+        assertNull(ECKey.recoverFromSignature(0, new ECDSASignature(valid.r, BigInteger.ONE.negate()), hash, true));
+        // r and s must be strictly below the curve order.
+        assertNull(ECKey.recoverFromSignature(0, new ECDSASignature(n, valid.s), hash, true));
+        assertNull(ECKey.recoverFromSignature(0, new ECDSASignature(valid.r, n), hash, true));
+        assertNull(ECKey.recoverFromSignature(0, new ECDSASignature(n.add(BigInteger.valueOf(2)), valid.s), hash, true));
+        assertNull(ECKey.recoverFromSignature(0, new ECDSASignature(valid.r, n.add(BigInteger.ONE)), hash, true));
+        // In range, but not the abscissa of a curve point (5 has no square root of x^3 + 7).
+        assertNull(ECKey.recoverFromSignature(0, new ECDSASignature(BigInteger.valueOf(5), valid.s), hash, true));
+    }
+
+    @Test
+    public void recoverFromSignatureAcceptsHighS() throws Exception {
+        ECKey key = new ECKey();
+        Sha256Hash hash = Sha256Hash.of("high-S".getBytes());
+        ECDSASignature sig = key.sign(hash);
+        BigInteger highS = ECKey.CURVE.getN().subtract(sig.s);
+        assertTrue(highS.compareTo(ECKey.HALF_CURVE_ORDER) > 0);
+
+        ECKey expected = ECKey.fromPublicOnly(key);
+        boolean found = false;
+        for (int i = 0; i < 4; i++) {
+            ECKey recovered = ECKey.recoverFromSignature(i, new ECDSASignature(sig.r, highS), hash, true);
+            if (expected.equals(recovered)) {
+                found = true;
+                break;
+            }
+        }
+        assertTrue(found);
+    }
+
+    @Test
+    public void signedMessageToKeyRejectsMalformedValues() throws Exception {
+        final String message = "hello";
+        final BigInteger n = ECKey.CURVE.getN();
+        final BigInteger one = BigInteger.ONE;
+
+        assertSignatureRejected(message, 31, BigInteger.ZERO, one);
+        assertSignatureRejected(message, 31, one, BigInteger.ZERO);
+        assertSignatureRejected(message, 31, n, one);
+        assertSignatureRejected(message, 31, one, n);
+        assertSignatureRejected(message, 31, n.add(BigInteger.valueOf(2)), one);
+        assertSignatureRejected(message, 31, one, n.add(BigInteger.ONE));
+        // 5 is not a valid x-coordinate: must fail cleanly instead of throwing an unchecked exception.
+        assertSignatureRejected(message, 31, BigInteger.valueOf(5), one);
+    }
+
+    @Test
+    public void signedMessageToKeyAcceptsHighS() throws Exception {
+        ECKey key = ECKey.fromPrivate(BigInteger.ONE);
+        String message = "high-S test";
+        byte[] signature = Base64.decode(key.signMessage(message));
+        assertEquals(65, signature.length);
+
+        int header = signature[0] & 0xFF;
+        boolean compressed = header >= 31;
+        int recId = (compressed ? header - 4 : header) - 27;
+        BigInteger r = new BigInteger(1, Arrays.copyOfRange(signature, 1, 33));
+        BigInteger s = new BigInteger(1, Arrays.copyOfRange(signature, 33, 65));
+        BigInteger highS = ECKey.CURVE.getN().subtract(s);
+        assertTrue(highS.compareTo(ECKey.HALF_CURVE_ORDER) > 0);
+
+        byte[] highSignature = new byte[65];
+        // Negating s also flips the y parity of R, hence the recovery id.
+        highSignature[0] = (byte) (27 + (recId ^ 1) + (compressed ? 4 : 0));
+        System.arraycopy(Utils.bigIntegerToBytes(r, 32), 0, highSignature, 1, 32);
+        System.arraycopy(Utils.bigIntegerToBytes(highS, 32), 0, highSignature, 33, 32);
+
+        ECKey recovered = ECKey.signedMessageToKey(message, Base64.toBase64String(highSignature));
+        assertArrayEquals(key.getPubKey(), recovered.getPubKey());
+    }
+
+    private static void assertSignatureRejected(String message, int header, BigInteger r, BigInteger s) {
+        byte[] encoded = new byte[65];
+        encoded[0] = (byte) header;
+        System.arraycopy(Utils.bigIntegerToBytes(r, 32), 0, encoded, 1, 32);
+        System.arraycopy(Utils.bigIntegerToBytes(s, 32), 0, encoded, 33, 32);
+        try {
+            ECKey.signedMessageToKey(message, Base64.toBase64String(encoded));
+            fail("Expected SignatureException for r=" + r + ", s=" + s);
+        } catch (SignatureException e) {
+            // Expected: malformed signatures are reported through the checked exception.
+        }
     }
 
     @Test
