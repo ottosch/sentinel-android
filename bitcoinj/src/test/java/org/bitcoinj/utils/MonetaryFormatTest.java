@@ -251,7 +251,9 @@ public class MonetaryFormatTest {
         final Coin value = Coin.valueOf(-1234567890l);
         assertEquals("-12.34567890", NO_CODE.withLocale(Locale.US).format(value).toString());
         assertEquals("-12,34567890", NO_CODE.withLocale(Locale.GERMANY).format(value).toString());
-        assertEquals("-१२.३४५६७८९०", NO_CODE.withLocale(new Locale("hi", "IN")).format(value).toString()); // Devanagari
+        // CLDR renders hi-IN with Latin digits by default; the -u-nu-deva extension
+        // asks for Devanagari explicitly
+        assertEquals("-१२.३४५६७८९०", NO_CODE.withLocale(Locale.forLanguageTag("hi-IN-u-nu-deva")).format(value).toString());
     }
 
     @Test
