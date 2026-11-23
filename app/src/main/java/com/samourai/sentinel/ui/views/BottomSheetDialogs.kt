@@ -173,7 +173,7 @@ class InputBottomSheet() : GenericBottomSheet() {
         textInput?.setText(prefill)
         fun applyHelper() {
             val blank = textInput?.text.isNullOrBlank()
-            textInputLayout?.helperText = if (helperWhenBlank != null && blank) helperWhenBlank else null
+            textInputLayout?.helperText = if (editable && helperWhenBlank != null && blank) helperWhenBlank else null
         }
         applyHelper()
         textInput?.addTextChangedListener(object : TextWatcher {

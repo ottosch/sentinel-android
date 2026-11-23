@@ -131,10 +131,44 @@ class CollectionEditFingerprintHintTest {
         assertEquals(View.VISIBLE, save.visibility)
     }
 
-    private fun launch(vararg keys: PubKeyModel): CollectionEditActivity {
+    @Test
+    fun `a read-only fingerprint field on a wallet-imported collection hides the hint`() {
+        val activity = launch(
+            PubKeyModel(pubKey = "zpub-1", label = "Deposit", type = AddressTypes.BIP84, fingerPrint = null),
+            isImportFromWallet = true,
+        )
+        val (layout, input, save) = openFingerprint(activity, 0)
+        assertFalse(input.isFocusable)
+        assertEquals(View.GONE, save.visibility)
+        assertTrue(layout.helperText.isNullOrBlank())
+
+        // Even if InputBottomSheet is opened directly with helperWhenBlank on a read-only field,
+        // applyHelper() respects editable=false.
+        val direct = InputBottomSheet.newInstance(
+            label = "Master Fingerprint",
+            buttonLabel = "Save",
+            value = "",
+            labelEditText = "Fingerprint",
+            maxLen = 8,
+            editable = false,
+            requestKey = "direct_readonly_test",
+            helperWhenBlank = hint,
+        )
+        direct.show(activity.supportFragmentManager, "direct_readonly")
+        activity.supportFragmentManager.executePendingTransactions()
+        ShadowLooper.idleMainLooper()
+        val directLayout = direct.requireView().findViewById<TextInputLayout>(R.id.bottomSheetInputFieldLayout)
+        assertTrue(directLayout.helperText.isNullOrBlank())
+    }
+
+    private fun launch(
+        vararg keys: PubKeyModel,
+        isImportFromWallet: Boolean = false,
+    ): CollectionEditActivity {
         val collection = PubKeyCollection(
             collectionLabel = "Cold storage",
             pubs = ArrayList(keys.asList()),
+            isImportFromWallet = isImportFromWallet,
         )
         repository.addNew(collection)
         val activity = Robolectric.buildActivity(
