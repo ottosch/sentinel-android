@@ -22,6 +22,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.samourai.sentinel.R
 import com.samourai.sentinel.core.access.AccessFactory
 import com.samourai.sentinel.core.access.PinVault
+import com.samourai.sentinel.core.access.UnlockResult
 import com.samourai.sentinel.data.db.SentinelRoomDb
 import com.samourai.sentinel.data.db.appWalletPayloads
 import com.samourai.sentinel.data.repository.Bip329Exporter
@@ -620,7 +621,7 @@ class MainSettingsFragment : PreferenceFragmentCompat() {
      * before; this gate is not a substitute for setting one.
      */
     private fun requirePin(action: GatedAction) {
-        if (prefsUtil.pinHash.isNullOrEmpty()) {
+        if (!prefsUtil.isPinConfigured()) {
             runGatedAction(action)
             return
         }
@@ -636,17 +637,23 @@ class MainSettingsFragment : PreferenceFragmentCompat() {
     private fun onGatePinEntered(pin: String) {
         val dialog = parentFragmentManager.findFragmentByTag(TAG_PIN_GATE) as? LockScreenDialog ?: return
         val action = pendingGatedAction
-        val hash = prefsUtil.pinHash
-        if (action == null || hash.isNullOrEmpty()) {
+        if (action == null || !prefsUtil.isPinConfigured()) {
             // Nothing to authorise - the fragment was recreated, or the PIN
             // was removed while the pad was open.
             pendingGatedAction = null
             parentFragmentManager.popBackStack()
             return
         }
+        val filesDir = requireContext().filesDir
         settingsScope.launch {
-            val valid = withContext(Dispatchers.IO) { accessFactory.validateHash(pin, hash) }
-            if (valid) {
+            // PinVault.unlock is the verifier for both current key material
+            // and a leftover pinHash. Passing the payload list keeps a
+            // legacy unlock from dropping the verifier before files are
+            // rewritten.
+            val result = withContext(Dispatchers.IO) {
+                PinVault(prefsUtil).unlock(pin, appWalletPayloads(filesDir))
+            }
+            if (result == UnlockResult.Success) {
                 // Consume the authorisation before running, so a replayed
                 // result cannot run the action twice.
                 pendingGatedAction = null
