@@ -83,6 +83,31 @@ class PinVault(
         }
     }
 
+    /**
+     * Checks [pin] against the configured verifier without mutating [AccessFactory],
+     * [PinMaterialStore], or any payload files. Used by in-session gates (Export / Erase)
+     * that only need to verify the current PIN.
+     */
+    fun verify(pin: String): UnlockResult {
+        if (!store.isPinConfigured()) {
+            return UnlockResult.NotConfigured
+        }
+        val material = store.pinKeyMaterial
+        if (!material.isNullOrBlank()) {
+            val dek = try {
+                openDek(pin, material)
+            } catch (e: WrongPinException) {
+                return UnlockResult.WrongPin
+            } catch (e: Exception) {
+                Timber.w(e, "PIN material could not be opened")
+                return UnlockResult.Unavailable(UNAVAILABLE)
+            }
+            dek.fill(0)
+            return UnlockResult.Success
+        }
+        return if (legacyMatches(pin)) UnlockResult.Success else UnlockResult.WrongPin
+    }
+
     fun unlock(pin: String, records: List<PayloadRecord> = emptyList()): UnlockResult {
         if (!store.isPinConfigured()) {
             return UnlockResult.NotConfigured

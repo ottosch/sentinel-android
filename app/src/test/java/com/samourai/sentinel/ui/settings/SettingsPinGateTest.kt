@@ -11,8 +11,21 @@ import androidx.preference.Preference
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.samourai.sentinel.R
+import android.widget.Button
+import android.widget.ImageButton
 import com.samourai.sentinel.core.access.AccessFactory
+import com.samourai.sentinel.core.access.AtRestSealer
+import com.samourai.sentinel.core.access.NoAtRestSealer
 import com.samourai.sentinel.core.access.PinVault
+import com.samourai.sentinel.core.access.PrefsPinMaterialStore
+import com.samourai.sentinel.core.access.SealUnavailableException
+import com.samourai.sentinel.core.access.UnlockResult
+import kotlinx.coroutines.CancellationException
+import org.junit.Assert.assertNull
+import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import com.samourai.sentinel.data.db.SentinelCollectionStore
 import com.samourai.sentinel.data.db.SentinelRoomDb
 import com.samourai.sentinel.data.repository.Bip329Exporter
@@ -217,6 +230,200 @@ class SettingsPinGateTest {
         assertFalse(gatePadVisible(settings))
     }
 
+    @Test
+    fun `unavailable vault material shows PIN unavailable and denies export and erase`() {
+        storePinInVault()
+        prefs.pinKeyMaterial = "not-valid-json"
+
+        val settings = openSettings()
+        clickPref(settings, "export")
+        assertTrue(gatePadVisible(settings))
+        enterGatePin(settings, RIGHT_PIN)
+        waitUntil("PIN unavailable is shown for export") { pinUnavailableShown(settings) }
+        assertTrue(gatePadVisible(settings))
+        assertFalse(incorrectPinShown(settings))
+        assertFalse(exportChooserVisible(settings))
+
+        closeActivity()
+        ShadowDialog.reset()
+        val again = openSettings()
+        clickPref(again, "clear")
+        assertTrue(gatePadVisible(again))
+        enterGatePin(again, RIGHT_PIN)
+        waitUntil("PIN unavailable is shown for erase") { pinUnavailableShown(again) }
+        assertTrue(gatePadVisible(again))
+        assertFalse(incorrectPinShown(again))
+        assertFalse(eraseConfirmVisible(again))
+
+        var keyLost = false
+        val keystoreSealer = object : AtRestSealer {
+            override val seals: Boolean = true
+            override fun seal(plain: ByteArray): ByteArray = plain.copyOf()
+            override fun open(sealed: ByteArray): ByteArray {
+                if (keyLost) throw SealUnavailableException()
+                return sealed.copyOf()
+            }
+        }
+        val sealedStore = com.samourai.sentinel.core.access.MemoryPinMaterialStore()
+        PinVault(sealedStore, access, keystoreSealer).enable(RIGHT_PIN)
+        keyLost = true
+        assertTrue(PinVault(sealedStore, access, keystoreSealer).verify(RIGHT_PIN) is UnlockResult.Unavailable)
+    }
+
+    @Test
+    fun `double tapping the check button shows the overlay and ignores the second submit`() {
+        storePinInVault()
+        val settings = openSettings()
+        val fragment = settingsFragment(settings)
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val calls = AtomicInteger(0)
+        fragment.gatePinVerifier = { _ ->
+            calls.incrementAndGet()
+            entered.countDown()
+            assertTrue("verifier latch timed out", release.await(10, TimeUnit.SECONDS))
+            UnlockResult.Success
+        }
+
+        clickPref(settings, "export")
+        assertTrue(gatePadVisible(settings))
+        val pad = gatePad(settings)!!
+        val padView = pad.requireView()
+        val digit = padView.findViewById<Button>(R.id.ta)
+        val confirm = padView.findViewById<ImageButton>(R.id.tconfirm)
+        repeat(5) { digit.performClick() }
+        assertEquals(View.VISIBLE, confirm.visibility)
+
+        confirm.performClick()
+        idle()
+        assertTrue("first verify did not start", entered.await(5, TimeUnit.SECONDS))
+        idle()
+        assertTrue("overlay must cover the pad while checking", kdfOverlayVisible())
+
+        confirm.performClick()
+        enterGatePin(settings, RIGHT_PIN)
+        assertEquals("second submit must be ignored while busy", 1, calls.get())
+        assertFalse(exportChooserVisible(settings))
+
+        release.countDown()
+        waitUntil("export options appear after first check completes") { exportChooserVisible(settings) }
+        assertEquals(1, calls.get())
+        assertEquals(1, showingDialogs().count { "Choose Export" in dialogText(it) || "Save to file" in dialogText(it) })
+        assertFalse("overlay must dismiss once check completes", kdfOverlayVisible())
+    }
+
+    @Test
+    fun `gate uses check-only verify with no side effects in PinVault or legacy mode`() {
+        // Legacy-only pinHash state: verify() must succeed without minting or overwriting dataKey or files.
+        storeLegacyPinHash()
+        access.clearDataKey()
+        access.pin = null
+        access.setPinProtected(false)
+        access.setIsLoggedIn(false)
+        val legacyPayloadFile = File(ApplicationProvider.getApplicationContext<Application>().filesDir, "legacy-gate-check.txt")
+        legacyPayloadFile.writeText("legacy-bytes")
+        val beforeMtime = legacyPayloadFile.lastModified()
+        val beforeHash = prefs.pinHash
+
+        val vault = PinVault(PrefsPinMaterialStore(prefs), access, NoAtRestSealer)
+        assertEquals(UnlockResult.WrongPin, vault.verify(WRONG_PIN))
+        assertEquals(UnlockResult.Success, vault.verify(RIGHT_PIN))
+        assertNull("verify must not set dataKey in legacy mode", access.dataKey)
+        assertNull("verify must not set access.pin in legacy mode", access.pin)
+        assertFalse("verify must not flip pinProtected", access.isPinProtected)
+        assertTrue("verify must not write pinKeyMaterial", prefs.pinKeyMaterial.isNullOrBlank())
+        assertEquals("verify must keep legacy pinHash", beforeHash, prefs.pinHash)
+        assertEquals("legacy-bytes", legacyPayloadFile.readText())
+        assertEquals(beforeMtime, legacyPayloadFile.lastModified())
+
+        // Through the settings gate in legacy mode: Export runs, yet legacy pinHash stays un-migrated.
+        val settings = openSettings()
+        clickPref(settings, "export")
+        enterGatePin(settings, RIGHT_PIN)
+        waitUntil("export options appear in legacy mode") { exportChooserVisible(settings) }
+        assertNull(access.dataKey)
+        assertTrue(prefs.pinKeyMaterial.isNullOrBlank())
+        assertEquals(beforeHash, prefs.pinHash)
+        legacyPayloadFile.delete()
+
+        // Modern PinVault state: verify() leaves key material and in-memory key untouched.
+        closeActivity()
+        ShadowDialog.reset()
+        storePinInVault()
+        val savedMaterial = prefs.pinKeyMaterial
+        access.clearDataKey()
+        access.pin = null
+        access.setPinProtected(false)
+        access.setIsLoggedIn(false)
+        assertEquals(UnlockResult.WrongPin, vault.verify(WRONG_PIN))
+        assertEquals(UnlockResult.Success, vault.verify(RIGHT_PIN))
+        assertNull(access.dataKey)
+        assertNull(access.pin)
+        assertFalse(access.isPinProtected)
+        assertEquals(savedMaterial, prefs.pinKeyMaterial)
+
+        // Even with an existing in-memory dataKey, legacy verify() must not replace it.
+        storeLegacyPinHash()
+        val sentinelKey = byteArrayOf(1, 2, 3, 4)
+        access.dataKey = sentinelKey
+        assertEquals(UnlockResult.Success, vault.verify(RIGHT_PIN))
+        assertTrue(sentinelKey.contentEquals(access.dataKey))
+        assertTrue(prefs.pinKeyMaterial.isNullOrBlank())
+    }
+
+    @Test
+    fun `a Throwable from the gate verifier fails closed without crashing and clears the busy latch`() {
+        storePinInVault()
+        val settings = openSettings()
+        val fragment = settingsFragment(settings)
+        val calls = AtomicInteger(0)
+        fragment.gatePinVerifier = { _ ->
+            if (calls.incrementAndGet() == 1) {
+                throw OutOfMemoryError("simulated check failure")
+            }
+            UnlockResult.Success
+        }
+
+        clickPref(settings, "export")
+        assertTrue(gatePadVisible(settings))
+        enterGatePin(settings, RIGHT_PIN)
+        waitUntil("PIN unavailable is shown after throwable") { pinUnavailableShown(settings) }
+        assertTrue(gatePadVisible(settings))
+        assertFalse(exportChooserVisible(settings))
+        assertFalse(kdfOverlayVisible())
+
+        // Busy state must have cleared so a subsequent submit succeeds.
+        enterGatePin(settings, RIGHT_PIN)
+        waitUntil("export options appear after retry") { exportChooserVisible(settings) }
+        assertEquals(2, calls.get())
+    }
+
+    @Test
+    fun `CancellationException from the gate verifier is rethrown and clears the busy latch and overlay`() {
+        storePinInVault()
+        val settings = openSettings()
+        val fragment = settingsFragment(settings)
+        val calls = AtomicInteger(0)
+        fragment.gatePinVerifier = { _ ->
+            if (calls.incrementAndGet() == 1) {
+                throw CancellationException("simulated cancel")
+            }
+            UnlockResult.Success
+        }
+
+        clickPref(settings, "export")
+        assertTrue(gatePadVisible(settings))
+        enterGatePin(settings, RIGHT_PIN)
+        waitUntil("overlay dismisses after cancellation") { !kdfOverlayVisible() }
+        assertTrue(gatePadVisible(settings))
+        assertFalse(exportChooserVisible(settings))
+
+        // Busy latch was cleared in finally, so a second attempt can run.
+        enterGatePin(settings, RIGHT_PIN)
+        waitUntil("export options appear after cancellation clears busy") { exportChooserVisible(settings) }
+        assertEquals(2, calls.get())
+    }
+
     private fun storePinInVault() {
         PinVault(prefs).enable(RIGHT_PIN)
         prefs.pinHash = ""
@@ -280,6 +487,15 @@ class SettingsPinGateTest {
         )
         idle()
     }
+
+    private fun pinUnavailableShown(activity: SettingsActivity): Boolean {
+        val pad = gatePad(activity) ?: return false
+        val prompt = pad.view?.findViewById<TextView>(R.id.lockScreenText) ?: return false
+        return prompt.text.toString() == activity.getString(R.string.pin_unavailable)
+    }
+
+    private fun kdfOverlayVisible(): Boolean =
+        showingDialogs().any { "Checking PIN" in dialogText(it) }
 
     private fun incorrectPinShown(activity: SettingsActivity): Boolean {
         val pad = gatePad(activity) ?: return false

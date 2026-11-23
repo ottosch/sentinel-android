@@ -58,6 +58,7 @@ import com.samourai.sentinel.util.ExportImportUtil
 import com.samourai.sentinel.util.ImportLimits
 import com.samourai.sentinel.util.UtxoMetaUtil
 import org.json.JSONObject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
@@ -92,6 +93,10 @@ class MainSettingsFragment : PreferenceFragmentCompat() {
 
     /** #355: waiting room for the settings-side Argon2id runs. */
     private val kdfOverlay by lazy { KdfProgressOverlay(requireActivity()) }
+
+    private var gateBusy = false
+
+    internal var gatePinVerifier: (String) -> UnlockResult = { pin -> PinVault(prefsUtil).verify(pin) }
 
     /**
      * #220: first pin of a set-pin flow. Memory of this fragment instance
@@ -159,6 +164,8 @@ class MainSettingsFragment : PreferenceFragmentCompat() {
     }
 
     override fun onDestroyView() {
+        kdfOverlay.dismiss()
+        gateBusy = false
         parentFragmentManager.removeOnBackStackChangedListener(padBackStackListener)
         // Leaving the screen with the flag still set would keep Settings
         // hidden from accessibility for the rest of the activity's life.
@@ -644,24 +651,41 @@ class MainSettingsFragment : PreferenceFragmentCompat() {
             parentFragmentManager.popBackStack()
             return
         }
-        val filesDir = requireContext().filesDir
+        if (gateBusy) return
+        gateBusy = true
+        kdfOverlay.show("Checking PIN\u2026")
         settingsScope.launch {
-            // PinVault.unlock is the verifier for both current key material
-            // and a leftover pinHash. Passing the payload list keeps a
-            // legacy unlock from dropping the verifier before files are
-            // rewritten.
-            val result = withContext(Dispatchers.IO) {
-                PinVault(prefsUtil).unlock(pin, appWalletPayloads(filesDir))
+            val result = try {
+                withContext(Dispatchers.IO) {
+                    gatePinVerifier(pin)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                Timber.e(t, "PIN gate check failed")
+                UnlockResult.Unavailable(getString(R.string.pin_unavailable))
+            } finally {
+                kdfOverlay.dismiss()
+                gateBusy = false
             }
-            if (result == UnlockResult.Success) {
-                // Consume the authorisation before running, so a replayed
-                // result cannot run the action twice.
-                pendingGatedAction = null
-                dialog.dismiss()
-                parentFragmentManager.popBackStack()
-                runGatedAction(action)
-            } else {
-                dialog.showError()
+            if (!isAdded) return@launch
+            when (result) {
+                UnlockResult.Success -> {
+                    // Consume the authorisation before running, so a replayed
+                    // result cannot run the action twice.
+                    pendingGatedAction = null
+                    dialog.dismiss()
+                    parentFragmentManager.popBackStack()
+                    runGatedAction(action)
+                }
+                UnlockResult.WrongPin, UnlockResult.NotConfigured -> {
+                    dialog.showError()
+                }
+                is UnlockResult.Unavailable -> {
+                    val unavailable = getString(R.string.pin_unavailable)
+                    dialog.resetPad(unavailable)
+                    context?.let { Toast.makeText(it, unavailable, Toast.LENGTH_LONG).show() }
+                }
             }
         }
     }

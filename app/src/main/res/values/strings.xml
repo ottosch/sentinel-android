@@ -59,6 +59,7 @@
     <string name="pin_error">Pin code error</string>
     <!-- #415: wrong-PIN advisory swapped into the prompt slot. -->
     <string name="pin_incorrect" translatable="false">Incorrect PIN</string>
+    <string name="pin_unavailable" translatable="false">PIN unavailable</string>
     <!-- #420: a current-format restore carries no PIN. The offer is a dialog. -->
     <string name="restore_pin_offer_title" translatable="false">No PIN on this device</string>
     <string name="restore_pin_offer_message" translatable="false">This backup has no PIN on this device. Set a PIN now?</string>
