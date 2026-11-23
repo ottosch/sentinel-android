@@ -205,4 +205,40 @@ class SignerIdentityUiTest {
         assertNull(PayNymAvatarImage.decode(null))
         assertNull(PayNymAvatarImage.decode("GIF89a".toByteArray()))
     }
+
+    @Test
+    fun `a recycled ViewHolder hides the signer and warning again when bound to an unverified row`() {
+        val adapter = CommunityDojoAdapter(onSelect = {}, onCopy = {})
+        val collidingSigned = checked("SharedName", qa)
+        val nonCollidingSigned = checked("UniqueName", other)
+        val unverified = checked("Unverified", null)
+        adapter.submitList(listOf(collidingSigned, checked("SharedName", other), nonCollidingSigned, unverified))
+
+        val holder = adapter.onCreateViewHolder(FrameLayout(context), 0)
+
+        // Bind to a signed row with a name collision: both signer and warning are visible.
+        adapter.onBindViewHolder(holder, 0)
+        assertEquals(View.VISIBLE, holder.signer.visibility)
+        assertEquals("Signed by PM8TJUJH…eNoCEoum", holder.signer.text.toString())
+        assertEquals(View.VISIBLE, holder.warning.visibility)
+        assertEquals(1f, holder.itemView.alpha)
+        assertTrue(holder.copyButton.isEnabled)
+
+        // Recycle the same ViewHolder for an unverified row: both signer and warning must hide again.
+        adapter.onBindViewHolder(holder, 3)
+        assertEquals(View.GONE, holder.signer.visibility)
+        assertEquals(View.GONE, holder.warning.visibility)
+        assertEquals(0.5f, holder.itemView.alpha)
+        assertFalse(holder.copyButton.isEnabled)
+
+        // Rebind to a non-colliding signed row, then back to unverified.
+        adapter.onBindViewHolder(holder, 2)
+        assertEquals(View.VISIBLE, holder.signer.visibility)
+        assertEquals(View.GONE, holder.warning.visibility)
+
+        adapter.onBindViewHolder(holder, 3)
+        assertEquals(View.GONE, holder.signer.visibility)
+        assertEquals(View.GONE, holder.warning.visibility)
+    }
+
 }
