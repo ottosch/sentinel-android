@@ -58,3 +58,56 @@ internal object SyncRerunPolicy {
         collections: List<PubKeyCollection>,
     ): Boolean = blockOwnUnchanged && !shouldRerun(roundStartSignature, collections)
 }
+
+/**
+ * Which arm consults [SyncRerunPolicy.isOwnListEmission]. Only a
+ * collections-list emission does. Tor re-ready and a user refresh
+ * start a round without that gate.
+ */
+internal enum class SyncArm { LIST_EMISSION, TOR_READY, USER_REFRESH }
+
+internal fun blocksAsOwnEmission(
+    arm: SyncArm,
+    blockOwnUnchanged: Boolean,
+    roundStartSignature: String?,
+    collections: List<PubKeyCollection>,
+): Boolean = when (arm) {
+    SyncArm.LIST_EMISSION -> SyncRerunPolicy.isOwnListEmission(
+        blockOwnUnchanged,
+        roundStartSignature,
+        collections,
+    )
+    SyncArm.TOR_READY, SyncArm.USER_REFRESH -> false
+}
+
+/** A user pull-to-refresh or Retry replaces any in-flight round. */
+internal fun userRefreshReplacesRound(): Boolean = true
+
+/**
+ * The trailing re-run compares the list to the round-start signature,
+ * never to the external-arm signature a failure clears.
+ */
+internal fun trailingRerunWanted(
+    roundStartSignature: String?,
+    current: List<PubKeyCollection>,
+): Boolean = SyncRerunPolicy.shouldRerun(roundStartSignature, current)
+
+/**
+ * How a round updates the own-emission block. Admit and a Tor deferral
+ * leave the next list emission free to start a round. Clearing the
+ * external-arm signature blocks that emission. The round-start
+ * signature is never cleared here: the trailing re-run still needs it.
+ */
+internal enum class OwnEmissionStamp { ADMIT, TOR_DEFER, CLEAR }
+
+internal data class OwnEmissionFlags(
+    val blockOwnListEmission: Boolean,
+    val clearRoundStartSignature: Boolean,
+)
+
+internal fun ownEmissionFlags(stamp: OwnEmissionStamp): OwnEmissionFlags = when (stamp) {
+    OwnEmissionStamp.ADMIT, OwnEmissionStamp.TOR_DEFER ->
+        OwnEmissionFlags(blockOwnListEmission = false, clearRoundStartSignature = false)
+    OwnEmissionStamp.CLEAR ->
+        OwnEmissionFlags(blockOwnListEmission = true, clearRoundStartSignature = false)
+}

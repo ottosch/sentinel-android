@@ -38,6 +38,7 @@ import com.samourai.sentinel.ui.dojo.PayNymCache
 import com.samourai.sentinel.ui.dojo.DojoUtility
 import com.samourai.sentinel.ui.dojo.PubKeyRescanner
 import com.samourai.sentinel.ui.home.HomeActivity
+import com.samourai.sentinel.ui.home.fiatDisabledPreference
 import com.samourai.sentinel.ui.utils.PrefsUtil
 import com.samourai.sentinel.ui.utils.showFloatingSnackBar
 import com.samourai.sentinel.ui.utils.startDocumentPickerForResult
@@ -235,7 +236,7 @@ class MainSettingsFragment : PreferenceFragmentCompat() {
         val fiatPref = findPreference<CheckBoxPreference>("fiatDisabled")
         fiatPref?.isChecked = prefsUtil.fiatDisabled == true
         fiatPref?.setOnPreferenceChangeListener { _, newValue ->
-            prefsUtil.fiatDisabled = newValue as Boolean
+            prefsUtil.fiatDisabled = fiatDisabledPreference(newValue)
             true
         }
 

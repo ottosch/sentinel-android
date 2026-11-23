@@ -1,41 +1,40 @@
 package com.samourai.sentinel.ui.home
 
+import com.samourai.sentinel.data.repository.ExchangeRateRepository
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
+import java.util.Locale
 
 /** Hide-fiat must remove the line, not replace a real amount with "00.00". */
 class HideFiatPlaceholderTest {
 
+    private val rate = ExchangeRateRepository.Rate("USD", 50_000L)
+
     @Test
     fun `missing rate is blank and hide clears the fiat line`() {
-        val vm = source("app/src/main/java/com/samourai/sentinel/ui/home/HomeViewModel.kt")
-        val fiat = vm.substringAfter("private fun getFiatBalance(balance: Long?, rate: ExchangeRateRepository.Rate?): String")
-            .substringBefore("private fun updateBalance")
-        assertFalse(fiat.contains("00.00"))
-        assertTrue(fiat.contains("prefsUtil.fiatDisabled == true"))
+        assertEquals("", homeFiatLine(fiatDisabled = false, balanceSats = 100_000_000L, rate = null, ::dollars))
+        assertEquals("", homeFiatLine(fiatDisabled = false, balanceSats = 100_000_000L, rate = ExchangeRateRepository.Rate("USD", 0L), ::dollars))
+        assertEquals("", homeFiatLine(fiatDisabled = false, balanceSats = null, rate = rate, ::dollars))
+        assertEquals("", homeFiatLine(fiatDisabled = true, balanceSats = 100_000_000L, rate = rate, ::dollars))
+        val shown = homeFiatLine(fiatDisabled = false, balanceSats = 100_000_000L, rate = rate, ::dollars)
+        assertEquals("50000.00 USD", shown)
+        assertFalse(shown == "00.00")
 
-        val home = source("app/src/main/java/com/samourai/sentinel/ui/home/HomeActivity.kt")
-        val paint = home.substringAfter("private fun paintFiat")
-            .substringBefore("override fun onResume()")
-        assertTrue(paint.contains("exchangeRateTxt.text = \"\""))
-        assertTrue(paint.contains("View.GONE"))
+        val hidden = presentFiatLine(show = true, fiat = "")
+        assertEquals("", hidden.text)
+        assertFalse(hidden.visible)
+        val suppressed = presentFiatLine(show = false, fiat = shown)
+        assertEquals("", suppressed.text)
+        assertFalse(suppressed.visible)
+        val visible = presentFiatLine(show = true, fiat = shown)
+        assertEquals(shown, visible.text)
+        assertTrue(visible.visible)
 
-        val collection = source("app/src/main/java/com/samourai/sentinel/ui/collectionDetails/transactions/TransactionsFragment.kt")
-        val render = collection.substringAfter("private fun renderBalance")
-            .substringBefore("private fun setUpToolBar")
-        assertTrue(render.contains("collectionBalanceFiat.text = \"\""))
-        assertTrue(render.contains("View.GONE"))
-        assertFalse(collection.contains("00.00"))
-
-        val settings = source("app/src/main/java/com/samourai/sentinel/ui/settings/MainSettingsFragment.kt")
-        assertTrue(settings.contains("prefsUtil.fiatDisabled = newValue as Boolean"))
+        assertEquals(true, fiatDisabledPreference(true))
+        assertEquals(false, fiatDisabledPreference(false))
     }
 
-    private fun source(relative: String): String {
-        val file = sequenceOf(File(relative), File(relative.removePrefix("app/"))).firstOrNull { it.isFile }
-            ?: error("missing $relative from ${File(".").absolutePath}")
-        return file.readText()
-    }
+    private fun dollars(amount: Double): String = String.format(Locale.US, "%.2f", amount)
 }

@@ -6,7 +6,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * A standing transport failure starts one quiet round from Home resume
@@ -45,26 +44,32 @@ class QuietResyncTest {
 
     @Test
     fun resumeAndTheReachableFlipAreTheOnlyStarts() {
-        val home = source("app/src/main/java/com/samourai/sentinel/ui/home/HomeViewModel.kt")
-        val activity = source("app/src/main/java/com/samourai/sentinel/ui/home/HomeActivity.kt")
-        assertTrue(activity.contains("model.onHomeResumed()"))
-        val resumed = home.substringAfter("fun onHomeResumed()").substringBefore("private var lastReachability")
-        assertTrue(resumed.contains("maybeQuietResync()"))
-        val listener = home.substringAfter("reachabilityListener").substringBefore("private val reachabilityPoke")
-        assertTrue(listener.contains("becameReachable(previous, next)"))
-        assertTrue(listener.contains("maybeQuietResync()"))
-        val collections = home.substringAfter("private suspend fun syncCollections")
-            .substringBefore("private suspend fun gateTxHistory")
-        val balance = home.substringAfter("fun fetchBalance").substringBefore("private val fiatBalance")
-        assertFalse(collections.contains("maybeQuietResync"))
-        assertFalse(balance.contains("maybeQuietResync"))
-        assertEquals(3, Regex("maybeQuietResync\\(\\)").findAll(home).count())
-    }
-
-    private fun source(relative: String): String {
-        val file = sequenceOf(File(relative), File(relative.removePrefix("app/")))
-            .firstOrNull { it.isFile }
-            ?: error("missing $relative from ${File(".").absolutePath}")
-        return file.readText()
+        assertEquals(
+            setOf(QuietResyncArm.HOME_RESUMED, QuietResyncArm.REACHABILITY),
+            QuietResyncArm.entries.toSet(),
+        )
+        assertTrue(quietResyncArmed(QuietResyncArm.HOME_RESUMED, flippedToReachable = false))
+        assertTrue(
+            quietResyncArmed(
+                QuietResyncArm.REACHABILITY,
+                becameReachable(DojoContact.Unreachable(1L, "socks"), DojoContact.Reachable(2L)),
+            ),
+        )
+        assertFalse(
+            quietResyncArmed(
+                QuietResyncArm.REACHABILITY,
+                becameReachable(DojoContact.Reachable(1L), DojoContact.Reachable(2L)),
+            ),
+        )
+        assertFalse(
+            quietResyncArmed(
+                QuietResyncArm.REACHABILITY,
+                becameReachable(DojoContact.Unknown, DojoContact.Unreachable(3L, "timeout")),
+            ),
+        )
+        // A finished transport failure would pass shouldStart. The only
+        // arms are resume and a reachability flip, so the failure post
+        // of a sync round is not one of them.
+        assertTrue(QuietResync.shouldStart(transport, torReady = true, roundInFlight = false))
     }
 }

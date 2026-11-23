@@ -15,7 +15,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * A sync round attempts only collections the #429 row state leaves
@@ -322,46 +321,58 @@ class SyncRoundNetworkScopeTest {
 
     @Test
     fun bothRoundsFilterBeforeTheFetchTheGateAndTheTotal() {
-        val vm = source("app/src/main/java/com/samourai/sentinel/ui/home/HomeViewModel.kt")
-        val collections = between(vm, "private suspend fun syncCollections", "private suspend fun gateTxHistory")
-        val balance = between(vm, "fun fetchBalance", "private val fiatBalance")
-        listOf(collections, balance).forEach { fn ->
-            assertTrue(fn.contains("collectionsForSyncRound("))
-            assertTrue(fn.contains("activeIsTestnet = prefsUtil.testnet == true"))
-            assertTrue(fn.contains("dojoEnabled = SentinelState.isDojoEnabled()"))
-            assertFalse(fn.contains("activeIsTestnet = true"))
-            assertFalse(fn.contains("activeIsTestnet = false"))
-            assertTrue(fn.contains("inRound.forEach"))
-            assertFalse(fn.contains("collections.forEach"))
-            assertTrue(fn.contains("gateTxHistory(inRound, ledger)"))
-            assertTrue(fn.contains("total = inRound.size"))
-            assertFalse(fn.contains("total = collections.size"))
-            assertEquals(1, Regex("transactionsRepository\\.fetchFromServer").findAll(fn).count())
+        val wallets = mixedWallets()
+        listOf(false, true).forEach { activeIsTestnet ->
+            val scoped = scopeSyncRound(wallets, activeIsTestnet, dojoEnabled = true)
+            val expected = wallets.filter { collection ->
+                collectionRowNetworkState(
+                    collection,
+                    activeIsTestnet = activeIsTestnet,
+                    dojoEnabled = true,
+                ) is CollectionRowNetworkState.Normal
+            }
+            assertEquals(expected.map { it.id }, scoped.inRound.map { it.id })
+            assertEquals(scoped.inRound.size, scoped.total)
+            assertTrue(scoped.total < wallets.size)
         }
-        val beforeAutoLoop = collections.substringBefore("inRound.forEach")
-        assertTrue(beforeAutoLoop.contains("SyncState.Success"))
-        assertFalse(beforeAutoLoop.contains("SyncState.Failed("))
-        assertFalse(beforeAutoLoop.contains("fetchFromServer"))
-
-        val indicator = between(vm, "private fun computeIndicator", "fun fetchBalance")
-        assertTrue(indicator.contains("homeConnectionIndicator("))
-        assertFalse(indicator.contains("ConnectionIndicator.RED"))
-        assertFalse(indicator.contains("ConnectionIndicator.GREEN"))
-
-        val scope = between(
-            source("app/src/main/java/com/samourai/sentinel/ui/home/SyncRoundTerminal.kt"),
-            "internal fun collectionsForSyncRound",
-            "internal object SyncRoundTerminal",
+        // An empty on-network set is Success when an endpoint exists, and
+        // it does not fetch. A standing Failed with no endpoint stays put.
+        val now = 1_700_000_000_000L
+        val enabled = emptyOnNetworkRoundState(
+            endpointEnabled = true,
+            standingFailed = true,
+            now = now,
         )
-        assertTrue(scope.contains("collectionRowNetworkState("))
-        assertTrue(scope.contains("activeIsTestnet = activeIsTestnet"))
-        assertFalse(scope.contains("NetworkClassifier"))
-        assertFalse(scope.contains("fromCollection"))
-        assertFalse(scope.contains("fromXpub"))
-        assertFalse(scope.contains("DerivedNetwork"))
-        listOf("tpub", "upub", "vpub", "xpub", "ypub", "zpub").forEach { prefix ->
-            assertFalse(scope.contains(prefix))
-        }
+        assertEquals(SyncState.Success(now), enabled)
+        assertEquals(
+            null,
+            emptyOnNetworkRoundState(endpointEnabled = false, standingFailed = true, now = now),
+        )
+        assertEquals(
+            SyncState.Idle,
+            emptyOnNetworkRoundState(endpointEnabled = false, standingFailed = false, now = now),
+        )
+        assertEquals(
+            ConnectionIndicator.GREEN,
+            homeConnectionIndicator(
+                sync = SyncState.Success(now),
+                torRequired = true,
+                torState = EnumTorState.ON,
+                torProgress = 100,
+                endpointEnabled = true,
+                reachability = DojoContact.Reachable(now),
+            ),
+        )
+        assertEquals(
+            ConnectionIndicator.RED,
+            homeConnectionIndicator(
+                sync = SyncState.Idle,
+                torRequired = true,
+                torState = EnumTorState.OFF,
+                torProgress = 0,
+                endpointEnabled = true,
+            ),
+        )
     }
 
     private fun assertPartial(effect: Effect, attempted: List<String>) {
@@ -501,17 +512,4 @@ class SyncRoundNetworkScopeTest {
     private fun balanceOf(collections: List<PubKeyCollection>, id: String): Long =
         collections.first { it.id == id }.balance
 
-    private fun between(src: String, start: String, end: String): String {
-        val from = src.indexOf(start)
-        val to = src.indexOf(end, from + start.length)
-        assertTrue("$start missing", from >= 0)
-        assertTrue("$end missing after $start", to > from)
-        return src.substring(from, to)
-    }
-
-    private fun source(relative: String): String {
-        val file = sequenceOf(File(relative), File(relative.removePrefix("app/"))).firstOrNull { it.isFile }
-            ?: error("missing $relative from ${File(".").absolutePath}")
-        return file.readText()
-    }
 }

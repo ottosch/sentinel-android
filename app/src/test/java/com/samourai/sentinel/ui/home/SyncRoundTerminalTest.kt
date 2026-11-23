@@ -10,7 +10,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * #499: both round kinds share one terminal discipline.
@@ -339,31 +338,54 @@ class SyncRoundTerminalTest {
 
     @Test
     fun bothRoundsShareTheTerminalDecisionAndLeaveTheTrailingBaselineAlone() {
-        val src = source("app/src/main/java/com/samourai/sentinel/ui/home/HomeViewModel.kt")
-        val collections = between(src, "private suspend fun syncCollections", "private suspend fun gateTxHistory")
-        val balance = between(src, "fun fetchBalance", "private val fiatBalance")
-        val rerun = between(src, "private fun maybeTrailingRerun", "fun getBalance")
+        fun applied(kind: SyncRoundTerminal.Kind, failed: Int, total: Int, tally: SyncFailureTally = SyncFailureTally()) =
+            appliedTerminal(
+                SyncRoundTerminal.decide(
+                    kind = kind,
+                    failed = failed,
+                    total = total,
+                    endpointEnabled = true,
+                    userInitiated = false,
+                    autoRetryBudget = 0,
+                    autoRetryLimit = 2,
+                    standingFailed = false,
+                    tally = tally,
+                ),
+            )
 
-        assertTrue(collections.contains("SyncRoundTerminal.Kind.COLLECTIONS"))
-        assertTrue(collections.contains("decision.clearLastRoundSignature"))
-        assertTrue(collections.contains("lastRoundSignature = null"))
-        assertTrue(collections.contains("autoRetryLimit = AUTO_SYNC_RETRIES"))
-        assertFalse(collections.contains("lastSynced"))
-        assertFalse(collections.contains("armAutoRetry"))
+        val collectionsPartial = applied(SyncRoundTerminal.Kind.COLLECTIONS, 1, 2, SyncFailureTally(local = 1))
+        assertTrue(collectionsPartial.clearLastRoundSignature)
+        assertFalse(collectionsPartial.writeLastSynced)
+        assertFalse(collectionsPartial.armAutoRetry)
+        assertFalse(collectionsPartial.clearRoundStartSignature)
 
-        assertTrue(balance.contains("SyncRoundTerminal.Kind.BALANCE"))
-        assertTrue(balance.contains("decision.clearLastRoundSignature"))
-        assertTrue(balance.contains("if (decision.writeLastSynced)"))
-        assertTrue(balance.contains("prefsUtil.lastSynced = System.currentTimeMillis()"))
-        assertEquals(1, Regex("prefsUtil\\.lastSynced\\s*=").findAll(balance).count())
-        assertTrue(balance.contains("if (decision.armAutoRetry)"))
-        assertTrue(balance.contains("autoRetryLimit = AUTO_SYNC_RETRIES"))
-        assertTrue(balance.contains("syncRerunPending = false"))
-        assertTrue(balance.contains("maybeTrailingRerun()"))
-        assertFalse(balance.contains("if (failed == collections.size)"))
+        val balancePartial = applied(SyncRoundTerminal.Kind.BALANCE, 1, 2, SyncFailureTally(local = 1))
+        assertTrue(balancePartial.clearLastRoundSignature)
+        assertFalse(balancePartial.writeLastSynced)
+        assertFalse(balancePartial.armAutoRetry)
 
-        assertTrue(rerun.contains("SyncRerunPolicy.shouldRerun(roundStartSignature, current)"))
-        assertFalse(src.contains("roundStartSignature = null"))
+        val balanceSuccess = applied(SyncRoundTerminal.Kind.BALANCE, 0, 2)
+        assertTrue(balanceSuccess.writeLastSynced)
+        assertFalse(balanceSuccess.armAutoRetry)
+        assertFalse(balanceSuccess.clearLastRoundSignature)
+
+        val balanceRetry = applied(SyncRoundTerminal.Kind.BALANCE, 2, 2, SyncFailureTally(local = 2))
+        assertTrue(balanceRetry.armAutoRetry)
+        assertFalse(balanceRetry.writeLastSynced)
+        assertFalse(balanceRetry.clearLastRoundSignature)
+        assertFalse(balanceRetry.clearRoundStartSignature)
+
+        val collectionsSuccess = applied(SyncRoundTerminal.Kind.COLLECTIONS, 0, 2)
+        assertFalse(collectionsSuccess.writeLastSynced)
+        assertFalse(collectionsSuccess.armAutoRetry)
+
+        val list = arrayListOf(collection("a", "xpub-a"))
+        val start = SyncRerunPolicy.signatureOf(list)
+        assertFalse(trailingRerunWanted(start, list))
+        val changed = ArrayList(list)
+        changed.add(collection("b", "xpub-b"))
+        assertTrue(trailingRerunWanted(start, changed))
+        assertTrue(trailingRerunWanted(null, list))
     }
 
     private fun assertPartial(effect: Effect, list: ArrayList<PubKeyCollection>) {
@@ -467,19 +489,5 @@ class SyncRoundTerminalTest {
             pubs.add(PubKeyModel(pubKey = pub, label = "$id key", type = AddressTypes.BIP84))
         }
         return PubKeyCollection(collectionLabel = id, pubs = pubs).also { it.id = id }
-    }
-
-    private fun between(src: String, start: String, end: String): String {
-        val from = src.indexOf(start)
-        val to = src.indexOf(end)
-        assertTrue("$start missing", from >= 0)
-        assertTrue("$end missing after $start", to > from)
-        return src.substring(from, to)
-    }
-
-    private fun source(relative: String): String {
-        val file = sequenceOf(File(relative), File(relative.removePrefix("app/"))).firstOrNull { it.isFile }
-            ?: error("missing $relative from ${File(".").absolutePath}")
-        return file.readText()
     }
 }

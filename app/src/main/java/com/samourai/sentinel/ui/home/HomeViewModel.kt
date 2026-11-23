@@ -182,12 +182,11 @@ class HomeViewModel : ViewModel() {
             is SyncRoundPlan.Skip -> {
                 // We skip the round, but leave syncState untouched, unless it's
                 // WaitingForTor; in this case, we change it to Idle, otherwise the
-                // banner will not go away.
-                lastRoundSignature = signature
-                roundStartSignature = signature
-                if (syncState.value is SyncState.WaitingForTor) {
-                    syncState.postValue(SyncState.Idle)
-                }
+                // banner will not go away. A skip never posts Success.
+                val skip = diffEmptySkip(signature, syncState.value)
+                lastRoundSignature = skip.signature
+                roundStartSignature = skip.signature
+                skip.postedState?.let { syncState.postValue(it) }
                 Timber.i("sync round skipped: diff-empty round (delete/reorder only)")
                 return
             }
@@ -197,7 +196,7 @@ class HomeViewModel : ViewModel() {
         roundStartSignature = signature
         // A round that actually starts accepts later external arms.
         // The block is only for the round that just cleared the signature.
-        blockOwnListEmission = false
+        applyOwnEmission(OwnEmissionStamp.ADMIT)
         val deltaIds = (plan as? SyncRoundPlan.Delta)?.ids
         Timber.i(
             "sync round begin: syncCollections collections=%d/%d%s",
@@ -221,7 +220,7 @@ class HomeViewModel : ViewModel() {
                     // No fetch, so no own write is in flight. A later
                     // list emission must still be able to start the round
                     // if ON does not fire again.
-                    blockOwnListEmission = false
+                    applyOwnEmission(OwnEmissionStamp.TOR_DEFER)
                     syncState.postValue(
                         SyncState.WaitingForTor(
                             SentinelTorManager.getTorState().progressIndicator
@@ -360,7 +359,9 @@ class HomeViewModel : ViewModel() {
      * and this is not called from the failure post, so it cannot loop.
      */
     fun onHomeResumed() {
-        maybeQuietResync()
+        if (quietResyncArmed(QuietResyncArm.HOME_RESUMED, flippedToReachable = false)) {
+            maybeQuietResync()
+        }
     }
 
     private var lastReachability: DojoContact = DojoContact.Unknown
@@ -369,7 +370,7 @@ class HomeViewModel : ViewModel() {
         val previous = lastReachability
         lastReachability = next
         reachabilityPoke.postValue(next)
-        if (becameReachable(previous, next)) {
+        if (quietResyncArmed(QuietResyncArm.REACHABILITY, becameReachable(previous, next))) {
             viewModelScope.launch { maybeQuietResync() }
         }
     }
@@ -379,6 +380,42 @@ class HomeViewModel : ViewModel() {
     init {
         // After the listener exists. The first callback replays Unknown.
         DojoReachability.subscribe(reachabilityListener)
+    }
+
+    private fun applyOwnEmission(stamp: OwnEmissionStamp) {
+        val flags = ownEmissionFlags(stamp)
+        blockOwnListEmission = flags.blockOwnListEmission
+        if (flags.clearRoundStartSignature) roundStartSignature = null
+    }
+
+    /**
+     * Applies [appliedTerminal] for one round. A collections round
+     * never arms a retry and never writes lastSynced. A balance round
+     * does both only when the decision says so. Neither clears the
+     * round-start signature.
+     */
+    private fun applyTerminal(kind: SyncRoundTerminal.Kind, decision: SyncRoundTerminal.Decision) {
+        val applied = appliedTerminal(decision)
+        autoRetryBudget = decision.autoRetryBudget
+        if (applied.clearLastRoundSignature) {
+            lastRoundSignature = null
+            applyOwnEmission(OwnEmissionStamp.CLEAR)
+        }
+        decision.staleSuccessRetired?.let { staleSuccessRetired = it }
+        if (applied.clearRoundStartSignature) roundStartSignature = null
+        if (applied.armAutoRetry) {
+            autoRetryPending = true
+            Timber.i("sync auto-retry armed: $autoRetryBudget/$AUTO_SYNC_RETRIES")
+        } else {
+            if (applied.writeLastSynced) {
+                prefsUtil.lastSynced = System.currentTimeMillis()
+            }
+            val posted = decision.toSyncState(System.currentTimeMillis())
+            if (kind == SyncRoundTerminal.Kind.COLLECTIONS) {
+                check(posted != null) { "syncCollections does not auto-retry" }
+            }
+            posted?.let { syncState.postValue(it) }
+        }
     }
 
     private fun maybeQuietResync() {
@@ -449,7 +486,18 @@ class HomeViewModel : ViewModel() {
                     // failed the compile gate (HomeViewModel.kt:218).
                     viewModelScope.launch {
                         if (SentinelTorManager.awaitTorReady()) {
-                            launchSyncRound(ArrayList(repository.collectionsSnapshot()))
+                            val snapshot = repository.collectionsSnapshot()
+                            // Tor re-ready is not a list emission, so the
+                            // own-write gate does not apply.
+                            if (!blocksAsOwnEmission(
+                                    SyncArm.TOR_READY,
+                                    blockOwnListEmission,
+                                    roundStartSignature,
+                                    snapshot,
+                                )
+                            ) {
+                                launchSyncRound(ArrayList(snapshot))
+                            }
                         }
                     }
                 }
@@ -507,7 +555,8 @@ class HomeViewModel : ViewModel() {
             // change still differs from roundStartSignature (#47).
             // Tor re-ready calls launchSyncRound directly, and
             // pull-to-refresh / Retry call fetchBalance.
-            if (SyncRerunPolicy.isOwnListEmission(
+            if (blocksAsOwnEmission(
+                    SyncArm.LIST_EMISSION,
                     blockOwnListEmission,
                     roundStartSignature,
                     collections,
@@ -542,11 +591,12 @@ class HomeViewModel : ViewModel() {
         // testnet collections drop out of a mainnet round, mainnet
         // collections drop out of a testnet round. Read at execute
         // time, same prefs the row bind uses.
-        val inRound = collectionsForSyncRound(
+        val scoped = scopeSyncRound(
             collections,
             activeIsTestnet = prefsUtil.testnet == true,
             dojoEnabled = SentinelState.isDojoEnabled(),
         )
+        val inRound = scoped.inRound
         if (inRound.isEmpty()) {
             // #174: "nothing to sync" is a success only when a server
             // exists to have synced against. Unconfigured endpoint -> Idle;
@@ -557,11 +607,11 @@ class HomeViewModel : ViewModel() {
             // are not attempted, so their stored data stays put.
             // Execute-time truth for the admit/execute race (endpoint
             // removed mid-round, #85 ground).
-            if (prefsUtil.isAPIEndpointEnabled()) {
-                syncState.postValue(SyncState.Success(System.currentTimeMillis()))
-            } else if (syncState.value !is SyncState.Failed) {
-                syncState.postValue(SyncState.Idle)
-            }
+            emptyOnNetworkRoundState(
+                endpointEnabled = prefsUtil.isAPIEndpointEnabled(),
+                standingFailed = syncState.value is SyncState.Failed,
+                now = System.currentTimeMillis(),
+            )?.let { syncState.postValue(it) }
             updateBalance()
             SentinelState.hasAppJustStarted = false
             return@coroutineScope
@@ -581,13 +631,13 @@ class HomeViewModel : ViewModel() {
         // syncState.value in the finally block would still see "Syncing" and
         // clobber the real terminal state.
         var resolved = false
-        syncState.postValue(SyncState.Syncing(done = 0, total = inRound.size))
+        syncState.postValue(SyncState.Syncing(done = 0, total = scoped.total))
 
         // Informational only: annotates the banner, never cancels the sync.
         val slowWatchdog = launch {
             delay(SLOW_SYNC_NOTICE_MS)
             syncState.postValue(
-                SyncState.Syncing(done = completed, total = inRound.size, slow = true)
+                SyncState.Syncing(done = completed, total = scoped.total, slow = true)
             )
         }
 
@@ -624,7 +674,7 @@ class HomeViewModel : ViewModel() {
                 syncState.postValue(
                     SyncState.Syncing(
                         done = completed,
-                        total = inRound.size,
+                        total = scoped.total,
                         slow = !slowWatchdog.isActive
                     )
                 )
@@ -651,7 +701,7 @@ class HomeViewModel : ViewModel() {
             val decision = SyncRoundTerminal.decide(
                 kind = SyncRoundTerminal.Kind.COLLECTIONS,
                 failed = ledger.failed,
-                total = inRound.size,
+                total = scoped.total,
                 endpointEnabled = prefsUtil.isAPIEndpointEnabled(),
                 userInitiated = false,
                 autoRetryBudget = autoRetryBudget,
@@ -659,15 +709,7 @@ class HomeViewModel : ViewModel() {
                 standingFailed = syncState.value is SyncState.Failed,
                 tally = ledger.tally(),
             )
-            // Own writes must not use a cleared signature as a fresh arm.
-            if (decision.clearLastRoundSignature) {
-                lastRoundSignature = null
-                blockOwnListEmission = true
-            }
-            decision.staleSuccessRetired?.let { staleSuccessRetired = it }
-            val posted = decision.toSyncState(System.currentTimeMillis())
-            check(posted != null) { "syncCollections does not auto-retry" }
-            syncState.postValue(posted)
+            applyTerminal(SyncRoundTerminal.Kind.COLLECTIONS, decision)
             resolved = true
         } finally {
             Timber.i("sync round end: syncCollections")
@@ -684,7 +726,7 @@ class HomeViewModel : ViewModel() {
                 // (syncRound !== round) does not touch it. The block
                 // matches the clear: this round's writes are not the
                 // retry.
-                blockOwnListEmission = true
+                applyOwnEmission(OwnEmissionStamp.CLEAR)
                 lastRoundSignature = null
                 syncState.postValue(SyncState.Failed("Sync interrupted.", retryable = true))
             }
@@ -725,7 +767,7 @@ class HomeViewModel : ViewModel() {
      */
     private fun maybeTrailingRerun() {
         val current = repository.collectionsLiveData.value ?: return
-        if (!SyncRerunPolicy.shouldRerun(roundStartSignature, current)) {
+        if (!trailingRerunWanted(roundStartSignature, current)) {
             Timber.i("sync re-run skipped: list unchanged since round start")
             return
         }
@@ -854,7 +896,7 @@ class HomeViewModel : ViewModel() {
                 lastRoundSignature = null
                 // Same as launchSyncRound: a deferral is recovered by
                 // the next list emission or by observeTor.
-                blockOwnListEmission = false
+                applyOwnEmission(OwnEmissionStamp.TOR_DEFER)
                 syncState.postValue(
                     SyncState.WaitingForTor(SentinelTorManager.getTorState().progressIndicator)
                 )
@@ -893,11 +935,12 @@ class HomeViewModel : ViewModel() {
             // part of it: a network switch relaunches the activity, and
             // an endpoint write arms fetchBalance without this gate.
             // What the round attempts is a separate decision.
-            val inRound = collectionsForSyncRound(
+            val scoped = scopeSyncRound(
                 collections,
                 activeIsTestnet = prefsUtil.testnet == true,
                 dojoEnabled = SentinelState.isDojoEnabled(),
             )
+            val inRound = scoped.inRound
             if (inRound.size != collections.size) {
                 Timber.i(
                     "sync round: skipping ${collections.size - inRound.size} off-network collections"
@@ -907,7 +950,7 @@ class HomeViewModel : ViewModel() {
             lastRoundSignature = SyncRerunPolicy.signatureOf(collections)
             // #489: baseline for the trailing re-run decision.
             roundStartSignature = lastRoundSignature
-            blockOwnListEmission = false
+            applyOwnEmission(OwnEmissionStamp.ADMIT)
             var completed = 0
             // #475: same outcome accounting as the auto round.
             // Only [inRound] is recorded, gated, or passed as M.
@@ -919,12 +962,12 @@ class HomeViewModel : ViewModel() {
             val slowWatchdog: Job? = if (inRound.isEmpty()) {
                 null
             } else {
-                syncState.postValue(SyncState.Syncing(done = 0, total = inRound.size))
+                syncState.postValue(SyncState.Syncing(done = 0, total = scoped.total))
                 // Informational only - no timeout, since Tor can legitimately be slow.
                 launch {
                     delay(SLOW_SYNC_NOTICE_MS)
                     syncState.postValue(
-                        SyncState.Syncing(done = completed, total = inRound.size, slow = true)
+                        SyncState.Syncing(done = completed, total = scoped.total, slow = true)
                     )
                 }
             }
@@ -956,7 +999,7 @@ class HomeViewModel : ViewModel() {
                     syncState.postValue(
                         SyncState.Syncing(
                             done = completed,
-                            total = inRound.size,
+                            total = scoped.total,
                             slow = slowWatchdog?.isActive == false
                         )
                     )
@@ -982,7 +1025,7 @@ class HomeViewModel : ViewModel() {
                 val decision = SyncRoundTerminal.decide(
                     kind = SyncRoundTerminal.Kind.BALANCE,
                     failed = ledger.failed,
-                    total = inRound.size,
+                    total = scoped.total,
                     endpointEnabled = prefsUtil.isAPIEndpointEnabled(),
                     userInitiated = userInitiated,
                     autoRetryBudget = autoRetryBudget,
@@ -990,28 +1033,7 @@ class HomeViewModel : ViewModel() {
                     standingFailed = syncState.value is SyncState.Failed,
                     tally = ledger.tally(),
                 )
-                autoRetryBudget = decision.autoRetryBudget
-                if (decision.clearLastRoundSignature) {
-                    lastRoundSignature = null
-                    blockOwnListEmission = true
-                }
-                decision.staleSuccessRetired?.let { staleSuccessRetired = it }
-                if (decision.armAutoRetry) {
-                    // Tor state ON does not mean the SOCKS circuit is
-                    // usable yet. Stay in Syncing (no Failed flash) and
-                    // retry shortly instead of churning rounds (#47).
-                    autoRetryPending = true
-                    Timber.i(
-                        "sync auto-retry armed: $autoRetryBudget/$AUTO_SYNC_RETRIES"
-                    )
-                } else {
-                    if (decision.writeLastSynced) {
-                        prefsUtil.lastSynced = System.currentTimeMillis()
-                    }
-                    decision.toSyncState(System.currentTimeMillis())?.let {
-                        syncState.postValue(it)
-                    }
-                }
+                applyTerminal(SyncRoundTerminal.Kind.BALANCE, decision)
                 resolved = true
             } finally {
                 val roundIsSelf = syncRound === self
@@ -1060,19 +1082,14 @@ class HomeViewModel : ViewModel() {
 
     fun getFiatBalance(): LiveData<String> = fiatBalance
 
-    private fun getFiatBalance(balance: Long?, rate: ExchangeRateRepository.Rate?): String {
-        // Missing rate is blank. Callers hide the line instead of painting a fake amount.
-        if (prefsUtil.fiatDisabled == true) return ""
-        if (rate == null || rate.rate <= 0L) return ""
-        balance ?: return ""
-        return try {
-            val fiatRate = MonetaryUtil.getInstance().getFiatFormat(prefsUtil.selectedCurrency)
-                .format((balance / 1e8) * rate.rate)
-            "$fiatRate ${rate.currency}"
-        } catch (e: Exception) {
-            ""
+    private fun getFiatBalance(balance: Long?, rate: ExchangeRateRepository.Rate?): String =
+        homeFiatLine(
+            fiatDisabled = prefsUtil.fiatDisabled == true,
+            balanceSats = balance,
+            rate = rate,
+        ) { value ->
+            MonetaryUtil.getInstance().getFiatFormat(prefsUtil.selectedCurrency).format(value)
         }
-    }
 
     private fun updateBalance() {
         val collections = repository.collectionsLiveData.value ?: return

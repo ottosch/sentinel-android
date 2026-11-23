@@ -25,6 +25,8 @@ import com.samourai.sentinel.data.PubKeyCollection
 import com.samourai.sentinel.data.repository.ExchangeRateRepository
 import com.samourai.sentinel.databinding.FragmentTransactionsBinding
 import com.samourai.sentinel.ui.SentinelActivity
+import com.samourai.sentinel.ui.home.homeFiatLine
+import com.samourai.sentinel.ui.home.presentFiatLine
 import com.samourai.sentinel.ui.collectionEdit.CollectionEditActivity
 import com.samourai.sentinel.ui.dojo.PubKeyRescanner
 import com.samourai.sentinel.ui.utils.showFloatingSnackBar
@@ -281,11 +283,12 @@ class TransactionsFragment : Fragment() {
         } else {
             getFiatBalance(sats, exchangeRateRepository.getRateLive().value)
         }
-        if (!showFiat || fiat.isBlank()) {
-            binding.collectionBalanceFiat.text = ""
+        val line = presentFiatLine(showFiat, fiat)
+        if (!line.visible) {
+            binding.collectionBalanceFiat.text = line.text
             binding.collectionBalanceFiat.visibility = View.GONE
         } else {
-            binding.collectionBalanceFiat.text = fiat
+            binding.collectionBalanceFiat.text = line.text
             binding.collectionBalanceFiat.visibility = View.VISIBLE
         }
     }
@@ -317,18 +320,14 @@ class TransactionsFragment : Fragment() {
         }
     }
 
-    private fun getFiatBalance(balance: Long?, rate: ExchangeRateRepository.Rate?): String {
-        if (prefsUtil.fiatDisabled == true) return ""
-        if (rate == null || rate.rate <= 0L) return ""
-        balance ?: return ""
-        return try {
-            val fiatRate = MonetaryUtil.getInstance().getFiatFormat(prefsUtil.selectedCurrency)
-                .format((balance / 1e8) * rate.rate)
-            "$fiatRate ${rate.currency}"
-        } catch (e: Exception) {
-            ""
+    private fun getFiatBalance(balance: Long?, rate: ExchangeRateRepository.Rate?): String =
+        homeFiatLine(
+            fiatDisabled = prefsUtil.fiatDisabled == true,
+            balanceSats = balance,
+            rate = rate,
+        ) { value ->
+            MonetaryUtil.getInstance().getFiatFormat(prefsUtil.selectedCurrency).format(value)
         }
-    }
 
     private fun setUpToolBar() {
         (activity as SentinelActivity).setSupportActionBar(binding.toolbarCollectionDetails)
