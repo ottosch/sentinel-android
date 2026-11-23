@@ -167,10 +167,17 @@ class DojoBayStrictJsonTest {
     @Test
     fun `signed text with NULL, a single-quote escape or a control character is refused, as Dojo Bay refuses it`() {
         val alice = DojoBayTestVectors.ThrowawayPayNym(11)
-        for (text in listOf("""{"explorer":NULL}""", """{"x":"a\'b"}""", "{\"x\":\"a\u0001b\"}", "\uFEFF{}")) {
+        for (text in listOf("""{"explorer":NULL}""", """{"x":"a\'b"}""", "{\"x\":\"a\u0001b\"}")) {
             val node = CommunityDojoNode(payload = DojoBayTestVectors.testPayload(), signed = alice.listing(text))
             assertEquals(text, NodeCheck.Unverified(DojoBaySignatures.Failure.NOT_A_PAIRING), DojoBaySignatures.checkNode(node))
         }
+        // A leading U+FEFF is whitespace to JavaScript's trim, so crypto.ts
+        // strips it and the signed text becomes "{}", which is not a pairing.
+        // The signature is over the raw "\uFEFF{}", so the app reports the
+        // signature failure first, exactly as Dojo Bay's check order does.
+        val feff = CommunityDojoNode(payload = DojoBayTestVectors.testPayload(), paymentCode = alice.code,
+            signed = alice.block("\uFEFF{}"))
+        assertEquals(NodeCheck.Unverified(DojoBaySignatures.Failure.BAD_SIGNATURE), DojoBaySignatures.checkNode(feff))
     }
 
     @Test

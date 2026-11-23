@@ -24,7 +24,7 @@ class DojoBayVerifierVectorsTest {
     @Test
     fun `listings get Dojo Bay's verdict`() {
         val listings = root.getAsJsonArray("listings")
-        assertEquals(24, listings.size())
+        assertEquals(36, listings.size())
         val wrong = listings.map { it.asJsonObject }.mapNotNull { o ->
             // Through the directory parser, as the app reads a served list.
             val node = CommunityDojoRepository.parseDirectory("""{"nodes":[${o.get("node")}]}""").single()
@@ -39,7 +39,7 @@ class DojoBayVerifierVectorsTest {
     @Test
     fun `operator documents get Dojo Bay's verdict`() {
         val operators = root.getAsJsonArray("operators")
-        assertEquals(5, operators.size())
+        assertEquals(10, operators.size())
         val wrong = operators.map { it.asJsonObject }.mapNotNull { o ->
             val doc = fromJSON<DojoBaySignatures.OperatorDoc>(o.get("doc").toString())
             val check = DojoBaySignatures.checkOperator(doc, o.get("fetched").asString)
@@ -58,6 +58,14 @@ class DojoBayVerifierVectorsTest {
             "sig-66-bytes-trailing-zero", "extra-unknown-field-signed", "number-vs-string-version",
             "lenient-json-single-quotes", "listed-has-unsigned-extra-field", "explorer-null-vs-absent",
             "upper-case-host-signed", "path-case-differs", "sig-66-bytes",
+            // Whitespace: JavaScript's set, not Java's. Unicode spaces and U+FEFF
+            // are whitespace to crypto.ts; U+001C-U+001F are not.
+            "tail-nbsp-before-bip47", "tail-feff-before-bip47", "tail-fs-before-bip47",
+            "tail-nbsp-after-bip47", "tail-feff-after-bip47", "tail-fs-after-bip47",
+            "message-feff-edges", "message-fs-edges",
+            "address-feff", "address-fs", "address-feff-trailing", "address-fs-trailing",
+            "operator-bip47-nbsp", "operator-bip47-feff", "operator-bip47-fs",
+            "operator-onion-feff", "operator-onion-fs",
         )) assertTrue(n, n in names)
     }
 }

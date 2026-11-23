@@ -286,6 +286,137 @@ class DojoBaySignaturesTest {
         assertEquals(OperatorCheck.Verified(alice.code), DojoBaySignatures.checkOperator(alice.operatorDoc(onion), onion))
     }
 
+    // ---- whitespace: JavaScript's, not Java's -----------------------------
+
+    /** ECMAScript's `\s` and `trim()` set, which includes U+FEFF. */
+    private val jsWhitespace = listOf(
+        "\u0009", "\u000A", "\u000B", "\u000C", "\u000D", "\u0020",
+        "\u00A0", "\u1680", "\u2000", "\u2007", "\u200A", "\u2028",
+        "\u2029", "\u202F", "\u205F", "\u3000", "\uFEFF",
+    )
+
+    /** Java's `\s` and `trim()` treat these as whitespace; JavaScript does not. */
+    private val notJsWhitespace = listOf("\u001C", "\u001D", "\u001E", "\u001F")
+
+    private fun label(c: String) = "U+%04X".format(c[0].code)
+
+    private fun blockFor(message: String, address: String = alice.address) =
+        "-----BEGIN BITCOIN SIGNED MESSAGE-----\n$message\n" +
+            "-----BEGIN BITCOIN SIGNATURE-----\nVersion: Bitcoin-qt (1.0)\n" +
+            "Address: $address\n\n${"A".repeat(88)}\n" +
+            "-----END BITCOIN SIGNATURE-----"
+
+    @Test
+    fun `jsTrim matches JavaScript trim, including U+FEFF and U+001C-U+001F`() {
+        for (c in jsWhitespace) {
+            assertEquals(label(c), "x", DojoBaySignatures.jsTrim(c + "x" + c))
+        }
+        for (c in notJsWhitespace) {
+            assertEquals(label(c), c + "x" + c, DojoBaySignatures.jsTrim(c + "x" + c))
+        }
+    }
+
+    @Test
+    fun `listing message trim is byte-for-byte JavaScript's`() {
+        for (c in jsWhitespace) {
+            assertEquals(label(c), "message",
+                DojoBaySignatures.parseListingBlock(blockFor(c + "message" + c))!!.message)
+        }
+        for (c in notJsWhitespace) {
+            assertEquals(label(c), c + "message" + c,
+                DojoBaySignatures.parseListingBlock(blockFor(c + "message" + c))!!.message)
+        }
+    }
+
+    @Test
+    fun `listing tail accepts the Unicode spaces JavaScript accepts`() {
+        for (c in jsWhitespace) {
+            val before = DojoBayTestVectors.TEST_PAIRING_JSON + "\n" + c + "BIP47: " + alice.code
+            val node = CommunityDojoNode(payload = DojoBayTestVectors.testPayload(), signed = alice.block(before))
+            assertEquals("before ${label(c)}", alice.code,
+                (DojoBaySignatures.checkNode(node) as NodeCheck.Verified).paymentCode)
+
+            val after = DojoBayTestVectors.TEST_PAIRING_JSON + "\nBIP47:" + c + alice.code
+            val node2 = CommunityDojoNode(payload = DojoBayTestVectors.testPayload(), signed = alice.block(after))
+            assertEquals("after ${label(c)}", alice.code,
+                (DojoBaySignatures.checkNode(node2) as NodeCheck.Verified).paymentCode)
+        }
+    }
+
+    @Test
+    fun `listing tail does not treat U+001C-U+001F as whitespace`() {
+        for (c in notJsWhitespace) {
+            val before = DojoBayTestVectors.TEST_PAIRING_JSON + "\n" + c + "BIP47: " + alice.code
+            // No tail match, so the listed code is the signer; the full message
+            // is then not a pairing.
+            val node = CommunityDojoNode(payload = DojoBayTestVectors.testPayload(), paymentCode = alice.code,
+                signed = alice.block(before))
+            assertEquals("before ${label(c)}", Failure.NOT_A_PAIRING, failure(node))
+
+            val after = DojoBayTestVectors.TEST_PAIRING_JSON + "\nBIP47:" + c + alice.code
+            val node2 = CommunityDojoNode(payload = DojoBayTestVectors.testPayload(), signed = alice.block(after))
+            assertEquals("after ${label(c)}", Failure.SIGNER_NOT_CODE, failure(node2))
+        }
+    }
+
+    @Test
+    fun `address line trims exactly like JavaScript`() {
+        for (c in jsWhitespace - listOf("\u000A", "\u000D")) {
+            assertEquals("leading ${label(c)}", alice.address,
+                DojoBaySignatures.parseListingBlock(blockFor("m", c + alice.address))!!.address)
+            assertEquals("trailing ${label(c)}", alice.address,
+                DojoBaySignatures.parseListingBlock(blockFor("m", alice.address + c))!!.address)
+        }
+        for (c in notJsWhitespace) {
+            assertEquals("leading ${label(c)}", c + alice.address,
+                DojoBaySignatures.parseListingBlock(blockFor("m", c + alice.address))!!.address)
+            assertEquals("trailing ${label(c)}", alice.address + c,
+                DojoBaySignatures.parseListingBlock(blockFor("m", alice.address + c))!!.address)
+        }
+    }
+
+    @Test
+    fun `operator BIP47 line accepts the Unicode spaces JavaScript accepts`() {
+        val onion = "http://" + "e".repeat(56) + ".onion/"
+        for (c in jsWhitespace) {
+            val doc = DojoBaySignatures.OperatorDoc(
+                onion, alice.code, alice.block("$onion\n\nBIP47:" + c + alice.code))
+            assertEquals(label(c), OperatorCheck.Verified(alice.code),
+                DojoBaySignatures.checkOperator(doc, onion))
+        }
+        for (c in notJsWhitespace) {
+            val doc = DojoBaySignatures.OperatorDoc(
+                onion, alice.code, alice.block("$onion\n\nBIP47:" + c + alice.code))
+            assertEquals(label(c), OperatorCheck.Failed(OperatorFailure.CODE_MISMATCH),
+                DojoBaySignatures.checkOperator(doc, onion))
+        }
+    }
+
+    @Test
+    fun `operator URL trim is byte-for-byte JavaScript's`() {
+        val onion = "http://" + "e".repeat(56) + ".onion/"
+        val signed = alice.block("$onion\n\nBIP47: ${alice.code}")
+        // JS trim removes U+FEFF, so a document whose onion is wrapped in it still matches.
+        val feff = DojoBaySignatures.OperatorDoc("\uFEFF$onion\uFEFF", alice.code, signed)
+        assertEquals(OperatorCheck.Verified(alice.code), DojoBaySignatures.checkOperator(feff, onion))
+        // JS trim keeps U+001C-U+001F, so it must not be silently stripped.
+        for (c in notJsWhitespace) {
+            for (wrapped in listOf(c + onion, onion + c)) {
+                val doc = DojoBaySignatures.OperatorDoc(wrapped, alice.code, signed)
+                assertEquals("${label(c)} $wrapped", OperatorCheck.Failed(OperatorFailure.WRONG_ADDRESS),
+                    DojoBaySignatures.checkOperator(doc, onion))
+            }
+        }
+    }
+
+    @Test
+    fun `claim block drops trailing newlines exactly like JavaScript`() {
+        val onion = "http://" + "e".repeat(56) + ".onion/"
+        val message = "$onion\n\nBIP47: ${alice.code}\n\n"
+        val parsed = DojoBaySignatures.parseClaimBlock(alice.block(message))!!
+        assertEquals("$onion\n\nBIP47: ${alice.code}", parsed.message)
+    }
+
     private fun toHighS(signatureBase64: String): String {
         val bytes = Base64.decode(signatureBase64)
         val header = bytes[0].toInt() and 0xFF

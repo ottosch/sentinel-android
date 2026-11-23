@@ -162,6 +162,8 @@ class DojoBayInputBoundsTest {
         val path = "java/com/samourai/sentinel/ui/dojo/DojoBaySignatures.kt"
         val src = listOf(File("src/main/$path"), File("app/src/main/$path")).first { it.isFile }.readText()
         assertTrue(src.contains("""Regex("BEGIN BITCOIN SIGNED MESSAGE-----\\n([\\s\\S]*?)\\n-----BEGIN BITCOIN SIGNATURE")"""))
-        assertTrue(src.contains("""Regex("^([\\s\\S]*?)\\n\\s*BIP47:\\s*\\n?(\\S+)$")"""))
+        // The tail uses JavaScript's whitespace set (JS_WS), not Java's ASCII-only \s.
+        val jsWs = "\$JS_WS"
+        assertTrue(src.contains("""Regex("^([\\s\\S]*?)\\n[$jsWs]*BIP47:[$jsWs]*\\n?([^$jsWs]+)$")"""))
     }
 }

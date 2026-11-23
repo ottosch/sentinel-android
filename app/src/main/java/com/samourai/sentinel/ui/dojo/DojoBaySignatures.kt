@@ -50,6 +50,37 @@ import org.bouncycastle.util.encoders.Base64
  */
 object DojoBaySignatures {
 
+    // ---- whitespace (JavaScript's, not Java's) ---------------------------
+
+    /**
+     * The set ECMAScript uses for `\s` and `String.prototype.trim()`: ASCII
+     * whitespace, the Unicode space separators, and U+FEFF. It deliberately
+     * leaves out U+001C-U+001F, which Java's `\s` and `trim()` do not.
+     *
+     * Dojo Bay parses signed blocks with JavaScript, so every regex and trim
+     * below has to use this set rather than the JVM's: `\s` and `\S` in
+     * java.util.regex are ASCII-only, and Kotlin's `trim()` keeps U+FEFF
+     * while removing U+001C-U+001F, the opposite of JavaScript.
+     */
+    private const val JS_WS =
+        "\\t\\n\\u000B\\f\\r \\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000\\uFEFF"
+
+    private fun isJsWhitespace(c: Char): Boolean = when (c) {
+        '\t', '\n', '\u000B', '\u000C', '\r', ' ',
+        '\u00A0', '\u1680', '\u2028', '\u2029', '\u202F', '\u205F', '\u3000', '\uFEFF' -> true
+        in '\u2000'..'\u200A' -> true
+        else -> false
+    }
+
+    /** `String.prototype.trim()`, as crypto.ts uses it. */
+    internal fun jsTrim(s: String): String {
+        var start = 0
+        var end = s.length
+        while (start < end && isJsWhitespace(s[start])) start++
+        while (end > start && isJsWhitespace(s[end - 1])) end--
+        return if (start == 0 && end == s.length) s else s.substring(start, end)
+    }
+
     // ---- block parsing (crypto.ts:211-227 and :378-381) -----------------
 
     data class SignedBlock(
@@ -79,9 +110,9 @@ object DojoBaySignatures {
     // verifyOperatorDoc tolerates a swallowed newline after BEGIN and blank lines before END.
     private val CLAIM_MSG = Regex("BEGIN BITCOIN SIGNED MESSAGE-----[ \\t]*\\n?([\\s\\S]*?)\\n-----BEGIN BITCOIN SIGNATURE")
     private val CLAIM_SIG = Regex("\\n([A-Za-z0-9+/=]{80,})\\n*-----END BITCOIN SIGNATURE")
-    private val ADDRESS = Regex("Address:\\s*(\\S+)")
-    private val LISTING_TAIL = Regex("^([\\s\\S]*?)\\n\\s*BIP47:\\s*\\n?(\\S+)$")
-    private val CLAIM_BIP47 = Regex("BIP47:\\s*(PM8T[1-9A-HJ-NP-Za-km-z]+)")
+    private val ADDRESS = Regex("Address:[$JS_WS]*([^$JS_WS]+)")
+    private val LISTING_TAIL = Regex("^([\\s\\S]*?)\\n[$JS_WS]*BIP47:[$JS_WS]*\\n?([^$JS_WS]+)$")
+    private val CLAIM_BIP47 = Regex("BIP47:[$JS_WS]*(PM8T[1-9A-HJ-NP-Za-km-z]+)")
 
     /** A listing block: message trimmed, as parseSignedBlock does. */
     fun parseListingBlock(text: String?): SignedBlock? {
@@ -90,7 +121,7 @@ object DojoBaySignatures {
         val msg = LISTING_MSG.find(t)?.groupValues?.get(1) ?: return null
         val addr = ADDRESS.find(t)?.groupValues?.get(1) ?: return null
         val sig = LISTING_SIG.find(t)?.groupValues?.get(1) ?: return null
-        return SignedBlock(msg.trim(), addr.trim(), sig.trim())
+        return SignedBlock(jsTrim(msg), jsTrim(addr), jsTrim(sig))
     }
 
     /** An operator/URL claim block: trailing newlines dropped, as verifyOperatorDoc does. */
@@ -100,7 +131,7 @@ object DojoBaySignatures {
         val msg = CLAIM_MSG.find(t)?.groupValues?.get(1) ?: return null
         val addr = ADDRESS.find(t)?.groupValues?.get(1) ?: return null
         val sig = CLAIM_SIG.find(t)?.groupValues?.get(1) ?: return null
-        return SignedBlock(msg.trimEnd('\n'), addr.trim(), sig.trim())
+        return SignedBlock(msg.trimEnd('\n'), jsTrim(addr), jsTrim(sig))
     }
 
     // ---- primitives ------------------------------------------------------
@@ -112,9 +143,8 @@ object DojoBaySignatures {
      * time growing with the square of the input length.
      */
     fun notificationAddresses(paymentCode: String?): List<String> {
-        if (paymentCode.isNullOrBlank()) return emptyList()
-        val trimmed = paymentCode.trim()
-        if (!PAYMENT_CODE_SHAPE.matches(trimmed)) return emptyList()
+        val trimmed = jsTrim(paymentCode.orEmpty())
+        if (trimmed.isEmpty() || !PAYMENT_CODE_SHAPE.matches(trimmed)) return emptyList()
         val code = try {
             PaymentCode(trimmed).takeIf { it.isValid }
         } catch (e: Exception) {
@@ -194,7 +224,7 @@ object DojoBaySignatures {
             return NodeCheck.Unverified(Failure.BAD_SIGNATURE)
         }
         val tail = LISTING_TAIL.find(parsed.message)
-        val pairingText = tail?.groupValues?.get(1)?.trim() ?: parsed.message
+        val pairingText = tail?.groupValues?.get(1)?.let { jsTrim(it) } ?: parsed.message
         // Whose signature this is. With a BIP47 line, the code in the signed
         // text must own the signing address (crypto.ts:281-289). Without one,
         // the listed code must own it - the role the authenticated session
@@ -319,7 +349,7 @@ object DojoBaySignatures {
     }
 
     /** verifyOperatorDoc's norm(): trimmed, trailing slashes dropped, case kept. */
-    private fun normUrl(u: String?): String = u.orEmpty().trim().trimEnd('/')
+    private fun normUrl(u: String?): String = jsTrim(u.orEmpty()).trimEnd('/')
 
     /**
      * verifyOperatorDoc with expectedOnion = the base address the document
@@ -331,7 +361,7 @@ object DojoBaySignatures {
             return OperatorCheck.Failed(OperatorFailure.MISSING)
         }
         val parsed = parseClaimBlock(doc.verifySigned) ?: return OperatorCheck.Failed(OperatorFailure.UNREADABLE_BLOCK)
-        val firstLine = parsed.message.split("\n").first().trim()
+        val firstLine = jsTrim(parsed.message.split("\n").first())
         if (normUrl(firstLine) != normUrl(doc.onion) || normUrl(doc.onion) != normUrl(fetchedFromBaseUrl)) {
             return OperatorCheck.Failed(OperatorFailure.WRONG_ADDRESS)
         }
