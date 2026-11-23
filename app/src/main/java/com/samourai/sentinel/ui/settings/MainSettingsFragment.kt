@@ -22,6 +22,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.samourai.sentinel.R
 import com.samourai.sentinel.core.access.AccessFactory
 import com.samourai.sentinel.core.access.PinVault
+import com.samourai.sentinel.core.access.UnlockResult
 import com.samourai.sentinel.data.db.SentinelRoomDb
 import com.samourai.sentinel.data.db.appWalletPayloads
 import com.samourai.sentinel.data.repository.Bip329Exporter
@@ -57,6 +58,7 @@ import com.samourai.sentinel.util.ExportImportUtil
 import com.samourai.sentinel.util.ImportLimits
 import com.samourai.sentinel.util.UtxoMetaUtil
 import org.json.JSONObject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
@@ -91,6 +93,10 @@ class MainSettingsFragment : PreferenceFragmentCompat() {
 
     /** #355: waiting room for the settings-side Argon2id runs. */
     private val kdfOverlay by lazy { KdfProgressOverlay(requireActivity()) }
+
+    private var gateBusy = false
+
+    internal var gatePinVerifier: (String) -> UnlockResult = { pin -> PinVault(prefsUtil).verify(pin) }
 
     /**
      * #220: first pin of a set-pin flow. Memory of this fragment instance
@@ -158,6 +164,8 @@ class MainSettingsFragment : PreferenceFragmentCompat() {
     }
 
     override fun onDestroyView() {
+        kdfOverlay.dismiss()
+        gateBusy = false
         parentFragmentManager.removeOnBackStackChangedListener(padBackStackListener)
         // Leaving the screen with the flag still set would keep Settings
         // hidden from accessibility for the rest of the activity's life.
@@ -620,7 +628,7 @@ class MainSettingsFragment : PreferenceFragmentCompat() {
      * before; this gate is not a substitute for setting one.
      */
     private fun requirePin(action: GatedAction) {
-        if (prefsUtil.pinHash.isNullOrEmpty()) {
+        if (!prefsUtil.isPinConfigured()) {
             runGatedAction(action)
             return
         }
@@ -636,25 +644,48 @@ class MainSettingsFragment : PreferenceFragmentCompat() {
     private fun onGatePinEntered(pin: String) {
         val dialog = parentFragmentManager.findFragmentByTag(TAG_PIN_GATE) as? LockScreenDialog ?: return
         val action = pendingGatedAction
-        val hash = prefsUtil.pinHash
-        if (action == null || hash.isNullOrEmpty()) {
+        if (action == null || !prefsUtil.isPinConfigured()) {
             // Nothing to authorise - the fragment was recreated, or the PIN
             // was removed while the pad was open.
             pendingGatedAction = null
             parentFragmentManager.popBackStack()
             return
         }
+        if (gateBusy) return
+        gateBusy = true
+        kdfOverlay.show("Checking PIN\u2026")
         settingsScope.launch {
-            val valid = withContext(Dispatchers.IO) { accessFactory.validateHash(pin, hash) }
-            if (valid) {
-                // Consume the authorisation before running, so a replayed
-                // result cannot run the action twice.
-                pendingGatedAction = null
-                dialog.dismiss()
-                parentFragmentManager.popBackStack()
-                runGatedAction(action)
-            } else {
-                dialog.showError()
+            val result = try {
+                withContext(Dispatchers.IO) {
+                    gatePinVerifier(pin)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                Timber.e(t, "PIN gate check failed")
+                UnlockResult.Unavailable(getString(R.string.pin_unavailable))
+            } finally {
+                kdfOverlay.dismiss()
+                gateBusy = false
+            }
+            if (!isAdded) return@launch
+            when (result) {
+                UnlockResult.Success -> {
+                    // Consume the authorisation before running, so a replayed
+                    // result cannot run the action twice.
+                    pendingGatedAction = null
+                    dialog.dismiss()
+                    parentFragmentManager.popBackStack()
+                    runGatedAction(action)
+                }
+                UnlockResult.WrongPin, UnlockResult.NotConfigured -> {
+                    dialog.showError()
+                }
+                is UnlockResult.Unavailable -> {
+                    val unavailable = getString(R.string.pin_unavailable)
+                    dialog.resetPad(unavailable)
+                    context?.let { Toast.makeText(it, unavailable, Toast.LENGTH_LONG).show() }
+                }
             }
         }
     }
