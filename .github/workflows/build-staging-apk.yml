@@ -400,6 +400,20 @@ jobs:
               ./gradlew --stacktrace :app:assembleProductionRelease
           fi
 
+      - name: Guard - production gate refuses an untagged build (#608)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/gate608.log"
+          if env -u SENTINEL_ALLOW_UNTAGGED_PRODUCTION -u SENTINEL_VERSION_NAME \
+              ./gradlew --console=plain :app:preProductionReleaseBuild > "$log" 2>&1; then
+            echo "::error::#608 gate did not refuse an untagged production build."
+            exit 1
+          fi
+          grep -q 'Refusing to build the production flavor' "$log"
+          ./gradlew --console=plain :app:preProductionReleaseBuild -Psentinel.versionName=6.0.0
+
       - name: Guard - release dex does not gain a logcat call
         shell: bash
         run: |
