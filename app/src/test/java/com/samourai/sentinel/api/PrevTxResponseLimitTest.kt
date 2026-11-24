@@ -124,8 +124,9 @@ class PrevTxResponseLimitTest {
 
     @Test
     fun uncappedAwaitStillReadsPastThePrevTxCeiling() {
-        // Wallet and history calls share await() and do not pass a cap.
-        // A body one byte over the prev-tx ceiling must still come through.
+        // This call does not pass a cap. /wallet and /txs pass one at
+        // their call sites. A body one byte over the prev-tx ceiling
+        // must still come through an uncapped await().
         val size = ImportLimits.PREV_TX_RESPONSE_MAX_BYTES + 1
         server.enqueue(MockResponse().setBody("b".repeat(size)))
         val client = cappedClient(readTimeoutSeconds = 8)
