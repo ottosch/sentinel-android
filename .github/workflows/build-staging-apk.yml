@@ -413,6 +413,30 @@ jobs:
           fi
           grep -q 'Refusing to build the production flavor' "$log"
           ./gradlew --console=plain :app:preProductionReleaseBuild -Psentinel.versionName=6.0.0
+          if ./gradlew --console=plain :app:help '-Psentinel.versionName=6.0.0-rc.1"' > "$log" 2>&1; then
+            echo "::error::#608 versionName validation accepted a non-release value."
+            exit 1
+          fi
+          grep -q 'must be MAJOR.MINOR.PATCH' "$log"
+          if SENTINEL_ALLOW_UNTAGGED_PRODUCTION=1 CI_RELEASE_KEYSTORE=/nonexistent \
+              ./gradlew --console=plain :app:help > "$log" 2>&1; then
+            echo "::error::#608 escape hatch accepted next to a release signing key."
+            exit 1
+          fi
+          grep -q 'is not allowed with a release signing key' "$log"
+          if SENTINEL_ALLOW_UNTAGGED_PRODUCTION=1 GITHUB_REF=refs/tags/v6.0.0 \
+              ./gradlew --console=plain :app:help > "$log" 2>&1; then
+            echo "::error::#608 escape hatch accepted on a tag ref."
+            exit 1
+          fi
+          grep -q 'is not allowed with a release signing key' "$log"
+          if SENTINEL_ALLOW_UNTAGGED_PRODUCTION=1 \
+              ./gradlew --console=plain :app:help \
+              -Pandroid.injected.signing.store.file=/nonexistent > "$log" 2>&1; then
+            echo "::error::#608 escape hatch accepted next to an IDE signing store file."
+            exit 1
+          fi
+          grep -q 'is not allowed with a release signing key' "$log"
 
       - name: Guard - release dex does not gain a logcat call
         shell: bash
