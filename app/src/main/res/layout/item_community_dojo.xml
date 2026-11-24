@@ -60,7 +60,7 @@
             android:textSize="12sp"
             tools:text="v1.29.2 • Singapore • online" />
 
-        <!-- Who signed it: collapsed (first 8 … last 8) until tapped. -->
+        <!-- Who signed it: first 8 … last 8, as plain text. A tap on the row opens the pre-pair dialog. -->
         <TextView
             android:id="@+id/communityDojoSigner"
             android:layout_width="match_parent"
@@ -70,31 +70,6 @@
             android:visibility="gone"
             tools:text="Signed by PM8TJUJH…eNoCEoum"
             tools:visibility="visible" />
-
-        <TextView
-            android:id="@+id/communityDojoSignerCode"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:breakStrategy="simple"
-            android:fontFamily="@font/roboto_mono"
-            android:lineSpacingExtra="2dp"
-            android:textColor="#CFCFCF"
-            android:textIsSelectable="false"
-            android:textSize="11sp"
-            android:visibility="gone"
-            tools:text="PM8T JUJH kfdj kb5g 5XaJ uvnC 63rU z7LX" />
-
-        <TextView
-            android:id="@+id/communityDojoSignerLink"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:fontFamily="sans-serif-medium"
-            android:text="@string/paynym_view_link"
-            android:textColor="@color/green_ui_2"
-            android:textSize="12sp"
-            android:visibility="gone" />
 
         <TextView
             android:id="@+id/communityDojoSignerWarning"
