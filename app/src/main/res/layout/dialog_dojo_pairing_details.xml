@@ -270,20 +270,47 @@
             android:textSize="12sp"
             tools:text="PM8T JUJH kfdj kb5g 5XaJ uvnC 63rU z7LX" />
 
-        <TextView
-            android:id="@+id/dojoPairingSignerLink"
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:id="@+id/dojoPairingSignerLinkRow"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:background="?attr/selectableItemBackground"
-            android:drawablePadding="6dp"
-            android:fontFamily="sans-serif-medium"
             android:gravity="center_vertical"
-            android:text="@string/paynym_view_link"
-            android:textColor="@color/green_ui_2"
-            android:textSize="14sp"
-            app:drawableEndCompat="@drawable/ic_open_in_new_16"
-            app:drawableTint="@color/green_ui_2" />
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/dojoPairingSignerLink"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="?attr/selectableItemBackground"
+                android:drawablePadding="6dp"
+                android:fontFamily="sans-serif-medium"
+                android:gravity="center_vertical"
+                android:text="@string/paynym_view_link"
+                android:textColor="@color/paynym_link_color_state_list"
+                android:textSize="14sp"
+                app:drawableEndCompat="@drawable/ic_open_in_new_16"
+                app:drawableTint="@color/paynym_link_color_state_list" />
+
+            <ProgressBar
+                android:id="@+id/dojoPairingSignerLinkProgress"
+                style="?android:attr/progressBarStyleSmall"
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:layout_marginStart="8dp"
+                android:contentDescription="@string/paynym_view_looking_up"
+                android:indeterminate="true"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/dojoPairingSignerLinkError"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:textColor="#CFCFCF"
+            android:textSize="12sp"
+            android:visibility="gone" />
 
         <!-- Another listing in the list uses this name with a different signer. -->
         <LinearLayout

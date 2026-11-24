@@ -281,6 +281,7 @@
     <string name="dojo_pairing_signer_collision" translatable="false">Another listing uses this name with a different signer. Check the full code.</string>
     <string name="community_dojo_signer_collision" translatable="false">Another listing uses this name with a different signer</string>
     <string name="paynym_view_link" translatable="false">View on PayNym</string>
+    <string name="paynym_view_looking_up" translatable="false">Looking up PayNym…</string>
     <string name="paynym_from_caption" translatable="false">from paynym.rs</string>
     <string name="paynym_avatar_description" translatable="false">PayNym avatar</string>
     <string name="paynym_avatar_failed_description" translatable="false">PayNym avatar unavailable</string>

@@ -8,7 +8,9 @@ import com.samourai.sentinel.tor.SentinelTorManager
 import com.samourai.sentinel.ui.webview.ExplorerLoadDecision
 import com.samourai.sentinel.ui.webview.ExplorerOpener
 import com.samourai.sentinel.ui.webview.explorerLoadDecision
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -84,18 +86,45 @@ object PayNymPage {
 
     /**
      * "View on PayNym" for a signed code: finds its +name ([urlForSigner]),
-     * then opens the page, or says there is none to open.
+     * then opens the page, or says there is none to open. [onResult] is
+     * invoked on the same scope when the lookup finishes (true if the
+     * page was opened). When it is set, the caller shows the failure;
+     * otherwise a toast is used. Cancelling the job stops the lookup.
      */
-    fun openSigner(context: Context, scope: CoroutineScope, signedCode: String): Job {
+    fun openSigner(
+        context: Context,
+        scope: CoroutineScope,
+        signedCode: String,
+        lookup: PayNymLookup? = null,
+        start: CoroutineStart = CoroutineStart.DEFAULT,
+        onResult: ((opened: Boolean) -> Unit)? = null,
+    ): Job {
         val app = context.applicationContext
-        val lookup = PayNymLookup(
+        val used = lookup ?: PayNymLookup(
             PayNymCache.forDirectory(app.noBackupFilesDir),
             torProxy = { SentinelTorManager.getProxy() },
         )
-        return scope.launch {
-            val url = urlForSigner(lookup, signedCode)
-            if (url != null) open(context, url)
-            else Toast.makeText(app, R.string.paynym_page_not_found, Toast.LENGTH_LONG).show()
+        return scope.launch(start = start) {
+            var opened = false
+            var cancelled = false
+            try {
+                val url = urlForSigner(used, signedCode)
+                if (url != null) {
+                    open(context, url)
+                    opened = true
+                } else if (onResult == null) {
+                    // Callers with no callback (the list-row link) keep the toast.
+                    Toast.makeText(app, R.string.paynym_page_not_found, Toast.LENGTH_LONG).show()
+                }
+            } catch (e: CancellationException) {
+                cancelled = true
+                throw e
+            } catch (_: Throwable) {
+                // Non-cancellation failures (e.g. OOM or transport/open errors)
+                // fall through to finally so the lookup always ends.
+            } finally {
+                if (!cancelled) onResult?.invoke(opened)
+            }
         }
     }
 }

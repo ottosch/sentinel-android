@@ -51,6 +51,7 @@ import com.samourai.sentinel.ui.views.applyScannerScreenshotPolicy
 import com.samourai.sentinel.util.ImportLimits
 import com.samourai.sentinel.util.OkHttpLogRedaction
 import com.samourai.sentinel.util.apiScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Job
@@ -536,7 +537,15 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
         }
     }
 
+    private var pairingConfirmDialog: AlertDialog? = null
+
+    private fun dismissPairingConfirmDialog() {
+        pairingConfirmDialog?.dismiss()
+        pairingConfirmDialog = null
+    }
+
     override fun onDestroyView() {
+        dismissPairingConfirmDialog()
         // The scan page shares this dialog window. Closing the sheet
         // puts that window back on Disable Screenshots and does not
         // touch the host activity.
@@ -545,6 +554,11 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
         pagerCallback?.let { binding.pager.unregisterOnPageChangeCallback(it) }
         pagerCallback = null
         super.onDestroyView()
+    }
+
+    override fun onDestroy() {
+        dismissPairingConfirmDialog()
+        super.onDestroy()
     }
 
     // ---- #181 page-event entry points ----
@@ -940,7 +954,19 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
         )
         // Who signed the picked listing: the full code its signature proved.
         val signer = prePairSigner(pendingSignerPin.forDialog(), snapshot, pairing.pairing?.url)
-        dialogViews.bindSigner(signer) { code -> context?.let { PayNymPage.openSigner(it, lifecycleScope, code) } }
+        dialogViews.bindSigner(signer) { code ->
+            val ctx = context ?: return@bindSigner
+            val job = PayNymPage.openSigner(
+                ctx,
+                lifecycleScope,
+                code,
+                start = CoroutineStart.LAZY,
+            ) { opened ->
+                if (dialogViews.root.isAttachedToWindow) dialogViews.endPayNymLookup(opened)
+            }
+            dialogViews.beginPayNymLookup(job)
+            job.start()
+        }
         if (signer != null) dialogViews.showIdentityLoading()
         bindDetailRow(view, R.id.dojoPairingJurisdictionRow, R.id.dojoPairingJurisdictionValue, rows.jurisdiction)
         // #250: the network guard - evidence at dialog time, the
@@ -1015,22 +1041,30 @@ class DojoConfigureBottomSheet : GenericBottomSheet() {
         // A setMessage message is read with the dialog; this one sits in the
         // custom view, so screen readers are told it when the dialog opens.
         dialog.setOnShowListener { messageView.announceForAccessibility(message) }
+        pairingConfirmDialog?.dismiss()
+        pairingConfirmDialog = dialog
         dialog.show()
         // The signer's PayNym avatar and +name, looked up now that the dialog
         // is open, from the signed code, over Tor only (PayNymLookup). This
         // goes to PayNym's onion, not to the Dojo: the Dojo still sees
         // nothing before Pair. Closing the dialog cancels the lookup.
-        if (signer != null) {
+        val identityJob = if (signer != null) {
             val lookup = PayNymLookup(
                 PayNymCache.forDirectory(requireContext().applicationContext.noBackupFilesDir),
                 torProxy = { SentinelTorManager.getProxy() },
             )
-            val job = lifecycleScope.launch {
+            lifecycleScope.launch {
                 val result = lookup.load(signer.code)
                 val image = withContext(Dispatchers.Default) { PayNymAvatarImage.decode(result.avatarPng) }
                 if (dialog.isShowing) dialogViews.showIdentity(image, result.name)
             }
-            dialog.setOnDismissListener { job.cancel() }
+        } else {
+            null
+        }
+        dialog.setOnDismissListener {
+            if (pairingConfirmDialog === dialog) pairingConfirmDialog = null
+            identityJob?.cancel()
+            dialogViews.cancelPayNymLookup()
         }
         // #250: the refuse arm is read-only - the reason renders and
         // Pair cannot fire; Decline is the one way out, spending the
