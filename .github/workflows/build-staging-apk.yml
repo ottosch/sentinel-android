@@ -383,8 +383,60 @@ jobs:
           )
           cat release-artifacts/SHA256SUMS.txt
 
+      # #608: the Gradle gate refuses an untagged production build (its
+      # versionCode 55 would be a downgrade from upstream V5.2.0's 56).
+      # Tag runs pass the same tagged versionName the staging build uses;
+      # branch and PR runs only need this APK for the dex/logcat guards
+      # and never publish it, so they opt out with the escape hatch.
       - name: Build production release APK
-        run: ./gradlew --stacktrace :app:assembleProductionRelease
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            ./gradlew --stacktrace :app:assembleProductionRelease \
+              -Psentinel.versionName="${GITHUB_REF_NAME#v}"
+          else
+            SENTINEL_ALLOW_UNTAGGED_PRODUCTION=1 \
+              ./gradlew --stacktrace :app:assembleProductionRelease
+          fi
+
+      - name: Guard - production gate refuses an untagged build (#608)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/gate608.log"
+          if env -u SENTINEL_ALLOW_UNTAGGED_PRODUCTION -u SENTINEL_VERSION_NAME \
+              ./gradlew --console=plain :app:preProductionReleaseBuild > "$log" 2>&1; then
+            echo "::error::#608 gate did not refuse an untagged production build."
+            exit 1
+          fi
+          grep -q 'Refusing to build the production flavor' "$log"
+          ./gradlew --console=plain :app:preProductionReleaseBuild -Psentinel.versionName=6.0.0
+          if ./gradlew --console=plain :app:help '-Psentinel.versionName=6.0.0-rc.1"' > "$log" 2>&1; then
+            echo "::error::#608 versionName validation accepted a non-release value."
+            exit 1
+          fi
+          grep -q 'must be MAJOR.MINOR.PATCH' "$log"
+          if SENTINEL_ALLOW_UNTAGGED_PRODUCTION=1 CI_RELEASE_KEYSTORE=/nonexistent \
+              ./gradlew --console=plain :app:help > "$log" 2>&1; then
+            echo "::error::#608 escape hatch accepted next to a release signing key."
+            exit 1
+          fi
+          grep -q 'is not allowed with a release signing key' "$log"
+          if SENTINEL_ALLOW_UNTAGGED_PRODUCTION=1 GITHUB_REF=refs/tags/v6.0.0 \
+              ./gradlew --console=plain :app:help > "$log" 2>&1; then
+            echo "::error::#608 escape hatch accepted on a tag ref."
+            exit 1
+          fi
+          grep -q 'is not allowed with a release signing key' "$log"
+          if SENTINEL_ALLOW_UNTAGGED_PRODUCTION=1 \
+              ./gradlew --console=plain :app:help \
+              -Pandroid.injected.signing.store.file=/nonexistent > "$log" 2>&1; then
+            echo "::error::#608 escape hatch accepted next to an IDE signing store file."
+            exit 1
+          fi
+          grep -q 'is not allowed with a release signing key' "$log"
 
       - name: Guard - release dex does not gain a logcat call
         shell: bash

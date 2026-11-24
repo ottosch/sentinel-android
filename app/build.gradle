@@ -22,6 +22,12 @@ apply plugin: 'kotlin-parcelize'
 //   v6.0.0           -> versionName 6.0.0,           versionCode 60000000
 def stagingVersionFloor = 57
 def productionVersionCodeLocal = 55
+// #608: upstream V5.2.0 already ships versionCode 56. Any production build
+// without -Psentinel.versionName (or SENTINEL_VERSION_NAME) falls back to
+// productionVersionCodeLocal above, which installs as a DOWNGRADE from
+// V5.2.0 and is refused by Android. Fail that build instead; only a
+// tagged build may assemble the production flavor.
+def productionVersionCodeFloor = 56
 def stagingBaseVersionName = '5.1.3-dojobay.4'
 def productionBaseVersionName = '5.1.2'
 
@@ -71,9 +77,15 @@ def taggedVersionRaw = findProperty('sentinel.versionName')
 if (taggedVersionRaw == null) {
     taggedVersionRaw = providers.environmentVariable('SENTINEL_VERSION_NAME').orNull
 }
-def taggedVersionName = taggedVersionRaw?.toString()?.trim()
-if (!taggedVersionName) {
+def taggedVersionName = taggedVersionRaw?.toString()
+if (!taggedVersionName?.trim()) {
     taggedVersionName = null
+}
+// Accept only the version formats the release process uses; anything else fails closed (#608).
+if (taggedVersionName != null &&
+        !(taggedVersionName ==~ /(0|[1-9]\d{0,2})\.(0|[1-9]\d?)\.(0|[1-9]\d?)(-dojobay\.[1-9]\d{0,2})?/)) {
+    throw new GradleException(
+            "sentinel.versionName '${taggedVersionName}' must be MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-dojobay.N (digits only). See #608.")
 }
 
 def revisionSuffix = sentinelShortRevision()
@@ -91,6 +103,55 @@ if (taggedVersionName != null) {
     stagingVersionCode = stagingVersionFloor
     resolvedProductionVersionName = "${productionBaseVersionName}-${revisionSuffix}"
     resolvedProductionVersionCode = productionVersionCodeLocal
+}
+
+
+// #608: refuse a production release build that would not install as an
+// update over upstream V5.2.0 (versionCode 56). Without a tag the flavor
+// resolves to productionVersionCodeLocal (55) - Android refuses that as
+// a downgrade, so the release gate fails the build unless CI opts out
+// explicitly with SENTINEL_ALLOW_UNTAGGED_PRODUCTION=1. That hatch is
+// only for never-published builds (the verification APK on branch and
+// pull-request runs). It is refused when a release signing key is set
+// (CI_RELEASE_KEYSTORE or android.injected.signing.store.file) or the
+// build runs on a tag. A tagged name is packed by
+// sentinelVersionCode above; a tagged build whose versionCode still
+// sits at or below the floor fails instead of producing an uninstallable
+// APK.
+def allowUntaggedProduction = providers.environmentVariable('SENTINEL_ALLOW_UNTAGGED_PRODUCTION').getOrElse('') == '1'
+// The escape hatch is only for never-published builds.
+// Local ./gradlew test/build/assemble needs SENTINEL_ALLOW_UNTAGGED_PRODUCTION=1
+// or -Psentinel.versionName=X.Y.Z.
+if (allowUntaggedProduction) {
+    def releaseKeystore = providers.environmentVariable('CI_RELEASE_KEYSTORE').getOrElse('')
+    def injectedStore = findProperty('android.injected.signing.store.file')
+    def githubRef = providers.environmentVariable('GITHUB_REF').getOrElse('')
+    if (releaseKeystore || injectedStore || githubRef.startsWith('refs/tags/')) {
+        throw new GradleException(
+                "SENTINEL_ALLOW_UNTAGGED_PRODUCTION=1 is not allowed with a release signing key or on a tag build. See #608.")
+    }
+}
+
+afterEvaluate {
+    tasks.matching { it.name == 'preProductionReleaseBuild' }.configureEach {
+        doFirst {
+            if (taggedVersionName == null && !allowUntaggedProduction) {
+                throw new GradleException(
+                        "Refusing to build the production flavor without " +
+                                "-Psentinel.versionName=<tag> (or SENTINEL_VERSION_NAME): " +
+                                "versionCode would be ${productionVersionCodeLocal}, a downgrade from " +
+                                "upstream V5.2.0 (${productionVersionCodeFloor}). Set " +
+                                "SENTINEL_ALLOW_UNTAGGED_PRODUCTION=1 only for a build that is never " +
+                                "published. See #608.")
+            }
+            if (taggedVersionName != null && resolvedProductionVersionCode <= productionVersionCodeFloor) {
+                throw new GradleException(
+                        "Production versionCode ${resolvedProductionVersionCode} for " +
+                                "'${resolvedProductionVersionName}' does not install as an update over " +
+                                "upstream V5.2.0 (${productionVersionCodeFloor}). See #608.")
+            }
+        }
+    }
 }
 
 android {
