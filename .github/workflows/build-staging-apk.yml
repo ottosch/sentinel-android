@@ -383,8 +383,22 @@ jobs:
           )
           cat release-artifacts/SHA256SUMS.txt
 
+      # #608: the Gradle gate refuses an untagged production build (its
+      # versionCode 55 would be a downgrade from upstream V5.2.0's 56).
+      # Tag runs pass the same tagged versionName the staging build uses;
+      # branch and PR runs only need this APK for the dex/logcat guards
+      # and never publish it, so they opt out with the escape hatch.
       - name: Build production release APK
-        run: ./gradlew --stacktrace :app:assembleProductionRelease
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            ./gradlew --stacktrace :app:assembleProductionRelease \
+              -Psentinel.versionName="${GITHUB_REF_NAME#v}"
+          else
+            SENTINEL_ALLOW_UNTAGGED_PRODUCTION=1 \
+              ./gradlew --stacktrace :app:assembleProductionRelease
+          fi
 
       - name: Guard - release dex does not gain a logcat call
         shell: bash
