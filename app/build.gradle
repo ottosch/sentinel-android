@@ -77,9 +77,15 @@ def taggedVersionRaw = findProperty('sentinel.versionName')
 if (taggedVersionRaw == null) {
     taggedVersionRaw = providers.environmentVariable('SENTINEL_VERSION_NAME').orNull
 }
-def taggedVersionName = taggedVersionRaw?.toString()?.trim()
-if (!taggedVersionName) {
+def taggedVersionName = taggedVersionRaw?.toString()
+if (!taggedVersionName?.trim()) {
     taggedVersionName = null
+}
+// Accept only the version formats the release process uses; anything else fails closed (#608).
+if (taggedVersionName != null &&
+        !(taggedVersionName ==~ /(0|[1-9]\d{0,2})\.(0|[1-9]\d?)\.(0|[1-9]\d?)(-dojobay\.[1-9]\d{0,2})?/)) {
+    throw new GradleException(
+            "sentinel.versionName '${taggedVersionName}' must be MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-dojobay.N (digits only). See #608.")
 }
 
 def revisionSuffix = sentinelShortRevision()
