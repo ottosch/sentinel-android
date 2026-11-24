@@ -110,12 +110,23 @@ if (taggedVersionName != null) {
 // update over upstream V5.2.0 (versionCode 56). Without a tag the flavor
 // resolves to productionVersionCodeLocal (55) - Android refuses that as
 // a downgrade, so the gate fails the build unless CI opts out explicitly
-// with SENTINEL_ALLOW_UNTAGGED_PRODUCTION=1 (the verification APK it
-// assembles on every push is never published). A tagged name is packed
-// by sentinelVersionCode above; a tagged build whose versionCode still
+// with SENTINEL_ALLOW_UNTAGGED_PRODUCTION=1. That hatch is only for
+// never-published builds (the verification APK it assembles on every
+// push is never published). It is refused when a release signing key is
+// set or the build runs on a tag. A tagged name is packed by
+// sentinelVersionCode above; a tagged build whose versionCode still
 // sits at or below the floor fails instead of producing an uninstallable
 // APK.
 def allowUntaggedProduction = providers.environmentVariable('SENTINEL_ALLOW_UNTAGGED_PRODUCTION').getOrElse('') == '1'
+// The escape hatch is only for never-published builds.
+if (allowUntaggedProduction) {
+    def releaseKeystore = providers.environmentVariable('CI_RELEASE_KEYSTORE').getOrElse('')
+    def githubRef = providers.environmentVariable('GITHUB_REF').getOrElse('')
+    if (releaseKeystore || githubRef.startsWith('refs/tags/')) {
+        throw new GradleException(
+                "SENTINEL_ALLOW_UNTAGGED_PRODUCTION=1 is not allowed with a release signing key or on a tag build. See #608.")
+    }
+}
 
 afterEvaluate {
     tasks.matching { it.name in ['preProductionDebugBuild', 'preProductionReleaseBuild'] }.configureEach {
