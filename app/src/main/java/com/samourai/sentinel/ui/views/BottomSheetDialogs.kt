@@ -5,7 +5,9 @@ import android.content.Context
 import android.content.DialogInterface
 import android.content.Intent
 import android.os.Bundle
+import android.text.Editable
 import android.text.InputFilter
+import android.text.TextWatcher
 import android.text.method.PasswordTransformationMethod
 import android.view.LayoutInflater
 import android.view.View
@@ -133,6 +135,8 @@ class InputBottomSheet() : GenericBottomSheet() {
         get() = arguments?.getBoolean(ARG_EDITABLE, true) == true
     private val requestKey: String
         get() = arguments?.getString(ARG_REQUEST_KEY) ?: ""
+    private val helperWhenBlank: String?
+        get() = arguments?.getString(ARG_HELPER_WHEN_BLANK)?.takeIf { it.isNotEmpty() }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -167,6 +171,16 @@ class InputBottomSheet() : GenericBottomSheet() {
             )
         }
         textInput?.setText(prefill)
+        fun applyHelper() {
+            val blank = textInput?.text.isNullOrBlank()
+            textInputLayout?.helperText = if (editable && helperWhenBlank != null && blank) helperWhenBlank else null
+        }
+        applyHelper()
+        textInput?.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) { applyHelper() }
+        })
         if (maskInput) {
             textInput?.inputType = EditorInfo.TYPE_TEXT_VARIATION_PASSWORD
             textInput?.transformationMethod = PasswordTransformationMethod.getInstance()
@@ -201,6 +215,7 @@ class InputBottomSheet() : GenericBottomSheet() {
         const val ARG_MAX_LEN = "input_bottom_sheet_arg_max_len"
         const val ARG_EDITABLE = "input_bottom_sheet_arg_editable"
         const val ARG_REQUEST_KEY = "input_bottom_sheet_arg_request_key"
+        const val ARG_HELPER_WHEN_BLANK = "input_bottom_sheet_arg_helper_when_blank"
         const val RESULT_INPUT = "input_bottom_sheet_result_input"
 
         fun newInstance(
@@ -212,7 +227,8 @@ class InputBottomSheet() : GenericBottomSheet() {
             maxLen: Int = 34,
             editable: Boolean = true,
             isCancelable: Boolean = true,
-            requestKey: String
+            requestKey: String,
+            helperWhenBlank: String? = null,
         ): InputBottomSheet = InputBottomSheet().apply {
             // #210: cancelability travels as an argument; the base class
             // re-applies it in onCreate on every (re)creation.
@@ -226,6 +242,7 @@ class InputBottomSheet() : GenericBottomSheet() {
                 putBoolean(ARG_EDITABLE, editable)
                 putString(ARG_REQUEST_KEY, requestKey)
                 putBoolean(GenericBottomSheet.ARG_CANCELABLE, isCancelable)
+                helperWhenBlank?.let { putString(ARG_HELPER_WHEN_BLANK, it) }
             }
         }
     }
@@ -398,7 +415,8 @@ fun AppCompatActivity.alertWithInput(
     isCancelable: Boolean = true,
     maxLen: Int = 34,
     onConfirm: (String) -> Unit,
-    isEditable: Boolean = true
+    isEditable: Boolean = true,
+    helperWhenBlank: String? = null,
 ): GenericBottomSheet {
     val requestKey = "input_${UUID.randomUUID()}"
     supportFragmentManager.setFragmentResultListener(requestKey, this) { key, bundle ->
@@ -414,7 +432,8 @@ fun AppCompatActivity.alertWithInput(
         maxLen = maxLen,
         editable = isEditable,
         isCancelable = isCancelable,
-        requestKey = requestKey
+        requestKey = requestKey,
+        helperWhenBlank = helperWhenBlank,
     )
     bottomSheet.isCancelable = isCancelable
     bottomSheet.show(supportFragmentManager, bottomSheet.tag)

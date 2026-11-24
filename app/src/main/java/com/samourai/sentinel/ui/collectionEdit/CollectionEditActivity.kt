@@ -470,9 +470,14 @@ class CollectionEditActivity : SentinelActivity() {
             isCancelable = true,
             maxLen = 8,
             labelEditText = "Fingerprint",
-            value = if (pubKeyModel.fingerPrint == null) "" else pubKeyModel.fingerPrint!!,
+            value = pubKeyModel.fingerPrint.orEmpty(),
             buttonLabel = "Save",
-            isEditable = !viewModel.getCollection().value?.isImportFromWallet!!
+            isEditable = viewModel.getCollection().value?.isImportFromWallet != true,
+            helperWhenBlank = if (viewModel.getCollection().value?.isImportFromWallet != true) {
+                getString(R.string.pubkey_fingerprint_missing_hint)
+            } else {
+                null
+            },
         )
     }
 
