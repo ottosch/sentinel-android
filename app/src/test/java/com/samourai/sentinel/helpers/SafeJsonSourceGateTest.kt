@@ -10,9 +10,9 @@ import java.io.File
  * `JSONTokener`. The only production caller is [SafeJson]. The only
  * allowlist is JSON the app itself just built.
  *
- * Local import parsers are not on that allowlist. They are named here
- * so this pull request does not have to edit them, and a new call in
- * one of them, or in any other file, fails the build.
+ * Local import parsers that still construct org.json from a string
+ * are named below. A new call in one of them, or in any other file,
+ * fails the build.
  */
 class SafeJsonSourceGateTest {
 
@@ -75,6 +75,15 @@ class SafeJsonSourceGateTest {
         val reader = sheet.substringAfter("internal fun readPairingLogin(").substringBefore("\n}\n")
         assertTrue(reader.contains("readUtf8Capped(SafeJson.AUTH_MAX_BYTES)"))
         assertTrue(reader.contains("readDojoAuthTokens(body)"))
+    }
+
+    @Test
+    fun walletAndTxsShareTheWalletBodyCap() {
+        val api = readMain("com/samourai/sentinel/api/ApiService.kt")
+        val wallet = api.substringAfter("fun getWallet(").substringBefore("fun getTxs(")
+        val txs = api.substringAfter("fun getTxs(").substringBefore("fun request(")
+        assertTrue(wallet.contains("maxBodyBytes = SafeJson.WALLET_MAX_BYTES"))
+        assertTrue(txs.contains("maxBodyBytes = SafeJson.WALLET_MAX_BYTES"))
     }
 
     @Test
@@ -225,11 +234,10 @@ class SafeJsonSourceGateTest {
         )
 
         /**
-         * Local import parsers. Not an allowlist: this pull request does
-         * not change them, and the counts are closed. A new call fails.
+         * Local import parsers that still construct org.json from a
+         * string. The counts are closed. A new call fails.
          */
         val LOCAL_IMPORT_FOLLOW_UP = mapOf(
-            "Bip329Parser.kt" to 1,
             "ImportPayloadIntake.kt" to 1,
             "PairingPayloadImport.kt" to 3,
             "ExportImportUtil.kt" to 4,

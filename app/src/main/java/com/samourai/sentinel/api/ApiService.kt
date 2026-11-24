@@ -580,7 +580,7 @@ open class ApiService {
         val request = Request.Builder()
             .url("${getAPIUrl()}${dojoTxsQuery(pubKey, page, count)}")
             .build()
-        return callOn(http, request)
+        return callOn(http, request, maxBodyBytes = SafeJson.WALLET_MAX_BYTES)
     }
 
 

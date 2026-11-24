@@ -5,8 +5,9 @@ import com.samourai.sentinel.core.NetworkClassifier
 import com.samourai.sentinel.data.db.entity.LabelEntry
 import com.samourai.sentinel.data.db.entity.LabelType
 import com.samourai.sentinel.data.db.entity.UtxoLabel
+import com.samourai.sentinel.helpers.JsonSource
+import com.samourai.sentinel.helpers.SafeJson
 import org.json.JSONException
-import org.json.JSONObject
 
 /**
  * Pure BIP-329 JSONL line parsing. No Android, Koin or database
@@ -41,7 +42,7 @@ object Bip329Parser {
             return Parsed.Ignored
         }
         val obj = try {
-            JSONObject(line)
+            SafeJson.parseObject(line, JsonSource.LOCAL)
         } catch (ex: JSONException) {
             return null
         }
